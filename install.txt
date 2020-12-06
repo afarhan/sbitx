@@ -1,0 +1,3 @@
+install fftw3 from the tarball downloaded from www.fftw3.org, follow
+the instructions for the config, make.  run make install as sudo
+
