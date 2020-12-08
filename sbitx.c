@@ -139,6 +139,7 @@ void set_lpf(int frequency){
 	if (lpf == prev_lpf)
 		return;
 
+	printf("Setting LPF to %d\n", lpf);
 	//reset the 4017
 	digitalWrite(BAND_SELECT, HIGH);
 	delay(5);
@@ -166,7 +167,7 @@ void set_rx1(int frequency){
 	si570_freq(frequency + bfo_freq - ((rx_list->tuned_bin * 96000)/MAX_BINS));
 	freq_hdr = frequency;
 	printf("freq: %d\n", frequency);
-	
+	set_lpf(frequency);
 }
 
 void set_volume(double v){

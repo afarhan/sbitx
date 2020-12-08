@@ -769,11 +769,13 @@ gboolean ui_tick(gpointer gook){
 	// check the tuning knob
 	struct field *f = get_field("r1:freq=");
 	int tuning = enc_read(&enc_b);
-	if (tuning < 0)
-		edit_field(f, MIN_KEY_DOWN);	
-	else if (tuning > 0)
-		edit_field(f, MIN_KEY_UP);
-
+	if (tuning != 0){
+		puts("tuning knob moved");
+		if (tuning < 0)
+			edit_field(f, MIN_KEY_DOWN);	
+		else if (tuning > 0)
+			edit_field(f, MIN_KEY_UP);
+	}
 	//check the push-to-talk
 	if (digitalRead(PTT) == LOW && in_tx == 0)
 		tx_on();	
