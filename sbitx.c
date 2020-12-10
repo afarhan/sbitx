@@ -16,10 +16,8 @@ The incoming signals are time sampled as I and Q (as stereo audio). These are sa
 in signed 32-bit range.
 FFT is a softeware that takes a the consecutive values of signal's voltage and converts them into a block of frequencies with how strong each frequency is and the exact position of the wwave (phase) wrt to others. 
 The fft_out stores this and we can use this to pain the screen.
-
 In individual signals can be picked off this waterfall and decoded. By limint ourselves... 
 (tbd)
-
 */
 
 char audio_card[32];
@@ -227,7 +225,8 @@ struct rx *add_rx(int frequency, short mode, int bpf_low, int bpf_high){
 	rx_list = r;
 }
 
-void do_rx(struct rx *r){
+void demodulate_rx(struct rx *r){
+
 	int i;
 
 	//we rotate the bins around by r-tuned_bin
@@ -297,9 +296,183 @@ void do_tx(){
 	fftw_execute(r->plan_rev);
 }
 
-int16_t filebuffer[10000];
+void rx_process(int32_t *input_rx,  int32_t *input_mic, 
+	int32_t *output_speaker, int32_t *output_tx, int n_samples)
+{
+	int i, j = 0;
+	double i_sample, q_sample;
 
 
+	//STEP 1: first add the previous M samples to
+	for (i = 0; i < MAX_BINS/2; i++)
+		fft_in[i]  = fft_m[i];
+
+	//STEP 2: then add the new set of samples
+	// m is the index into incoming samples, starting at zero
+	// i is the index into the time samples, picking from 
+	// the samples added in the previous step
+	int m = 0;
+	//gather the samples into a time domain array 
+	for (i= MAX_BINS/2; i < MAX_BINS; i++){
+		i_sample = (1.0  *input_rx[j])/200000000.0;
+		q_sample = 0;
+
+		j++;
+
+		__real__ fft_m[m] = i_sample;
+		__imag__ fft_m[m] = q_sample;
+
+		__real__ fft_in[i]  = i_sample;
+		__imag__ fft_in[i]  = q_sample;
+		m++;
+	}
+
+	// STEP 3: convert the time domain samples to  frequency domain
+	fftw_execute(plan_fwd);
+
+	//STEP 3B: this is a side line, we use these frequency domain
+	// values to paint the spectrum in the user interface
+	// I discovered that the raw time samples give horrible spectrum
+	// and they need to be multiplied wiht a window function 
+	// they use a separate fft plan
+	// NOTE: the spectrum update has nothing to do with the actual
+	// signal processing. If you are not showing the spectrum or the
+	// waterfall, you can skip these steps
+	for (i = 0; i < MAX_BINS; i++)
+			__real__ fft_in[i] *= spectrum_window[i];
+	fftw_execute(plan_spectrum);
+
+	// the spectrum display is updated
+	spectrum_update();
+
+
+	// ... back to the actual processing, after spectrum update  
+
+
+	// we may add another sub receiver within the pass band later,
+	// hence, the linkced list of receivers here
+	// at present, we handle just the first receiver
+	struct rx *r = rx_list;
+	
+	//STEP 4: we rotate the bins around by r-tuned_bin
+	for (i = 0; i < MAX_BINS; i++){
+		int b =  i + r->tuned_bin;
+		if (b >= MAX_BINS)
+			b = b - MAX_BINS;
+		if (b < 0)
+			b = b + MAX_BINS;
+		r->fft_freq[i] = fft_out[b];
+	}
+
+	// STEP 5:zero out the other sideband
+	if (r->mode == MODE_USB || r->mode == MODE_CW || r->mode == MODE_DIGITAL)
+		for (i = MAX_BINS/2; i < MAX_BINS; i++){
+			__real__ r->fft_freq[i] = 0;
+			__imag__ r->fft_freq[i] = 0;	
+		}
+	else 
+		for (i = 0; i < MAX_BINS/2; i++){
+			__real__ r->fft_freq[i] = 0;
+			__imag__ r->fft_freq[i] = 0;	
+		}
+
+	// STEP 6: apply the filter to the signal,
+	// in frequency domain we just multiply the filter
+	// coefficients with the frequency domain samples
+	for (i = 0; i < MAX_BINS; i++)
+		r->fft_freq[i] *= r->filter->fir_coeff[i];
+
+	//STEP 7: convert back to time domain	
+	fftw_execute(r->plan_rev);
+
+	//TO DO, we must add AGC here somewhere...
+
+	//STEP 8: send the output back to where it needs to go
+	if (rx_list->output == 0)
+		for (i= 0; i < MAX_BINS/2; i++){
+			output_speaker[i] = cimag(rx_list->fft_time[i+(MAX_BINS/2)]) * volume;
+			//keep transmit buffer empty
+			output_tx[i] = 0;
+		}
+}
+
+void tx_process(
+	int32_t *input_rx, int32_t *input_mic, 
+	int32_t *output_speaker, int32_t *output_tx, 
+	int n_samples)
+{
+	int i, j = 0;
+	double i_sample, q_sample;
+
+	//first add the previous M samples
+	for (i = 0; i < MAX_BINS/2; i++)
+		fft_in[i]  = fft_m[i];
+
+	int m = 0;
+	//gather the samples into a time domain array 
+	for (i= MAX_BINS/2; i < MAX_BINS; i++){
+
+		//i_sample = (1.0 * vfo_read(&tone_a)) / 2000000000.0;
+		i_sample = (1.0 * input_mic[j]) / 2000000000.0;
+		q_sample = 0;
+
+		j++;
+
+		__real__ fft_m[m] = i_sample;
+		__imag__ fft_m[m] = q_sample;
+
+		__real__ fft_in[i]  = i_sample;
+		__imag__ fft_in[i]  = q_sample;
+		m++;
+	}
+
+	//convert to frequency
+	fftw_execute(plan_fwd);
+
+
+	// we are reusing the rx structure, we should
+	// have a seperate tx structure to work with	
+	struct rx *r = rx_list;
+
+	// NOTE: fft_out holds the fft output (in freq domain) of the 
+	// incoming mic samples 
+	//the naming is unfortunate
+
+	//apply the filter
+	for (i = 0; i < MAX_BINS; i++)
+		fft_out[i] *= r->filter->fir_coeff[i];
+
+	// zero out the other sideband
+	if (r->mode == MODE_USB || r->mode == MODE_CW || r->mode == MODE_DIGITAL)
+		for (i = MAX_BINS/2; i < MAX_BINS; i++){
+			__real__ fft_out[i] = 0;
+			__imag__ fft_out[i] = 0;	
+		}
+	else 
+		for (i = 0; i < MAX_BINS/2; i++){
+			__real__ fft_out[i] = 0;
+			__imag__ fft_out[i] = 0;	
+		}
+
+	//now rotate to the tx_bin (always at MAX_BINS/4
+	for (i = 0; i < MAX_BINS; i++){
+		int b =  i + tx_shift;
+		if (b >= MAX_BINS)
+			b = b - MAX_BINS;
+		if (b < 0)
+			b = b + MAX_BINS;
+		r->fft_freq[b] = fft_out[i];
+	}
+
+	//convert back to time domain	
+	fftw_execute(r->plan_rev);
+
+	//send the output back to where it needs to go
+	for (i= 0; i < MAX_BINS/2; i++){
+		output_tx[i] = creal(rx_list->fft_time[i+(MAX_BINS/2)]) * volume;
+		output_speaker[i] = 0; 
+	}
+}
 /*
 This is where the main action happens. 
 On Rx, 
@@ -331,7 +504,12 @@ void sound_process(
 	int i, j = 0;
 	double i_sample, q_sample;
 
-
+	if (in_tx)
+		tx_process(input_rx, input_mic, output_speaker, output_tx, n_samples);
+	else
+		rx_process(input_rx, input_mic, output_speaker, output_tx, n_samples);
+/*
+	return;	
 	//first add the previous M samples
 	for (i = 0; i < MAX_BINS/2; i++)
 		fft_in[i]  = fft_m[i];
@@ -381,7 +559,7 @@ void sound_process(
 	if(in_tx)
 		do_tx();		
 	else 
-		do_rx(rx_list);
+		demodulate_rx(rx_list);
 	
 
 	//send the output back to where it needs to go
@@ -396,77 +574,9 @@ void sound_process(
 				output_speaker[i] = cimag(rx_list->fft_time[i+(MAX_BINS/2)]) * volume;
 			}
 		}
+	*/
 }
 
-/*
-
-void sound_process(
-	int32_t *input_i, int32_t *input_q, 
-	int32_t *output_i, int32_t *output_q, 
-	int n_samples)
-{
-	int i, j = 0;
-	double i_sample, q_sample;
-
-
-	//first add the previous M samples
-	for (i = 0; i < MAX_BINS/2; i++)
-		fft_in[i]  = fft_m[i];
-
-	int m = 0;
-	for (i= MAX_BINS/2; i < MAX_BINS; i++){
-		//swap the order here to change the sideband (for testing), 
-		//otherwise it will read the wrong frequency.
-		//we need to feed the same sample to both channels
-		//to avoid aliased images from appearing in the passband
-
-		//on tx we read from the mic connected to the line-in of the audio codec
-		if (in_tx){
-			i_sample = (1.0 * input_q[j]) / 2000000000.0;//(mic_gain * input_q[j])/200000000.0;
-			q_sample = 0;
-			//q_sample = (1.0 * input_q[j]) / 2000000000.0;
-		}	
-		else {
-			i_sample = (1.0  *input_i[j])/200000000.0;
-			q_sample = 0;
-		}
-
-		j++;
-
-		__real__ fft_m[m] = i_sample;
-		__imag__ fft_m[m] = q_sample;
-
-		__real__ fft_in[i]  = i_sample;
-		__imag__ fft_in[i]  = q_sample;
-		m++;
-	}
-
-	fftw_execute(plan_fwd);
-	for (i = 0; i < MAX_BINS; i++)
-			__real__ fft_in[i] *= spectrum_window[i];
-	fftw_execute(plan_spectrum);
-
-	spectrum_update();
-	if(in_tx)
-		do_tx();		
-	else {
-		do_rx(rx_list);
-	}
-	if (rx_list->output == 0)
-		for (i= 0; i < MAX_BINS/2; i++){
-			if (in_tx){
-				//output_i[i] = input_q[i];
-				//output_q[i] = input_q[i];
-				output_q[i] = creal(rx_list->fft_time[i+(MAX_BINS/2)]) * volume;
-				output_i[i] = 0; //creal(rx_list->fft_time[i+(MAX_BINS/2)]) * volume;
-			}
-			else {
-				output_q[i] = 0;//creal(rx_list->fft_time[i+(MAX_BINS/2)]) * volume;
-				output_i[i] = cimag(rx_list->fft_time[i+(MAX_BINS/2)]) * volume;
-			}
-		}
-}
-*/
 
 /* 
 Write code that mus repeatedly so things, it is called during the idle time 
