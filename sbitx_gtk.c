@@ -143,11 +143,9 @@ struct font_style font_table[] = {
 	Warning: The field selection is used for TOGGLE and SELECTION fields
 	each selection by the '/' should be unique. otherwise, the simple logic will
 	get confused 
-
-	the fields are referred implicitly by their index into the mains control table.
-	This maybe suboptimal, but it does its job for the time being.
 */
 
+/*
 #define R1FREQ_CONTROL 1
 #define R1MODE_CONTROL 2
 #define BAND_CONTROL 3
@@ -158,6 +156,7 @@ struct font_style font_table[] = {
 #define WATERFALL_CONTROL 9 
 
 #define MAX_MAIN_CONTROLS 7 
+*/
 
 struct field {
 	char	*cmd;
@@ -646,26 +645,13 @@ static gboolean on_mouse_press (GtkWidget *widget, GdkEventButton *event, gpoint
 	struct field *f;
 	if (event->type == GDK_BUTTON_PRESS && event->button == GDK_BUTTON_PRIMARY){
 		printf("mouse event at %d, %d\n", (int)(event->x), (int)(event->y));
-		for (int i = 0; i < MAX_MAIN_CONTROLS; i++){
+		for (int i = 0; i < sizeof(main_controls)/sizeof(struct field); i++) {
 			f = main_controls + i;
 			if (f->x < event->x && event->x < f->x + f->width 
 					&& f->y < event->y && event->y < f->y + f->height)
 				focus_field(f);
-			/*else 
-				focus_field(-1);	*/
 		}
 	}
-/*
-  if (event->button == GDK_BUTTON_PRIMARY)
-    {
-      draw_brush (widget, event->x, event->y);
-    }
-  else if (event->button == GDK_BUTTON_SECONDARY)
-    {
-      clear_surface ();
-      gtk_widget_queue_draw (widget);
-    }
-*/
   /* We've handled the event, stop processing */
   return TRUE;
 }
@@ -924,6 +910,14 @@ void do_cmd(char *cmd){
 		switch_band(request);
 }
 
+void load_settings(){
+}
+
+void change_settings(char *key, char *value){
+}
+
+void save_settings(){
+}
 
 int main( int argc, char* argv[] ) {
 

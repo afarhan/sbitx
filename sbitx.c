@@ -49,6 +49,8 @@ static double volume 	= 100000.0;
 static double mic_gain = 200000000.0;
 static double spectrum_speed = 0.1;
 static int in_tx = 0;
+struct vfo tone_a, tone_b; //these are audio tone generators
+
 
 struct rx *rx_list = NULL;
 
@@ -56,6 +58,7 @@ struct rx *rx_list = NULL;
 fftw_plan tx_plan_rev;
 fftw_complex *tx_fft_freq;
 fftw_complex *tx_fft_time;
+
 
 void fft_init(){
 	int mem_needed;
@@ -296,6 +299,107 @@ void do_tx(){
 
 int16_t filebuffer[10000];
 
+
+/*
+This is where the main action happens. 
+On Rx, 
+	the N incoming time samples are combined with M samples of the 
+	previous block of samples, to maintain continuity of waves
+	begining and end of the time sample array needs to be tapered
+	off to prevent frequency spikes being reported in the FFT.
+	
+	Now, this block of time samples are converted to frequency domain with FFT
+	the signals stretch from 0 Hz to half the sampling rate (48 KHz) 
+	they are divided into N frequency bins.
+
+	The signal of interest is represented by a sequency of frequency bins
+	somewhere in the array. To make this audio, we rotate the entire array
+	of bins until the signal bins are positioned from bin 0 onwards.
+
+	The next job is to zero everything else off to eliminate other signals.
+	Here, we cannot just zero away all the other bins as at the edge of the
+	passband of our desried signal, there can't be a sharp cut-off. We do this by 	applying a filter shape that has gentler slopes to the signal. 
+	This is done by multiplying a filter response array with the frequency bins.
+On Tx,
+	The  
+*/	
+void sound_process(
+	int32_t *input_rx, int32_t *input_mic, 
+	int32_t *output_speaker, int32_t *output_tx, 
+	int n_samples)
+{
+	int i, j = 0;
+	double i_sample, q_sample;
+
+
+	//first add the previous M samples
+	for (i = 0; i < MAX_BINS/2; i++)
+		fft_in[i]  = fft_m[i];
+
+	int m = 0;
+	//gather the samples into a time domain array 
+	for (i= MAX_BINS/2; i < MAX_BINS; i++){
+		//swap the order here to change the sideband (for testing), 
+		//otherwise it will read the wrong frequency.
+		//we need to feed the same sample to both channels
+		//to avoid aliased images from appearing in the passband
+
+		//on tx we read from the mic connected to the line-in of the audio codec
+		if (in_tx){
+			i_sample = (1.0 * vfo_read(&tone_a)) / 2000000000.0;
+			//i_sample = (1.0 * input_mic[j]) / 2000000000.0;
+			q_sample = 0;
+			//q_sample = (1.0 * input_mic[j]) / 2000000000.0;
+		}	
+		else {
+			i_sample = (1.0  *input_rx[j])/200000000.0;
+			q_sample = 0;
+		}
+
+		j++;
+
+		__real__ fft_m[m] = i_sample;
+		__imag__ fft_m[m] = q_sample;
+
+		__real__ fft_in[i]  = i_sample;
+		__imag__ fft_in[i]  = q_sample;
+		m++;
+	}
+
+	//convert to frequency
+	fftw_execute(plan_fwd);
+
+	//generate the spectrum graph wih a windowing function as well
+	for (i = 0; i < MAX_BINS; i++)
+			__real__ fft_in[i] *= spectrum_window[i];
+	fftw_execute(plan_spectrum);
+
+	spectrum_update();
+
+
+	//do the actual processing of the rx/tx 
+	if(in_tx)
+		do_tx();		
+	else 
+		do_rx(rx_list);
+	
+
+	//send the output back to where it needs to go
+	if (rx_list->output == 0)
+		for (i= 0; i < MAX_BINS/2; i++){
+			if (in_tx){
+				output_tx[i] = creal(rx_list->fft_time[i+(MAX_BINS/2)]) * volume;
+				output_speaker[i] = 0; 
+			}
+			else {
+				output_tx[i] = 0;
+				output_speaker[i] = cimag(rx_list->fft_time[i+(MAX_BINS/2)]) * volume;
+			}
+		}
+}
+
+/*
+
 void sound_process(
 	int32_t *input_i, int32_t *input_q, 
 	int32_t *output_i, int32_t *output_q, 
@@ -362,7 +466,7 @@ void sound_process(
 			}
 		}
 }
-
+*/
 
 /* 
 Write code that mus repeatedly so things, it is called during the idle time 
@@ -383,7 +487,7 @@ void setup_audio_codec(){
 	sound_mixer(audio_card, "Mic Boost", 0);
 	sound_mixer(audio_card, "Playback Deemphasis", 0);
  
-	sound_mixer(audio_card, "Master", 100);
+	sound_mixer(audio_card, "Master", 50);
 	sound_mixer(audio_card, "Output Mixer HiFi", 1);
 	sound_mixer(audio_card, "Output Mixer Mic Sidetone", 0);
 }
@@ -404,6 +508,7 @@ void setup(){
 	setup_audio_codec();
 
 	sleep(1);
+	vfo_start(&tone_a, 800, 0);
 	si570_init();
 	set_lo(7021000);
 }
