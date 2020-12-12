@@ -386,7 +386,7 @@ void tx_process(
 
 	// TBD: Something strange is going on, this should have been the otherway
 
-/*
+
 	if (r->mode == MODE_LSB || r->mode == MODE_CWR)
 		// zero out the LSB
 		for (i = MAX_BINS/2; i < MAX_BINS; i++){
@@ -399,7 +399,6 @@ void tx_process(
 			__real__ fft_out[i] = 0;
 			__imag__ fft_out[i] = 0;	
 		}
-*/
 
 	//now rotate to the tx_bin 
 	for (i = 0; i < MAX_BINS; i++){
