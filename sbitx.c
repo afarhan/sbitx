@@ -11,15 +11,6 @@
 #include "sdr_ui.h"
 #include "sound.h"
 
-/*
-The incoming signals are time sampled as I and Q (as stereo audio). These are samples 
-in signed 32-bit range.
-FFT is a software that takes a the consecutive values of signal's voltage and converts them into a block of frequencies with how strong each frequency is and the exact position of the wwave (phase) wrt to others. 
-The fft_out stores this and we can use this to pain the screen.
-In individual signals can be picked off this waterfall and decoded. By limint ourselves... 
-(tbd)
-*/
-
 char audio_card[32];
 
 int tx_shift = -512;
