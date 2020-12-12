@@ -36,6 +36,10 @@ int	fd;
 
 static double volume 	= 100000.0;
 static double mic_gain = 200000000.0;
+static int tx_power = 100;
+static int rx_gain = 100;
+static int rx_vol = 100;
+static int tx_gain = 100;
 static double spectrum_speed = 0.1;
 static int in_tx = 0;
 struct vfo tone_a, tone_b; //these are audio tone generators
@@ -474,39 +478,48 @@ void setup(){
 }
 
 void sdr_request(char *request, char *response){
+	char cmd[100], value[1000];
+
+	char *p = strchr(request, '=');
+	int n = p - request;
+	if (!p)
+		return;
+	strncpy(cmd, request, n);
+	cmd[n] = 0;
+	strcpy(value, request+n+1);
+
 	//at present, we handle only the requests to tune and adjust volume
 	printf("request: %s\n", request);
-	if (!strncmp(request, "r1:gain=", 8)){
-		int d = atoi(request+8);
+/*	if (!strcmp(cmd, "r1:gain")){
+		int d = atoi(value);
 		volume = d * 100;
 		set_volume(volume);
-		printf("Volume set to %d from %s\n", volume, request);
+		printf("Volume set to %d\n", volume);
 		strcpy(response, "ok");	
 	}
-	else if (!strncmp(request, "xit=",4)){
-		int d = atoi(request+4);
+	else*/ if (!strcmp(cmd, "xit")){
+		int d = atoi(value);
 		set_lo(d);
 		if (d > 0 && d < 2048)
 			tx_shift = -d;
 		printf("xit set to %d\n", freq_hdr);
 		strcpy(response, "ok");	
 	} 
-	else if (!strncmp(request, "r1:freq=",8)){
-		int d = atoi(request+8);
+	else if (!strcmp(cmd, "r1:freq")){
+		int d = atoi(value);
 		set_rx1(d);
 		printf("Frequency set to %d\n", freq_hdr);
 		strcpy(response, "ok");	
 	} 
-	else if (!strncmp(request, "r1:mode=", 8)){
-		if (!strcmp(request, "r1:mode=USB"))
+	else if (!strcmp(cmd, "r1:mode")){
+		if (!strcmp(value, "USB"))
 				rx_list->mode = MODE_USB;
-		else if (!strcmp(request, "r1:mode=LSB"))
+		else if (!strcmp(value, "LSB"))
 				rx_list->mode = MODE_LSB;
-		else if (!strcmp(request, "r1:mode=CW"))
+		else if (!strcmp(value, "CW"))
 			rx_list->mode = MODE_CW;
-		else if (!strcmp(request, "r1:mode=CWR"))
+		else if (!strcmp(value, "CWR"))
 			rx_list->mode = MODE_CWR;
-
 
 		// An interesting but non-essential note:
 		// the sidebands inverted twice, to come out correctly after all
@@ -542,21 +555,47 @@ void sdr_request(char *request, char *response){
 		printf("mode set to %d\n", rx_list->mode);
 		strcpy(response, "ok");
 	}
-	else if (!strncmp(request, "txmode", 6)){
-		if (!strcmp(request+7, "LSB") || !strcmp(request+7, "CWR"))
+	else if (!strcmp(cmd, "txmode")){
+		if (!strcmp(value, "LSB") || !strcmp(value, "CWR"))
 			filter_tune(tx_filter, (1.0*-3000)/96000.0, (1.0 * -300)/96000.0, 5);
 		else
 			filter_tune(tx_filter, (1.0*300)/96000.0, (1.0*3000)/96000.0, 5);
 	}
-	else if (!strncmp(request, "tx:on", 5)){
+	else if (!strcmp(cmd, "tx:on")){
 		in_tx = 1;
 		digitalWrite(TX_LINE, HIGH);
+		sound_mixer(audio_card, "Master", tx_power);
+		sound_mixer(audio_card, "Capture", tx_gain);
 		strcpy(response, "ok");
 	}
-	else if (!strncmp(request, "tx:off", 5)){
+	else if (!strcmp(cmd, "tx:off")){
 		in_tx = 0;
 		strcpy(response, "ok");
 		digitalWrite(TX_LINE, LOW);
+		sound_mixer(audio_card, "Master", rx_vol);
+		sound_mixer(audio_card, "Capture", rx_gain);
 	}
+	else if (!strcmp(cmd, "tx_gain")){
+		tx_gain = atoi(value);
+		if(in_tx)
+			sound_mixer(audio_card, "Capture", tx_gain);
+	}
+	else if (!strcmp(cmd, "tx_power")){
+		tx_power = atoi(value);
+		if(in_tx)	
+			sound_mixer(audio_card, "Master", tx_power);
+	}
+	else if(!strcmp(cmd, "r1:gain")){
+		rx_gain = atoi(value);
+		if(!in_tx)
+			sound_mixer(audio_card, "Capture", rx_gain);
+	}
+	else if (!strcmp(cmd, "r1:volume")){
+		rx_vol = atoi(value);
+		if(!in_tx)	
+			sound_mixer(audio_card, "Master", rx_vol);
+	}
+	else
+		printf("*Error request[%s] not accepted\n", request);
 }
 

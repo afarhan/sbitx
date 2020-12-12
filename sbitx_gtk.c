@@ -155,7 +155,7 @@ struct font_style font_table[] = {
 #define SPECTRUM_CONTROL 7 
 #define WATERFALL_CONTROL 9 
 
-#define MAX_MAIN_CONTROLS 7 
+//#define MAX_MAIN_CONTROLS 7 
 */
 
 struct field {
@@ -171,13 +171,15 @@ struct field {
 };
 
 struct field main_controls[] = {
-	{ "r1:freq=", 10, 10, 130, 35, "", 5, "14000000", FIELD_NUMBER, FONT_LARGE_VALUE, "", 500000, 21500000, 100},
-	{ "r1:mode=", 10, 235, 80, 20, "Mode", 40, "USB", FIELD_SELECTION, FONT_FIELD_VALUE, "USB/LSB/CW/CWR", 0,0, 0},
-	{  "band=", 10, 260, 80, 20, "Band", 40, "80M", FIELD_SELECTION, FONT_FIELD_VALUE, "160M/80M/60M/40M/30M/20M/17M/15M", 0,0, 0},
-	{ "r1:gain=", 10, 285, 80, 20, "Vol", 40, "60", FIELD_NUMBER, FONT_FIELD_VALUE, "", 0, 100, 1},
-	{ "r1:b1=", 10, 310, 80, 20, "R1", 40, "60", FIELD_NUMBER, FONT_FIELD_VALUE, "", 0, 1024, 1},
-	{ "rit=", 10, 335, 80, 20, "RIT", 40, "ON", FIELD_TOGGLE, FONT_FIELD_VALUE, "ON/OFF", 0,0, 0},
-	{ "quit", 10, 360, 80, 20, "Quit", 40, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0, 0},
+	{ "r1:freq", 10, 10, 130, 35, "", 5, "14000000", FIELD_NUMBER, FONT_LARGE_VALUE, "", 500000, 21500000, 100},
+	{ "r1:mode", 10, 235, 80, 20, "Mode", 40, "USB", FIELD_SELECTION, FONT_FIELD_VALUE, "USB/LSB/CW/CWR", 0,0, 0},
+	{  "band", 10, 260, 80, 20, "Band", 40, "80M", FIELD_SELECTION, FONT_FIELD_VALUE, "160M/80M/60M/40M/30M/20M/17M/15M", 0,0, 0},
+	{ "r1:gain", 10, 285, 80, 20, "Gain", 40, "60", FIELD_NUMBER, FONT_FIELD_VALUE, "", 0, 100, 1},
+	{ "r1:volume", 10, 310, 80, 20, "Vol", 40, "60", FIELD_NUMBER, FONT_FIELD_VALUE, "", 0, 1024, 1},
+
+
+	{ "tx_gain", 10, 335, 80, 20, "Mic", 40, "50", FIELD_NUMBER, FONT_FIELD_VALUE, "", 0, 100, 1},
+	{ "tx_power", 10, 360, 80, 20, "Watts", 40, "40", FIELD_NUMBER, FONT_FIELD_VALUE, "", 0, 40, 1},
 	{ "cmd", 10, 385, 80, 20, "Cmd:", 40, "", FIELD_TEXT, FONT_FIELD_VALUE, "", 0, 40, 0},
 
 	
@@ -262,10 +264,17 @@ void draw_waterfall(cairo_t *gfx){
 	f = get_field("waterfall");
 
 	//now, draw them!!!
-	step = (MAX_BINS/2);
+
 	x_scale = (1.0 * f->width )/(MAX_BINS/2);
-	y = f->y;
-	
+//	puts("waterfall\n\n\n\n");	
+	for (i = 0; i < MAX_BINS/2; i++){
+		int x, y;
+		x = (x_scale * i) + f->x;
+		cairo_set_source_rgb(gfx, wf[i]/100, 1, 1);
+		cairo_rectangle(gfx, x, f->y + 10, 1, 1);
+		//printf("%d at %d, %d = %d\n", i, x, f->y, wf[offset]);
+	}
+/*
 	for (j = 0; j < waterfall_depth; j++){
 		amplitude = 0;
 		for (i = 0; i < MAX_BINS/2; i++){
@@ -280,7 +289,7 @@ void draw_waterfall(cairo_t *gfx){
 		}
 		y++;
 	} 
-
+*/
 	//make space for the next line of waterfall
 	memmove(wf + (MAX_BINS/2), wf, sizeof(int) * (MAX_BINS/2) * (waterfall_depth -1));
 }
@@ -345,15 +354,18 @@ void draw_spectrum(cairo_t *gfx){
 
 		fill_rect(gfx, f->x + needle_x, f->y, 1, f->height,  SPECTRUM_NEEDLE);
 	}
-/*
-	draw_waterfall();
-*/
+
+	draw_waterfall(gfx);
+
 }
 
 void draw_field(cairo_t *gfx, struct field *f){
 	struct font_style *s = font_table + 0;
 	if (!strcmp(f->cmd, "spectrum")){
 		draw_spectrum(gfx);
+		return;
+	}
+	if (!strcmp(f->cmd, "waterfall")){
 		return;
 	}
 	if (f_focus == f)
@@ -451,18 +463,17 @@ static void edit_field(struct field *f, int action){
 	//struct field *f = main_controls + field_index;
 	int v;
 
-	printf("mask %d\n", key_modifier);
 	if (f->value_type == FIELD_NUMBER){
 		int	v = atoi(f->value);
 		if (action == MIN_KEY_UP && v + f->step <= f->max){
-			if (key_modifier && !strcmp(f->cmd, "r1:freq="))
-				v += f->step * 20;
+			if (key_modifier && !strcmp(f->cmd, "r1:freq"))
+				v += f->step * 10;
 			else
 				v += f->step;
 		}
 		else if (action == MIN_KEY_DOWN && v - f->step >= f->min){
-			if (key_modifier && !strcmp(f->cmd, "r1:freq="))
-				v -= f->step * 20;
+			if (key_modifier && !strcmp(f->cmd, "r1:freq"))
+				v -= f->step * 10;
 			else
 				v -= f->step;
 		}
@@ -530,7 +541,64 @@ static void edit_field(struct field *f, int action){
 
 	//send a command to the receiver
 	char buff[200];
-	sprintf(buff, "%s%s", f->cmd, f->value);
+	sprintf(buff, "%s=%s", f->cmd, f->value);
+	do_cmd(buff);
+	update_field(f);
+}
+
+void set_field(char *id, char *value){
+	struct field *f = get_field(id);
+	int v;
+
+	if (!f){
+		printf("*Error: field[%s] not found. Check for typo?\n", id);
+		return;
+	}
+
+	if (f->value_type == FIELD_NUMBER){
+		int	v = atoi(value);
+		if (v < f->min)
+			v = f->min;
+		if (v > f->max)
+			v = f->max;
+		sprintf(f->value, "%d",  v);
+	}
+	else if (f->value_type == FIELD_SELECTION || f->value_type == FIELD_TOGGLE){
+		// toggle and selection are the same type: toggle has just two values instead of many more
+		char *p, *prev, *next, b[100];
+		//search the current text in the selection
+		prev = NULL;
+		strcpy(b, f->selection);
+		p = strtok(b, "/");
+		while(p){
+			if (!strcmp(value, p))
+				break;
+			else
+				prev = p;
+			p = strtok(NULL, "/");
+		}	
+		//set to the first option
+		if (p == NULL){
+			if (prev)
+				strcpy(f->value, prev);
+			printf("*Error: setting field[%s] to [%s] not permitted\n", f->cmd, value);
+		}
+		else
+			strcpy(f->value, value);
+	}
+	else if (f->value_type == FIELD_BUTTON){
+		NULL; // ah, do nothing!
+	}
+	else if (f->value_type = FIELD_TEXT){
+		if (strlen(value) > f->max || strlen(value) < f->min)
+			printf("*Error: field[%s] can't be set to [%s], improper size.\n", f->cmd, value);
+		else
+			strcpy(f->value, value);
+	}
+
+	//send a command to the receiver
+	char buff[200];
+	sprintf(buff, "%s=%s", f->cmd, f->value);
 	do_cmd(buff);
 	update_field(f);
 }
@@ -753,7 +821,7 @@ gboolean ui_tick(gpointer gook){
 	}
 
 	// check the tuning knob
-	struct field *f = get_field("r1:freq=");
+	struct field *f = get_field("r1:freq");
 	int tuning = enc_read(&enc_b);
 	if (tuning != 0){
 		puts("tuning knob moved");
@@ -801,8 +869,8 @@ void ui_init(int argc, char *argv[]){
 																			| GDK_SCROLL_MASK
                                      | GDK_POINTER_MOTION_MASK);
 
-  gtk_widget_show_all( window );
 	init_waterfall();
+  gtk_widget_show_all( window );
 }
 
 /* handle the ui request and update the controls */
@@ -819,8 +887,8 @@ void switch_band(){
 	int old_freq, freq_khz, new_freq;
 	char buff[100];
 	
-	f_freq = get_field("r1:freq=");
-	f_band = get_field("band=");
+	f_freq = get_field("r1:freq");
+	f_band = get_field("band");
 
 	old_freq = atoi(f_freq->value);	
 	if (old_freq >= 1800000 && old_freq < 2000000)
@@ -906,17 +974,8 @@ void do_cmd(char *cmd){
 	strcpy(request, cmd);			//don't mangle the original, thank you
 	if(!strncmp(request, "r1:", 3))
 		sdr_request(request, response);
-	else if(!strncmp(request, "band=", 5))
+	else if(!strncmp(request, "band", 5))
 		switch_band(request);
-}
-
-void load_settings(){
-}
-
-void change_settings(char *key, char *value){
-}
-
-void save_settings(){
 }
 
 int main( int argc, char* argv[] ) {
@@ -930,7 +989,7 @@ int main( int argc, char* argv[] ) {
 	f = main_controls;
 	//sprintf(f->value, "14293000");
 	sprintf(f->value, "7100000");
-	f = get_field("r1:mode=");
+	f = get_field("r1:mode");
 	strcpy(f->value, "LSB");
 	do_cmd("r1:freq=7100000");
 	do_cmd("r1:mode=LSB");	
@@ -948,6 +1007,10 @@ int main( int argc, char* argv[] ) {
 
 	int e = g_timeout_add(10, ui_tick, NULL);
 	printf("g_timeout_add() = %d\n", e);
+
+	set_field("band", "40M");
+	set_field("r1:freq", "7049000");
+	set_field("r1:mode", "USB");
   gtk_main();
 
   return 0;

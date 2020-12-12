@@ -403,6 +403,11 @@ It will call the user-supplied function sound_process()
 */
 void *sound_thread_function(void *ptr){
 	char *device = (char *)ptr;
+	struct sched_param sch;
+
+	//switch to maximum priority
+	sch.sched_priority = sched_get_priority_max(SCHED_FIFO);
+	pthread_setschedparam(sound_thread, SCHED_FIFO, &sch);
 	
 	if (sound_start_play(device)){
 		fprintf(stderr, "*Error opening play device");
@@ -414,6 +419,7 @@ void *sound_thread_function(void *ptr){
 	}
 
 	sound_thread_continue = 1;
+
 	sound_loop();
 	sound_stop();
 }
