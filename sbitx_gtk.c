@@ -987,12 +987,13 @@ int main( int argc, char* argv[] ) {
 	struct field *f;
 
 	f = main_controls;
-	//sprintf(f->value, "14293000");
-	sprintf(f->value, "7100000");
-	f = get_field("r1:mode");
-	strcpy(f->value, "LSB");
+
+
+	//set the radio to some decent defaults
 	do_cmd("r1:freq=7100000");
 	do_cmd("r1:mode=LSB");	
+	
+
 	
 	
 	f = get_field("spectrum");
@@ -1011,6 +1012,10 @@ int main( int argc, char* argv[] ) {
 	set_field("band", "40M");
 	set_field("r1:freq", "7049000");
 	set_field("r1:mode", "USB");
+	set_field("tx_gain", "53");
+	set_field("tx_power", "90");
+	set_field("r1:gain", "41");
+	set_field("r1:volume", "85");
   gtk_main();
 
   return 0;
