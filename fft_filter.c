@@ -142,7 +142,7 @@ int window_filter(int const L,int const M,complex float * const response,float c
   fftwf_execute(fwd_filter_plan);
   fftwf_destroy_plan(fwd_filter_plan);
 
-#if 0
+#if 1
   printf("#Filter Frequency response amplitude\n");
   for(int n=0;n<N;n++){
     printf("#%d %.1f db\n",n,power2dB(cnrmf(buffer[n])));

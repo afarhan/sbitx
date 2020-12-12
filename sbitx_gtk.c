@@ -928,10 +928,16 @@ int main( int argc, char* argv[] ) {
 	struct field *f;
 
 	f = main_controls;
-	sprintf(f->value, "14293000");
+	//sprintf(f->value, "14293000");
+	sprintf(f->value, "7100000");
+	f = get_field("r1:mode=");
+	strcpy(f->value, "LSB");
+	do_cmd("r1:freq=7100000");
+	do_cmd("r1:mode=LSB");	
+	
+	
 	f = get_field("spectrum");
 	update_field(f);
-	set_rx_freq(14294300);
 	set_volume(3000000);
 	init_gpio_pins();
 	enc_init(&enc_a, ENC_SLOW, ENC1_A, ENC1_B);

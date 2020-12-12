@@ -38,7 +38,7 @@ fftw_complex *fft_out;		// holds the incoming samples in freq domain (for rx as 
 fftw_complex *fft_in;			// holds the incoming samples in time domain (for rx as well as tx) 
 fftw_complex *fft_m;			// holds previous samples for overlap and discard convolution 
 fftw_plan plan_fwd, plan_tx;
-int bfo_freq = 27026000;
+int bfo_freq = 27025570;
 int freq_hdr = 7050000;
 
 int	fd;
@@ -49,14 +49,15 @@ static double spectrum_speed = 0.1;
 static int in_tx = 0;
 struct vfo tone_a, tone_b; //these are audio tone generators
 
-
 struct rx *rx_list = NULL;
+struct filter *tx_filter;	//convolution filter
 
+/*
 //ffts for transmit, we only transmit one channel at a time
 fftw_plan tx_plan_rev;
 fftw_complex *tx_fft_freq;
 fftw_complex *tx_fft_time;
-
+*/
 
 void fft_init(){
 	int mem_needed;
@@ -189,6 +190,15 @@ int32_t	out_i[MAX_BINS];
 int32_t out_q[MAX_BINS];
 short is_ready = 0;
 
+void tx_init(int frequency, short mode, int bpf_low, int bpf_high){
+
+	//we assume that there are 96000 samples / sec, giving us a 48khz slice
+	//the tuning can go up and down only by 22 KHz from the center_freq
+
+	tx_filter = filter_new(1024, 1025);
+	filter_tune(tx_filter, (1.0 * bpf_low)/96000.0, (1.0 * bpf_high)/96000.0 , 5);
+}
+
 struct rx *add_rx(int frequency, short mode, int bpf_low, int bpf_high){
 
 	//we assume that there are 96000 samples / sec, giving us a 48khz slice
@@ -197,7 +207,6 @@ struct rx *add_rx(int frequency, short mode, int bpf_low, int bpf_high){
 	struct rx *r = malloc(sizeof(struct rx));
 	r->low_hz = bpf_low;
 	r->high_hz = bpf_high;
-	//r->tuned_bin = ((frequency - center_freq) * 1024l)/ (96000l);
 	r->tuned_bin = 510; 
 
 	//create fft complex arrays to convert the frequency back to time
@@ -223,77 +232,6 @@ struct rx *add_rx(int frequency, short mode, int bpf_low, int bpf_high){
 
 	r->next = rx_list;
 	rx_list = r;
-}
-
-void demodulate_rx(struct rx *r){
-
-	int i;
-
-	//we rotate the bins around by r-tuned_bin
-	for (i = 0; i < MAX_BINS; i++){
-		int b =  i + r->tuned_bin;
-		if (b >= MAX_BINS)
-			b = b - MAX_BINS;
-		if (b < 0)
-			b = b + MAX_BINS;
-		r->fft_freq[i] = fft_out[b];
-	}
-
-	// zero out the other sideband
-	if (r->mode == MODE_USB || r->mode == MODE_CW || r->mode == MODE_DIGITAL)
-		for (i = MAX_BINS/2; i < MAX_BINS; i++){
-			__real__ r->fft_freq[i] = 0;
-			__imag__ r->fft_freq[i] = 0;	
-		}
-	else 
-		for (i = 0; i < MAX_BINS/2; i++){
-			__real__ r->fft_freq[i] = 0;
-			__imag__ r->fft_freq[i] = 0;	
-		}
-
-
-	for (i = 0; i < MAX_BINS; i++)
-		r->fft_freq[i] *= r->filter->fir_coeff[i];
-
-	//convert back to time domain	
-	fftw_execute(r->plan_rev);
-}
-
-void do_tx(){
-	int i;
-	struct rx *r = rx_list;
-
-	//fft_out holds the fft output (in freq domain) of the incoming mic samples 
-	//the naming is unfortunate
-
-	//apply the filter
-	for (i = 0; i < MAX_BINS; i++)
-		fft_out[i] *= r->filter->fir_coeff[i];
-
-	// zero out the other sideband
-	if (r->mode == MODE_USB || r->mode == MODE_CW || r->mode == MODE_DIGITAL)
-		for (i = MAX_BINS/2; i < MAX_BINS; i++){
-			__real__ fft_out[i] = 0;
-			__imag__ fft_out[i] = 0;	
-		}
-	else 
-		for (i = 0; i < MAX_BINS/2; i++){
-			__real__ fft_out[i] = 0;
-			__imag__ fft_out[i] = 0;	
-		}
-
-	//now rotate to the tx_bin (always at MAX_BINS/4
-	for (i = 0; i < MAX_BINS; i++){
-		int b =  i + tx_shift;
-		if (b >= MAX_BINS)
-			b = b - MAX_BINS;
-		if (b < 0)
-			b = b + MAX_BINS;
-		r->fft_freq[b] = fft_out[i];
-	}
-
-	//convert back to time domain	
-	fftw_execute(r->plan_rev);
 }
 
 void rx_process(int32_t *input_rx,  int32_t *input_mic, 
@@ -396,6 +334,7 @@ void rx_process(int32_t *input_rx,  int32_t *input_mic,
 		}
 }
 
+
 void tx_process(
 	int32_t *input_rx, int32_t *input_mic, 
 	int32_t *output_speaker, int32_t *output_tx, 
@@ -429,34 +368,42 @@ void tx_process(
 	//convert to frequency
 	fftw_execute(plan_fwd);
 
-
 	// we are reusing the rx structure, we should
 	// have a seperate tx structure to work with	
 	struct rx *r = rx_list;
 
 	// NOTE: fft_out holds the fft output (in freq domain) of the 
 	// incoming mic samples 
-	//the naming is unfortunate
+	// the naming is unfortunate
 
-	//apply the filter
+	// apply the filter
 	for (i = 0; i < MAX_BINS; i++)
-		fft_out[i] *= r->filter->fir_coeff[i];
+		fft_out[i] *= tx_filter->fir_coeff[i];
 
+	// the usb extends from 0 to MAX_BINS/2 - 1, 
+	// the lsb extends from MAX_BINS - 1 to MAX_BINS/2 (reverse direction)
 	// zero out the other sideband
-	if (r->mode == MODE_USB || r->mode == MODE_CW || r->mode == MODE_DIGITAL)
+
+	// TBD: Something strange is going on, this should have been the otherway
+
+/*
+	if (r->mode == MODE_LSB || r->mode == MODE_CWR)
+		// zero out the LSB
 		for (i = MAX_BINS/2; i < MAX_BINS; i++){
 			__real__ fft_out[i] = 0;
 			__imag__ fft_out[i] = 0;	
 		}
-	else 
+	else  
+		// zero out the USB
 		for (i = 0; i < MAX_BINS/2; i++){
 			__real__ fft_out[i] = 0;
 			__imag__ fft_out[i] = 0;	
 		}
+*/
 
-	//now rotate to the tx_bin (always at MAX_BINS/4
+	//now rotate to the tx_bin 
 	for (i = 0; i < MAX_BINS; i++){
-		int b =  i + tx_shift;
+		int b = i + tx_shift;
 		if (b >= MAX_BINS)
 			b = b - MAX_BINS;
 		if (b < 0)
@@ -473,108 +420,20 @@ void tx_process(
 		output_speaker[i] = 0; 
 	}
 }
+
 /*
-This is where the main action happens. 
-On Rx, 
-	the N incoming time samples are combined with M samples of the 
-	previous block of samples, to maintain continuity of waves
-	begining and end of the time sample array needs to be tapered
-	off to prevent frequency spikes being reported in the FFT.
-	
-	Now, this block of time samples are converted to frequency domain with FFT
-	the signals stretch from 0 Hz to half the sampling rate (48 KHz) 
-	they are divided into N frequency bins.
-
-	The signal of interest is represented by a sequency of frequency bins
-	somewhere in the array. To make this audio, we rotate the entire array
-	of bins until the signal bins are positioned from bin 0 onwards.
-
-	The next job is to zero everything else off to eliminate other signals.
-	Here, we cannot just zero away all the other bins as at the edge of the
-	passband of our desried signal, there can't be a sharp cut-off. We do this by 	applying a filter shape that has gentler slopes to the signal. 
-	This is done by multiplying a filter response array with the frequency bins.
-On Tx,
-	The  
+	This is called each time there is a block of signal samples ready 
+	either from the mic or from the rx IF 
 */	
 void sound_process(
 	int32_t *input_rx, int32_t *input_mic, 
 	int32_t *output_speaker, int32_t *output_tx, 
 	int n_samples)
 {
-	int i, j = 0;
-	double i_sample, q_sample;
-
 	if (in_tx)
 		tx_process(input_rx, input_mic, output_speaker, output_tx, n_samples);
 	else
 		rx_process(input_rx, input_mic, output_speaker, output_tx, n_samples);
-/*
-	return;	
-	//first add the previous M samples
-	for (i = 0; i < MAX_BINS/2; i++)
-		fft_in[i]  = fft_m[i];
-
-	int m = 0;
-	//gather the samples into a time domain array 
-	for (i= MAX_BINS/2; i < MAX_BINS; i++){
-		//swap the order here to change the sideband (for testing), 
-		//otherwise it will read the wrong frequency.
-		//we need to feed the same sample to both channels
-		//to avoid aliased images from appearing in the passband
-
-		//on tx we read from the mic connected to the line-in of the audio codec
-		if (in_tx){
-			i_sample = (1.0 * vfo_read(&tone_a)) / 2000000000.0;
-			//i_sample = (1.0 * input_mic[j]) / 2000000000.0;
-			q_sample = 0;
-			//q_sample = (1.0 * input_mic[j]) / 2000000000.0;
-		}	
-		else {
-			i_sample = (1.0  *input_rx[j])/200000000.0;
-			q_sample = 0;
-		}
-
-		j++;
-
-		__real__ fft_m[m] = i_sample;
-		__imag__ fft_m[m] = q_sample;
-
-		__real__ fft_in[i]  = i_sample;
-		__imag__ fft_in[i]  = q_sample;
-		m++;
-	}
-
-	//convert to frequency
-	fftw_execute(plan_fwd);
-
-	//generate the spectrum graph wih a windowing function as well
-	for (i = 0; i < MAX_BINS; i++)
-			__real__ fft_in[i] *= spectrum_window[i];
-	fftw_execute(plan_spectrum);
-
-	spectrum_update();
-
-
-	//do the actual processing of the rx/tx 
-	if(in_tx)
-		do_tx();		
-	else 
-		demodulate_rx(rx_list);
-	
-
-	//send the output back to where it needs to go
-	if (rx_list->output == 0)
-		for (i= 0; i < MAX_BINS/2; i++){
-			if (in_tx){
-				output_tx[i] = creal(rx_list->fft_time[i+(MAX_BINS/2)]) * volume;
-				output_speaker[i] = 0; 
-			}
-			else {
-				output_tx[i] = 0;
-				output_speaker[i] = cimag(rx_list->fft_time[i+(MAX_BINS/2)]) * volume;
-			}
-		}
-	*/
 }
 
 
@@ -597,7 +456,7 @@ void setup_audio_codec(){
 	sound_mixer(audio_card, "Mic Boost", 0);
 	sound_mixer(audio_card, "Playback Deemphasis", 0);
  
-	sound_mixer(audio_card, "Master", 50);
+	sound_mixer(audio_card, "Master", 90);
 	sound_mixer(audio_card, "Output Mixer HiFi", 1);
 	sound_mixer(audio_card, "Output Mixer Mic Sidetone", 0);
 }
@@ -613,6 +472,7 @@ void setup(){
 
 	add_rx(7000000, MODE_LSB, -3000, -300);
 	rx_list->tuned_bin = 512;
+	tx_init(7000000, MODE_LSB, -3000, -300);
 
 	sound_thread_start("hw:0,0");
 	setup_audio_codec();
@@ -656,14 +516,47 @@ void sdr_request(char *request, char *response){
 			rx_list->mode = MODE_CW;
 		else if (!strcmp(request, "r1:mode=CWR"))
 			rx_list->mode = MODE_CWR;
+
+
+		// An interesting but non-essential note:
+		// the sidebands inverted twice, to come out correctly after all
+		// conisder that the second oscillator is set to 27.025 MHz and 
+		// a 7 MHz signal is tuned in by a 34 Mhz oscillator.
+		// The first IF will be 25 Mhz, converted to a second IF of 25 KHz
+		// Now, imagine that the signal at 7 Mhz moves up by 1 Khz
+		// the IF now is going to be 34 - 7.001 MHz = 26.999 MHz which 
+		// converts to a second IF of 26.999 - 27.025 = 26 KHz
+		// Effectively, if a signal moves up, so does the second IF
+
 		if (rx_list->mode == MODE_LSB || rx_list->mode == MODE_CWR){
-			filter_tune(rx_list->filter, (1.0 * -3000)/96000.0, (1.0 * -300)/96000.0 , 5);
+			filter_tune(rx_list->filter, 
+				(1.0 * -3000)/96000.0, 
+				(1.0 * -300)/96000.0 , 
+				5);
+			filter_tune(tx_filter, 
+				(1.0 * 300)/96000.0, 
+				(1.0 * 3000)/96000.0 , 
+				5);
 		}
-		else {
-			filter_tune(rx_list->filter, (1.0 * 300)/96000.0, (1.0 * 3000)/96000.0 , 5);
+		else { 
+			filter_tune(rx_list->filter, 
+				(1.0 * 300)/96000.0, 
+				(1.0 * 3000)/96000.0 , 
+				5);
+			filter_tune(tx_filter, 
+				(1.0 * -3000)/96000.0, 
+				(1.0 * -300)/96000.0 , 
+				5);
 		}
+		
 		printf("mode set to %d\n", rx_list->mode);
 		strcpy(response, "ok");
+	}
+	else if (!strncmp(request, "txmode", 6)){
+		if (!strcmp(request+7, "LSB") || !strcmp(request+7, "CWR"))
+			filter_tune(tx_filter, (1.0*-3000)/96000.0, (1.0 * -300)/96000.0, 5);
+		else
+			filter_tune(tx_filter, (1.0*300)/96000.0, (1.0*3000)/96000.0, 5);
 	}
 	else if (!strncmp(request, "tx:on", 5)){
 		in_tx = 1;
