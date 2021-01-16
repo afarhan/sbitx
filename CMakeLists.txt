@@ -1,4 +1,4 @@
-cmake_minimum_required (VERSION 3.17.0)
+cmake_minimum_required (VERSION 3.13.0)
 project(sbitx)
 include(FeatureSummary)
 
@@ -20,6 +20,7 @@ set_package_properties(Threads PROPERTIES
                         TYPE REQUIRED
 )
 
+set(SQLite3_DIR ${CMAKE_SOURCE_DIR}/CMake)
 find_package(SQLite3)
 set_package_properties(SQLite3 PROPERTIES
                         URL "http://www.sqlite.org"
@@ -75,7 +76,7 @@ target_link_libraries (sbitx PUBLIC
 target_compile_options(sbitx PUBLIC ${GTK3+_CFLAGS})
 
 install (TARGETS sbitx
-  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT runtime
+  RUNTIME DESTINATION bin ${CMAKE_INSTALL_BINDIR} COMPONENT runtime
   BUNDLE DESTINATION . COMPONENT runtime
 )
 
