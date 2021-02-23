@@ -151,7 +151,7 @@ int window_filter(int const L,int const M,complex float * const response,float c
 #endif
   memcpy(response,buffer,N*sizeof(*response));
 
-#if 0
+#if 0 
   printf("#Filter windowed FIR frequency coefficients\n");
 	for(int n=0;n<N;n++){
     printf("%d,%.17f,%.17f\n", n, crealf(buffer[n]), cimagf(buffer[n]));
@@ -203,6 +203,14 @@ int filter_tune(struct filter *f, float const low,float const high,float const k
 
   window_filter(f->L, f->M, f->fir_coeff, kaiser_beta);
   return 0;
+}
+
+void filter_print(struct filter *f){
+
+  printf("#Filter windowed FIR frequency coefficients\n");
+	for(int n=0;n<f->N;n++){
+    printf("%d,%.17f,%.17f\n", n, crealf(f->fir_coeff[n]), cimagf(f->fir_coeff[n]));
+  }
 }
 
 /*

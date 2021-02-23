@@ -170,16 +170,17 @@ struct field {
 	int	 	min, max, step;
 };
 
+// the cmd fields that have '#' are not to be sent to the sdr
 struct field main_controls[] = {
 	{ "r1:freq", 10, 10, 130, 35, "", 5, "14000000", FIELD_NUMBER, FONT_LARGE_VALUE, "", 500000, 21500000, 100},
-	{ "r1:mode", 10, 235, 80, 20, "Mode", 40, "USB", FIELD_SELECTION, FONT_FIELD_VALUE, "USB/LSB/CW/CWR", 0,0, 0},
-	{  "band", 10, 260, 80, 20, "Band", 40, "80M", FIELD_SELECTION, FONT_FIELD_VALUE, "160M/80M/60M/40M/30M/20M/17M/15M", 0,0, 0},
+	{ "r1:mode", 10, 235, 80, 20, "Mode", 40, "USB", FIELD_SELECTION, FONT_FIELD_VALUE, "USB/LSB/CW/CWR/2TONE", 0,0, 0},
+	{  "#band", 10, 260, 80, 20, "Band", 40, "80M", FIELD_SELECTION, FONT_FIELD_VALUE, "160M/80M/60M/40M/30M/20M/17M/15M", 0,0, 0},
 	{ "r1:gain", 10, 285, 80, 20, "Gain", 40, "60", FIELD_NUMBER, FONT_FIELD_VALUE, "", 0, 100, 1},
 	{ "r1:volume", 10, 310, 80, 20, "Vol", 40, "60", FIELD_NUMBER, FONT_FIELD_VALUE, "", 0, 1024, 1},
 
 
 	{ "tx_gain", 10, 335, 80, 20, "Mic", 40, "50", FIELD_NUMBER, FONT_FIELD_VALUE, "", 0, 100, 1},
-	{ "tx_power", 10, 360, 80, 20, "Watts", 40, "40", FIELD_NUMBER, FONT_FIELD_VALUE, "", 0, 40, 1},
+	{ "tx_power", 10, 360, 80, 20, "Watts", 40, "40", FIELD_NUMBER, FONT_FIELD_VALUE, "", 0, 100, 1},
 	{ "cmd", 10, 385, 80, 20, "Cmd:", 40, "", FIELD_TEXT, FONT_FIELD_VALUE, "", 0, 40, 0},
 
 	
@@ -609,9 +610,8 @@ static void tx_on(){
 
 	if (in_tx == 0){
 		digitalWrite(TX_LINE, HIGH);
-		sdr_request("tx:on", response);	
+		sdr_request("tx=on", response);	
 		in_tx = 1;
-		puts("tx on");
 	}
 }
 
@@ -620,9 +620,8 @@ static void tx_off(){
 
 	if (in_tx == 1){
 		digitalWrite(TX_LINE, LOW);
-		sdr_request("tx:off", response);	
+		sdr_request("tx=off", response);	
 		in_tx = 0;
-		puts("tx off");
 	}
 }
 
@@ -835,7 +834,14 @@ gboolean ui_tick(gpointer gook){
 		tx_on();	
 	else if (digitalRead(PTT) == HIGH && in_tx == 1)
 		tx_off();
-	
+
+	int scroll = enc_read(&enc_a);
+	if (scroll && f_focus){
+		if (scroll < 0)
+			edit_field(f_focus, MIN_KEY_DOWN);
+		else
+			edit_field(f_focus, MIN_KEY_UP);
+	}	
 	return TRUE;
 }
 
@@ -888,7 +894,7 @@ void switch_band(){
 	char buff[100];
 	
 	f_freq = get_field("r1:freq");
-	f_band = get_field("band");
+	f_band = get_field("#band");
 
 	old_freq = atoi(f_freq->value);	
 	if (old_freq >= 1800000 && old_freq < 2000000)
@@ -906,6 +912,8 @@ void switch_band(){
 		new_freq = 21000000 + freq_khz;
 	else if (!strcmp(f_band->value, "40M"))
 		new_freq = 7000000 + freq_khz;
+	else if (!strcmp(f_band->value, "80M"))
+		new_freq = 3500000 + freq_khz;
 	else if (!strcmp(f_band->value, "160M"))
 		new_freq = 1800000 + freq_khz;
 	else
@@ -972,10 +980,10 @@ void do_cmd(char *cmd){
 	char request[1000], response[1000];
 	
 	strcpy(request, cmd);			//don't mangle the original, thank you
-	if(!strncmp(request, "r1:", 3))
-		sdr_request(request, response);
-	else if(!strncmp(request, "band", 5))
+	if(!strncmp(request, "#band", 4))
 		switch_band(request);
+	else if(request[0] != '#')
+		sdr_request(request, response);
 }
 
 int main( int argc, char* argv[] ) {
@@ -988,13 +996,9 @@ int main( int argc, char* argv[] ) {
 
 	f = main_controls;
 
-
 	//set the radio to some decent defaults
 	do_cmd("r1:freq=7100000");
 	do_cmd("r1:mode=LSB");	
-	
-
-	
 	
 	f = get_field("spectrum");
 	update_field(f);
@@ -1009,11 +1013,11 @@ int main( int argc, char* argv[] ) {
 	int e = g_timeout_add(10, ui_tick, NULL);
 	printf("g_timeout_add() = %d\n", e);
 
-	set_field("band", "40M");
+	set_field("#band", "40M");
 	set_field("r1:freq", "7049000");
 	set_field("r1:mode", "USB");
 	set_field("tx_gain", "53");
-	set_field("tx_power", "90");
+	set_field("tx_power", "93");
 	set_field("r1:gain", "41");
 	set_field("r1:volume", "85");
   gtk_main();

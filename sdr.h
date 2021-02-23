@@ -108,6 +108,7 @@ struct filter {
 struct filter *filter_new(int input_length, int impulse_length);
 int filter_tune(struct filter *f, float const low,float const high,float const kaiser_beta);
 int make_hann_window(float *window, int max_count);
+void filter_print(struct filter *f);
 
 
 // Complex norm (sum of squares of real and imaginary parts)
@@ -127,8 +128,8 @@ static inline double const cnrm(const complex double x){
 #define MODE_AM 4 
 #define MODE_NBFM 5
 #define MODE_DIGITAL 6 
+#define MODE_2TONE 7
 
-//m (mode), (u)sb, (l)sb, (c)w, (r)cw, (a)m, (n)nfm, (d)igital  
 struct rx {
 	long tuned_bin;					//tuned bin (this should translate to freq) 
 	short mode;							//USB/LSB/AM/FM (cw is narrow SSB, so not listed)
@@ -169,3 +170,13 @@ void si570_freq(unsigned long f);
 void si570_init();
 extern int fxtal;
 void sdr_request(char *request, char *response);
+
+
+/* utilities */
+
+void config_update(char *key, char *value);
+void config_update_int(char *key, int v);
+int config_get(char *key, char *d);
+int config_get_int(char *key, int *d);
+void config_load();
+void config_save();

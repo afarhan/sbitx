@@ -13,7 +13,7 @@
 
 char audio_card[32];
 
-int tx_shift = -512;
+int tx_shift = 512;
 #define TX_LINE 4
 #define BAND_SELECT 5
 
@@ -105,6 +105,11 @@ void set_spectrum_speed(int speed){
 		fft_bins[i] = 0;
 }
 
+void spectrum_reset(){
+	for (int i = 0; i < MAX_BINS; i++)
+		fft_bins[i] = 0;
+}
+
 void spectrum_update(){
 	//we are only using the lower half of the bins, so this copies twice as many bins, 
 	//it can be optimized. leaving it here just in case someone wants to try I Q channels 
@@ -112,7 +117,6 @@ void spectrum_update(){
 	for (int i = 0; i < MAX_BINS; i++){
 		fft_bins[i] = ((1.0 - spectrum_speed) * fft_bins[i]) + 
 			(spectrum_speed * cabs(fft_spectrum[i]));
-		
 	}
 
   redraw();
@@ -122,19 +126,23 @@ void set_lpf(int frequency){
 	static int prev_lpf = -1;
 	int lpf = 0;
 
-	if (frequency < 3500000)
-		lpf = 0;
-	else if (frequency < 6000000)
-		lpf = 1;
-	else if (frequency < 8000000)		
-		lpf = 2;
-	else if (frequency < 15000000)
-		lpf = 3;
-	else if (frequency < 21500000)
+	if (frequency < 2000000)
+		lpf = 5;
+	else if (frequency < 4000000)		
 		lpf = 4;
+	else if (frequency < 8000000)		
+		lpf = 3;
+	else if (frequency < 10500000)
+		lpf = 3;
+	else if (frequency < 15000000)
+		lpf = 2;
+	else if (frequency < 21500000)
+		lpf = 1;
 
-	if (lpf == prev_lpf)
+	if (lpf == prev_lpf){
+		puts("LPF not changed");
 		return;
+	}
 
 	printf("Setting LPF to %d\n", lpf);
 	//reset the 4017
@@ -330,13 +338,17 @@ void rx_process(int32_t *input_rx,  int32_t *input_mic,
 }
 
 
-void tx_process(
+void tx_process2(
 	int32_t *input_rx, int32_t *input_mic, 
 	int32_t *output_speaker, int32_t *output_tx, 
 	int n_samples)
 {
 	int i, j = 0;
 	double i_sample, q_sample;
+
+	// we are reusing the rx structure, we should
+	// have a seperate tx structure to work with	
+	struct rx *r = rx_list;
 
 	//first add the previous M samples
 	for (i = 0; i < MAX_BINS/2; i++)
@@ -347,7 +359,10 @@ void tx_process(
 	for (i= MAX_BINS/2; i < MAX_BINS; i++){
 
 		//i_sample = (1.0 * vfo_read(&tone_a)) / 2000000000.0;
-		i_sample = (1.0 * input_mic[j]) / 2000000000.0;
+		if(r->mode == MODE_2TONE)
+			i_sample = (1.0 * (vfo_read(&tone_a) + vfo_read(&tone_b))) / 20000000.0;
+		else
+			i_sample = (1.0 * input_mic[j]) / 2000000000.0;
 		q_sample = 0;
 
 		j++;
@@ -363,9 +378,6 @@ void tx_process(
 	//convert to frequency
 	fftw_execute(plan_fwd);
 
-	// we are reusing the rx structure, we should
-	// have a seperate tx structure to work with	
-	struct rx *r = rx_list;
 
 	// NOTE: fft_out holds the fft output (in freq domain) of the 
 	// incoming mic samples 
@@ -381,7 +393,7 @@ void tx_process(
 
 	// TBD: Something strange is going on, this should have been the otherway
 
-
+/*
 	if (r->mode == MODE_LSB || r->mode == MODE_CWR)
 		// zero out the LSB
 		for (i = MAX_BINS/2; i < MAX_BINS; i++){
@@ -394,7 +406,7 @@ void tx_process(
 			__real__ fft_out[i] = 0;
 			__imag__ fft_out[i] = 0;	
 		}
-
+*/
 	//now rotate to the tx_bin 
 	for (i = 0; i < MAX_BINS; i++){
 		int b = i + tx_shift;
@@ -415,6 +427,191 @@ void tx_process(
 	}
 }
 
+
+/*
+	MAX_BINS is 2048,
+	the number of samples coming in each time is 1024 (half)
+	so, we overlap the last 1024 samples with these 1024 samples
+	to assemble the 2048 samples to be ffted
+*/
+void tx_2tone(
+	int32_t *input_rx, int32_t *input_mic, 
+	int32_t *output_speaker, int32_t *output_tx, 
+	int n_samples)
+{
+	int i, j, m;
+	double i_sample, q_sample;
+	struct rx *r = rx_list;
+
+	// these are the sample from previous block that are 
+	// use as a par of overlap-and discard filtering (read about it in dspguid,com
+	m = 0;
+	for (i = 0; i < MAX_BINS/2; i++)
+		fft_in[i]  = fft_m[i];
+
+	m = 0;
+	//gather the samples into a time domain array 
+	for (i= MAX_BINS/2; i < MAX_BINS; i++){
+
+		//i_sample = (1.0 * vfo_read(&tone_a)) / 2000000000.0;
+		i_sample = (1.0 *  (vfo_read(&tone_b)  + vfo_read(&tone_a) )) / 20000000000.0;
+		q_sample = 0;
+
+		j++;
+
+		//these are stored for the overlap-and-dicard of the next block
+		__real__ fft_m[m] = i_sample;
+		__imag__ fft_m[m] = q_sample;
+
+		__real__ fft_in[i]  = i_sample;
+		__imag__ fft_in[i]  = q_sample;
+		m++;
+	}	
+
+
+	//convert to frequency
+	fftw_execute(plan_fwd);
+
+	//now we apply the tx filter
+	for (int i = 0; i < MAX_BINS; i++)
+		fft_out[i] *= tx_filter->fir_coeff[i];
+
+	// zero out the other sideband
+	if (r->mode == MODE_LSB || r->mode == MODE_CWR)
+		for (i = MAX_BINS/2; i < MAX_BINS; i++){
+			__real__ r->fft_freq[i] = 0;
+			__imag__ r->fft_freq[i] = 0;	
+		}
+	else 
+		for (i = 0; i < MAX_BINS/2; i++){
+			__real__ r->fft_freq[i] = 0;
+			__imag__ r->fft_freq[i] = 0;	
+		}
+
+	//now we rotate this 
+	for (i = 0; i < MAX_BINS; i++){
+		// we shift back because we are operating on the -ve
+		// frequencies from N/2 to N,
+		// the original signal was from N-1, down at the very edge
+		// so we have to shift it to the middle of the passband
+		// this effectively inverts the sideband 
+		int b = i - tx_shift;
+		if (b >= MAX_BINS)
+			b = b - MAX_BINS;
+		if (b < 0)
+			b = b + MAX_BINS;
+		r->fft_freq[b] = fft_out[i];
+	}
+
+	//show on the spectrum display
+	for (i = 0; i < MAX_BINS; i++)
+		fft_spectrum[i] = r->fft_freq[i];
+		
+	// the spectrum display is updated
+	spectrum_update();
+
+	//convert back to time domain	
+	fftw_execute(r->plan_rev);
+
+	//send the output back to where it needs to go
+	for (i= 0; i < MAX_BINS/2; i++){
+		output_tx[i] = creal(rx_list->fft_time[i+(MAX_BINS/2)]) * volume;
+		output_speaker[i] = output_tx[i]; 
+	}
+}
+
+void tx_process(
+	int32_t *input_rx, int32_t *input_mic, 
+	int32_t *output_speaker, int32_t *output_tx, 
+	int n_samples)
+{
+	int i;
+	double i_sample, q_sample;
+
+	// we are reusing the rx structure, we should
+	// have a seperate tx structure to work with	
+	struct rx *r = rx_list;
+
+	//first add the previous M samples
+	for (i = 0; i < MAX_BINS/2; i++)
+		fft_in[i]  = fft_m[i];
+
+	int m = 0;
+	int j = 0;
+	//gather the samples into a time domain array 
+	for (i= MAX_BINS/2; i < MAX_BINS; i++){
+
+		//i_sample = (1.0 * vfo_read(&tone_a)) / 2000000000.0;
+		if(r->mode == MODE_2TONE)
+			i_sample = (1.0 * (vfo_read(&tone_a) + vfo_read(&tone_b))) / 20000000.0;
+		else
+			i_sample = (1.0 * input_mic[j]) / 2000000000.0;
+		q_sample = 0;
+
+		j++;
+
+		__real__ fft_m[m] = i_sample;
+		__imag__ fft_m[m] = q_sample;
+
+		__real__ fft_in[i]  = i_sample;
+		__imag__ fft_in[i]  = q_sample;
+		m++;
+	}
+
+	//convert to frequency
+	fftw_execute(plan_fwd);
+
+
+	// NOTE: fft_out holds the fft output (in freq domain) of the 
+	// incoming mic samples 
+	// the naming is unfortunate
+
+	// apply the filter
+	for (i = 0; i < MAX_BINS; i++)
+		fft_out[i] *= tx_filter->fir_coeff[i];
+
+	// the usb extends from 0 to MAX_BINS/2 - 1, 
+	// the lsb extends from MAX_BINS - 1 to MAX_BINS/2 (reverse direction)
+	// zero out the other sideband
+
+	// TBD: Something strange is going on, this should have been the otherway
+
+/*
+	if (r->mode == MODE_LSB || r->mode == MODE_CWR)
+		// zero out the LSB
+		for (i = MAX_BINS/2; i < MAX_BINS; i++){
+			__real__ fft_out[i] = 0;
+			__imag__ fft_out[i] = 0;	
+		}
+	else  
+		// zero out the USB
+		for (i = 0; i < MAX_BINS/2; i++){
+			__real__ fft_out[i] = 0;
+			__imag__ fft_out[i] = 0;	
+		}
+*/
+	//now rotate to the tx_bin 
+	for (i = 0; i < MAX_BINS; i++){
+		int b = i + tx_shift;
+		if (b >= MAX_BINS)
+			b = b - MAX_BINS;
+		if (b < 0)
+			b = b + MAX_BINS;
+		r->fft_freq[b] = fft_out[i];
+	}
+
+	// the spectrum display is updated
+	spectrum_update();
+	//convert back to time domain	
+	fftw_execute(r->plan_rev);
+
+	//send the output back to where it needs to go
+	for (i= 0; i < MAX_BINS/2; i++){
+		output_tx[i] = creal(rx_list->fft_time[i+(MAX_BINS/2)]) * volume;
+		output_speaker[i] = 0; 
+	}
+}
+
 /*
 	This is called each time there is a block of signal samples ready 
 	either from the mic or from the rx IF 
@@ -425,7 +622,7 @@ void sound_process(
 	int n_samples)
 {
 	if (in_tx)
-		tx_process(input_rx, input_mic, output_speaker, output_tx, n_samples);
+		tx_2tone(input_rx, input_mic, output_speaker, output_tx, n_samples);
 	else
 		rx_process(input_rx, input_mic, output_speaker, output_tx, n_samples);
 }
@@ -472,13 +669,17 @@ void setup(){
 	setup_audio_codec();
 
 	sleep(1);
-	vfo_start(&tone_a, 800, 0);
+	vfo_start(&tone_a, 700, 0);
+	vfo_start(&tone_b, 1900, 0);
 	si570_init();
 	set_lo(7021000);
 }
 
 void sdr_request(char *request, char *response){
 	char cmd[100], value[1000];
+
+
+	printf("[%s]\n", request);
 
 	char *p = strchr(request, '=');
 	int n = p - request;
@@ -489,7 +690,6 @@ void sdr_request(char *request, char *response){
 	strcpy(value, request+n+1);
 
 	//at present, we handle only the requests to tune and adjust volume
-	printf("request: %s\n", request);
 /*	if (!strcmp(cmd, "r1:gain")){
 		int d = atoi(value);
 		volume = d * 100;
@@ -520,6 +720,9 @@ void sdr_request(char *request, char *response){
 			rx_list->mode = MODE_CW;
 		else if (!strcmp(value, "CWR"))
 			rx_list->mode = MODE_CWR;
+		else if (!strcmp(value, "2TONE")){
+			rx_list->mode = MODE_2TONE;
+		}
 
 		// An interesting but non-essential note:
 		// the sidebands inverted twice, to come out correctly after all
@@ -536,6 +739,7 @@ void sdr_request(char *request, char *response){
 				(1.0 * -3000)/96000.0, 
 				(1.0 * -300)/96000.0 , 
 				5);
+			puts("\n\n\ntx filter ");
 			filter_tune(tx_filter, 
 				(1.0 * 300)/96000.0, 
 				(1.0 * 3000)/96000.0 , 
@@ -546,6 +750,7 @@ void sdr_request(char *request, char *response){
 				(1.0 * 300)/96000.0, 
 				(1.0 * 3000)/96000.0 , 
 				5);
+			puts("\n\n\ntx filter ");
 			filter_tune(tx_filter, 
 				(1.0 * -3000)/96000.0, 
 				(1.0 * -300)/96000.0 , 
@@ -556,24 +761,29 @@ void sdr_request(char *request, char *response){
 		strcpy(response, "ok");
 	}
 	else if (!strcmp(cmd, "txmode")){
+		puts("\n\n\n\n###### tx filter #######");
 		if (!strcmp(value, "LSB") || !strcmp(value, "CWR"))
 			filter_tune(tx_filter, (1.0*-3000)/96000.0, (1.0 * -300)/96000.0, 5);
 		else
 			filter_tune(tx_filter, (1.0*300)/96000.0, (1.0*3000)/96000.0, 5);
 	}
-	else if (!strcmp(cmd, "tx:on")){
-		in_tx = 1;
-		digitalWrite(TX_LINE, HIGH);
-		sound_mixer(audio_card, "Master", tx_power);
-		sound_mixer(audio_card, "Capture", tx_gain);
-		strcpy(response, "ok");
-	}
-	else if (!strcmp(cmd, "tx:off")){
-		in_tx = 0;
-		strcpy(response, "ok");
-		digitalWrite(TX_LINE, LOW);
-		sound_mixer(audio_card, "Master", rx_vol);
-		sound_mixer(audio_card, "Capture", rx_gain);
+	else if (!strcmp(cmd, "tx")){
+		if (!strcmp(value, "on")){
+			in_tx = 1;
+			digitalWrite(TX_LINE, HIGH);
+			sound_mixer(audio_card, "Master", tx_power);
+			sound_mixer(audio_card, "Capture", tx_gain);
+			strcpy(response, "ok");
+			spectrum_reset();
+		}
+		else {
+			in_tx = 0;
+			strcpy(response, "ok");
+			digitalWrite(TX_LINE, LOW);
+			sound_mixer(audio_card, "Master", rx_vol);
+			sound_mixer(audio_card, "Capture", rx_gain);
+			spectrum_reset();
+		}
 	}
 	else if (!strcmp(cmd, "tx_gain")){
 		tx_gain = atoi(value);
