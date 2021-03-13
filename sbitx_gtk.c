@@ -35,7 +35,7 @@ char pins[15] = {0, 2, 3, 6, 7,
 #define SW3 (11)
 #define SW4 (7)
 #define SW5 (22)
-#define PTT (21)
+#define PTT (7)
 
 #define ENC_FAST 1
 #define ENC_SLOW 5
@@ -1016,8 +1016,8 @@ int main( int argc, char* argv[] ) {
 	set_field("#band", "40M");
 	set_field("r1:freq", "7049000");
 	set_field("r1:mode", "USB");
-	set_field("tx_gain", "53");
-	set_field("tx_power", "93");
+	set_field("tx_gain", "51");
+	set_field("tx_power", "87");
 	set_field("r1:gain", "41");
 	set_field("r1:volume", "85");
   gtk_main();

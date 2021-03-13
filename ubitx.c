@@ -7,6 +7,7 @@
 #include <fftw3.h>
 #include <unistd.h>
 #include <wiringPi.h>
+#include <wiringSerial.h>
 #include "sdr.h"
 #include "sdr_ui.h"
 #include "sound.h"
@@ -46,6 +47,40 @@ struct vfo tone_a, tone_b; //these are audio tone generators
 
 struct rx *rx_list = NULL;
 struct filter *tx_filter;	//convolution filter
+
+/* radio control. We only need two functions to control the radio hardware:
+- tune the radio
+- turn the tx on/off
+*/
+
+#define CMD_FREQ (1)
+#define CMD_TX (2)
+#define CMD_RX (3)
+
+int fserial = 0;
+
+void radio_tune_to(u_int32_t f){
+	u_int8_t cmd[5];
+
+	cmd[0] = CMD_FREQ;
+	memcpy(cmd+1, &f, 4);
+	for (int i = 0; i < 5; i++)
+		serialPutchar(fserial, cmd[i]);
+}
+
+void radio_tx(int turn_on){
+	u_int8_t cmd[5];
+	if (turn_on){
+		cmd[0] = CMD_TX;
+	}
+	else{
+		cmd[0] = CMD_RX;
+	}
+	
+	for (int i = 0; i < 5; i++)
+		serialPutchar(fserial, cmd[i]);
+	printf("tx is %d\n", (int)cmd[0]);
+}
 
 /*
 //ffts for transmit, we only transmit one channel at a time
@@ -162,14 +197,16 @@ void set_lpf(int frequency){
 }
 
 void set_lo(int frequency){
-	si570_freq(frequency + bfo_freq);
+/*	si570_freq(frequency + bfo_freq);
 	freq_hdr = frequency;
 	printf("freq: %d\n", frequency);
-	set_lpf(frequency);
+	set_lpf(frequency);*/
+	radio_tune_to(frequency);
 }
 
 void set_rx1(int frequency){
-	si570_freq(frequency + bfo_freq - ((rx_list->tuned_bin * 96000)/MAX_BINS));
+	//si570_freq(frequency + bfo_freq - ((rx_list->tuned_bin * 96000)/MAX_BINS));
+	radio_tune_to(frequency);
 	freq_hdr = frequency;
 	printf("freq: %d\n", frequency);
 	set_lpf(frequency);
@@ -306,7 +343,7 @@ void rx_process(int32_t *input_rx,  int32_t *input_mic,
 	}
 
 	// STEP 5:zero out the other sideband
-	if (r->mode == MODE_USB || r->mode == MODE_CW || r->mode == MODE_DIGITAL)
+	if (r->mode == MODE_LSB || r->mode == MODE_CWR) 
 		for (i = MAX_BINS/2; i < MAX_BINS; i++){
 			__real__ r->fft_freq[i] = 0;
 			__imag__ r->fft_freq[i] = 0;	
@@ -394,7 +431,7 @@ void tx_process2(
 	// TBD: Something strange is going on, this should have been the otherway
 
 /*
-	if (r->mode == MODE_LSB || r->mode == MODE_CWR)
+	if (r->mode == MODE_USB || r->mode == MODE_CW)
 		// zero out the LSB
 		for (i = MAX_BINS/2; i < MAX_BINS; i++){
 			__real__ fft_out[i] = 0;
@@ -576,7 +613,7 @@ void tx_process(
 
 	// TBD: Something strange is going on, this should have been the otherway
 
-/*
+
 	if (r->mode == MODE_LSB || r->mode == MODE_CWR)
 		// zero out the LSB
 		for (i = MAX_BINS/2; i < MAX_BINS; i++){
@@ -589,7 +626,7 @@ void tx_process(
 			__real__ fft_out[i] = 0;
 			__imag__ fft_out[i] = 0;	
 		}
-*/
+
 	//now rotate to the tx_bin 
 	for (i = 0; i < MAX_BINS; i++){
 		int b = i + tx_shift;
@@ -622,7 +659,7 @@ void sound_process(
 	int n_samples)
 {
 	if (in_tx)
-		tx_2tone(input_rx, input_mic, output_speaker, output_tx, n_samples);
+		tx_process(input_rx, input_mic, output_speaker, output_tx, n_samples);
 	else
 		rx_process(input_rx, input_mic, output_speaker, output_tx, n_samples);
 }
@@ -671,8 +708,14 @@ void setup(){
 	sleep(1);
 	vfo_start(&tone_a, 700, 0);
 	vfo_start(&tone_b, 1900, 0);
-	si570_init();
-	set_lo(7021000);
+
+	fserial = serialOpen("/dev/ttyUSB0", 38400);
+	if (!fserial){
+		puts("uBITX not connected");
+	}
+	delay(2000);	
+//	si570_init();
+//	set_lo(7021000);
 }
 
 void sdr_request(char *request, char *response){
@@ -734,15 +777,15 @@ void sdr_request(char *request, char *response){
 		// converts to a second IF of 26.999 - 27.025 = 26 KHz
 		// Effectively, if a signal moves up, so does the second IF
 
-		if (rx_list->mode == MODE_LSB || rx_list->mode == MODE_CWR){
+		if (rx_list->mode == MODE_USB || rx_list->mode == MODE_CW){
 			filter_tune(rx_list->filter, 
 				(1.0 * -3000)/96000.0, 
 				(1.0 * -300)/96000.0 , 
 				5);
 			puts("\n\n\ntx filter ");
 			filter_tune(tx_filter, 
-				(1.0 * 300)/96000.0, 
-				(1.0 * 3000)/96000.0 , 
+				(1.0 * -3000)/96000.0, 
+				(1.0 * -300)/96000.0 , 
 				5);
 		}
 		else { 
@@ -752,8 +795,8 @@ void sdr_request(char *request, char *response){
 				5);
 			puts("\n\n\ntx filter ");
 			filter_tune(tx_filter, 
-				(1.0 * -3000)/96000.0, 
-				(1.0 * -300)/96000.0 , 
+				(1.0 * 300)/96000.0, 
+				(1.0 * 3000)/96000.0 , 
 				5);
 		}
 		
@@ -771,6 +814,7 @@ void sdr_request(char *request, char *response){
 		if (!strcmp(value, "on")){
 			in_tx = 1;
 			digitalWrite(TX_LINE, HIGH);
+			radio_tx(1);	
 			sound_mixer(audio_card, "Master", tx_power);
 			sound_mixer(audio_card, "Capture", tx_gain);
 			strcpy(response, "ok");
@@ -780,6 +824,7 @@ void sdr_request(char *request, char *response){
 			in_tx = 0;
 			strcpy(response, "ok");
 			digitalWrite(TX_LINE, LOW);
+			radio_tx(0);
 			sound_mixer(audio_card, "Master", rx_vol);
 			sound_mixer(audio_card, "Capture", rx_gain);
 			spectrum_reset();
