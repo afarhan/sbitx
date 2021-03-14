@@ -144,9 +144,9 @@ struct rx {
 	int agc_speed;
 	int agc_threshold;
 	int agc_loop;
-	int agc_reading[MAX_BINS];
-	int agc_attenuator;
+	double agc_reading[MAX_BINS];
 	double signal_strength;
+	double agc_gain;
 	
 	struct filter *filter;	//convolution filter
 	int output;							//-1 = nowhere, 0 = audio, rest is a tcp socket

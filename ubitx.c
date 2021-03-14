@@ -268,7 +268,7 @@ struct rx *add_rx(int frequency, short mode, int bpf_low, int bpf_high){
 		r->agc_loop = 0;
 	}
 	else {
-		r->agc_speed = 2;
+		r->agc_speed = 5;
 		r->agc_threshold = -60;
 		r->agc_loop = 0;
 	}
@@ -281,11 +281,11 @@ int count = 0;
 
 double agc(struct rx *r){
 	int i;
-	r->signal_strength = 0;
+	r->signal_strength = 0.0;
 
 	//we only look at the first 80 bins as the audio doesn't go beyond 4 KHz
 	// find the largest amplitude
-	for (i=0; i < MAX_BINS/2; i++){
+	for (i=0; i < 80; i++){
 		double s = cabs(r->fft_time[i+(MAX_BINS/2)]);
 		if (r->signal_strength < s) 
 			r->signal_strength = s;
@@ -296,25 +296,37 @@ double agc(struct rx *r){
 		r->agc_loop = 0;
 
 	//we now try to maintain a level of signal to 1000,000 
-	r->agc_reading[r->agc_loop] = 1000.0 / r->signal_strength;
+	r->agc_reading[r->agc_loop++] = r->signal_strength;
 
 	//find the gain reduction needed
-	double gain = 100000000.0;
+	double gain = 1000.0;
 	for (i = 0; i < r->agc_speed; i++)
-		if (gain > r->agc_reading[i])
-			gain = r->agc_reading[i];
+		if (gain > 100 / r->agc_reading[i])
+			gain = 100 / r->agc_reading[i];
 
 	if (gain > 200)
 		gain = 200;
+
+	//we have to ramp up the gain from r->agc_gain to the new gain in 100 steps
+	double gain_step = (gain - r->agc_gain) / 100.0;
+	for (i = 0; i < 100; i++)
+		__imag__ r->fft_time[i+(MAX_BINS/2)] = cimag(r->fft_time[i+(MAX_BINS/2)]) * (r->agc_gain + gain_step);
+
+	for (i= 100; i < MAX_BINS/2; i++)
+		__imag__ r->fft_time[i+(MAX_BINS/2)] = cimag(r->fft_time[i+(MAX_BINS/2)]) * gain;
+
+	r->agc_gain = gain;
+
 	//convert signal strength, in-place, to dbm
 	r->signal_strength *= r->signal_strength;
 	r->signal_strength = power2dB(r->signal_strength);
 	r->signal_strength += MDS_LEVEL;
 	if ((count++ % 20) == 0){
-		//for (i = 0; i < 10; i++)
-		//	printf("%g ", r->agc_reading[i]);
-		printf("%g %g\n", gain, r->signal_strength);	
+	//	for (i = 0; i < 10; i++)
+	//		printf("%g ", r->agc_reading[i]);
+		printf("speed %d, hang %d, # %g - %g dBm\n", r->agc_speed, r->agc_loop, gain, r->signal_strength);	
 	}
+	//return 1.0;
 	return gain;
 }
 
@@ -412,7 +424,7 @@ void rx_process(int32_t *input_rx,  int32_t *input_mic,
 	//STEP 9: send the output back to where it needs to go
 	if (rx_list->output == 0)
 		for (i= 0; i < MAX_BINS/2; i++){
-			output_speaker[i] = cimag(r->fft_time[i+(MAX_BINS/2)]) * gain * 1000000;
+			output_speaker[i] = cimag(r->fft_time[i+(MAX_BINS/2)]) * 1000000;
 			//keep transmit buffer empty
 			output_tx[i] = 0;
 		}
