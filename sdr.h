@@ -139,8 +139,14 @@ struct rx {
 	fftw_plan plan_rev;
 	fftw_complex *fft_freq;
 	fftw_complex *fft_time;
+
+	//agc speed should not cross
 	int agc_speed;
 	int agc_threshold;
+	int agc_loop;
+	int agc_reading[MAX_BINS];
+	int agc_attenuator;
+	double signal_strength;
 	
 	struct filter *filter;	//convolution filter
 	int output;							//-1 = nowhere, 0 = audio, rest is a tcp socket

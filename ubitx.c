@@ -57,6 +57,7 @@ struct filter *tx_filter;	//convolution filter
 #define CMD_TX (2)
 #define CMD_RX (3)
 
+#define MDS_LEVEL (-135)
 int fserial = 0;
 
 void radio_tune_to(u_int32_t f){
@@ -262,16 +263,59 @@ struct rx *add_rx(int frequency, short mode, int bpf_low, int bpf_high){
 	filter_tune(r->filter, (1.0 * bpf_low)/96000.0, (1.0 * bpf_high)/96000.0 , 5);
 
 	if (abs(bpf_high - bpf_low) < 1000){
-		r->agc_speed = 5;
-		r->agc_threshold = -100;
+		r->agc_speed = 10;
+		r->agc_threshold = -60;
+		r->agc_loop = 0;
 	}
 	else {
-		r->agc_speed = 1;
-		r->agc_threshold = -100;
+		r->agc_speed = 2;
+		r->agc_threshold = -60;
+		r->agc_loop = 0;
 	}
 
 	r->next = rx_list;
 	rx_list = r;
+}
+
+int count = 0;
+
+double agc(struct rx *r){
+	int i;
+	r->signal_strength = 0;
+
+	//we only look at the first 80 bins as the audio doesn't go beyond 4 KHz
+	// find the largest amplitude
+	for (i=0; i < MAX_BINS/2; i++){
+		double s = cabs(r->fft_time[i+(MAX_BINS/2)]);
+		if (r->signal_strength < s) 
+			r->signal_strength = s;
+	}
+
+	//store the signal strenght in a buffer of last r->agc_speed blocks of 
+	if (r->agc_loop >= r->agc_speed)
+		r->agc_loop = 0;
+
+	//we now try to maintain a level of signal to 1000,000 
+	r->agc_reading[r->agc_loop] = 1000.0 / r->signal_strength;
+
+	//find the gain reduction needed
+	double gain = 100000000.0;
+	for (i = 0; i < r->agc_speed; i++)
+		if (gain > r->agc_reading[i])
+			gain = r->agc_reading[i];
+
+	if (gain > 200)
+		gain = 200;
+	//convert signal strength, in-place, to dbm
+	r->signal_strength *= r->signal_strength;
+	r->signal_strength = power2dB(r->signal_strength);
+	r->signal_strength += MDS_LEVEL;
+	if ((count++ % 20) == 0){
+		//for (i = 0; i < 10; i++)
+		//	printf("%g ", r->agc_reading[i]);
+		printf("%g %g\n", gain, r->signal_strength);	
+	}
+	return gain;
 }
 
 void rx_process(int32_t *input_rx,  int32_t *input_mic, 
@@ -326,7 +370,6 @@ void rx_process(int32_t *input_rx,  int32_t *input_mic,
 
 	// ... back to the actual processing, after spectrum update  
 
-
 	// we may add another sub receiver within the pass band later,
 	// hence, the linkced list of receivers here
 	// at present, we handle just the first receiver
@@ -363,12 +406,13 @@ void rx_process(int32_t *input_rx,  int32_t *input_mic,
 	//STEP 7: convert back to time domain	
 	fftw_execute(r->plan_rev);
 
-	//TO DO, we must add AGC here somewhere...
-
-	//STEP 8: send the output back to where it needs to go
+	//STEP 8 : AGC
+	double gain = agc(r);
+	
+	//STEP 9: send the output back to where it needs to go
 	if (rx_list->output == 0)
 		for (i= 0; i < MAX_BINS/2; i++){
-			output_speaker[i] = cimag(rx_list->fft_time[i+(MAX_BINS/2)]) * volume;
+			output_speaker[i] = cimag(r->fft_time[i+(MAX_BINS/2)]) * gain * 1000000;
 			//keep transmit buffer empty
 			output_tx[i] = 0;
 		}
