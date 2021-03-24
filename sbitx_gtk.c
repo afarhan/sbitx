@@ -174,7 +174,7 @@ struct field {
 struct field main_controls[] = {
 	{ "r1:freq", 10, 10, 130, 35, "", 5, "14000000", FIELD_NUMBER, FONT_LARGE_VALUE, "", 500000, 21500000, 100},
 	{ "r1:mode", 10, 235, 80, 20, "Mode", 40, "USB", FIELD_SELECTION, FONT_FIELD_VALUE, "USB/LSB/CW/CWR/2TONE", 0,0, 0},
-	{  "#band", 10, 260, 80, 20, "Band", 40, "80M", FIELD_SELECTION, FONT_FIELD_VALUE, "160M/80M/60M/40M/30M/20M/17M/15M", 0,0, 0},
+	{  "#band", 10, 260, 80, 20, "Band", 40, "80M", FIELD_SELECTION, FONT_FIELD_VALUE, "160M/80M/60M/40M/30M/20M/17M/15M/10M", 0,0, 0},
 	{ "r1:gain", 10, 285, 80, 20, "Gain", 40, "60", FIELD_NUMBER, FONT_FIELD_VALUE, "", 0, 100, 1},
 	{ "r1:volume", 10, 310, 80, 20, "Vol", 40, "60", FIELD_NUMBER, FONT_FIELD_VALUE, "", 0, 1024, 1},
 
@@ -910,6 +910,8 @@ void switch_band(){
 		new_freq = 14000000 + freq_khz;
 	else if (!strcmp(f_band->value, "15M"))
 		new_freq = 21000000 + freq_khz;
+	else if (!strcmp(f_band->value, "10M"))
+		new_freq = 28000000 + freq_khz;
 	else if (!strcmp(f_band->value, "40M"))
 		new_freq = 7000000 + freq_khz;
 	else if (!strcmp(f_band->value, "80M"))
@@ -1004,8 +1006,8 @@ int main( int argc, char* argv[] ) {
 	update_field(f);
 	set_volume(3000000);
 	init_gpio_pins();
-	enc_init(&enc_a, ENC_SLOW, ENC1_A, ENC1_B);
-	enc_init(&enc_b, ENC_FAST, ENC2_A, ENC2_B);
+	enc_init(&enc_b, ENC_SLOW, ENC1_A, ENC1_B);
+	enc_init(&enc_a, ENC_FAST, ENC2_A, ENC2_B);
 
 	if (argc > 1 && !strcmp(argv[1], "calibrate"))
 		do_calibration();
@@ -1016,8 +1018,8 @@ int main( int argc, char* argv[] ) {
 	set_field("#band", "40M");
 	set_field("r1:freq", "7049000");
 	set_field("r1:mode", "USB");
-	set_field("tx_gain", "51");
-	set_field("tx_power", "87");
+	set_field("tx_gain", "24");
+	set_field("tx_power", "93");
 	set_field("r1:gain", "41");
 	set_field("r1:volume", "85");
   gtk_main();

@@ -304,8 +304,8 @@ double agc(struct rx *r){
 		if (gain > 100 / r->agc_reading[i])
 			gain = 100 / r->agc_reading[i];
 
-	if (gain > 200)
-		gain = 200;
+	//if (gain > 200)
+	//	gain = 200;
 
 	//we have to ramp up the gain from r->agc_gain to the new gain in 100 steps
 	double gain_step = (gain - r->agc_gain) / 100.0;
@@ -315,7 +315,6 @@ double agc(struct rx *r){
 	for (i= 100; i < MAX_BINS/2; i++)
 		__imag__ r->fft_time[i+(MAX_BINS/2)] = cimag(r->fft_time[i+(MAX_BINS/2)]) * gain;
 
-	r->agc_gain = gain;
 
 	//convert signal strength, in-place, to dbm
 	r->signal_strength *= r->signal_strength;
@@ -324,9 +323,11 @@ double agc(struct rx *r){
 	if ((count++ % 20) == 0){
 	//	for (i = 0; i < 10; i++)
 	//		printf("%g ", r->agc_reading[i]);
-		printf("speed %d, hang %d, # %g - %g dBm\n", r->agc_speed, r->agc_loop, gain, r->signal_strength);	
+	//	printf("speed %d, hang %d, step %g # %g - %g dBm\n", 
+	//		r->agc_speed, r->agc_loop, gain_step, gain, r->signal_strength);
 	}
-	//return 1.0;
+	//printf("gain %f, new gain %f, step %f\n", r->agc_gain, gain, gain_step); 	
+	r->agc_gain = gain;
 	return gain;
 }
 
@@ -419,7 +420,7 @@ void rx_process(int32_t *input_rx,  int32_t *input_mic,
 	fftw_execute(r->plan_rev);
 
 	//STEP 8 : AGC
-	double gain = agc(r);
+	//double gain = agc(r);
 	
 	//STEP 9: send the output back to where it needs to go
 	if (rx_list->output == 0)
@@ -428,96 +429,6 @@ void rx_process(int32_t *input_rx,  int32_t *input_mic,
 			//keep transmit buffer empty
 			output_tx[i] = 0;
 		}
-}
-
-
-void tx_process2(
-	int32_t *input_rx, int32_t *input_mic, 
-	int32_t *output_speaker, int32_t *output_tx, 
-	int n_samples)
-{
-	int i, j = 0;
-	double i_sample, q_sample;
-
-	// we are reusing the rx structure, we should
-	// have a seperate tx structure to work with	
-	struct rx *r = rx_list;
-
-	//first add the previous M samples
-	for (i = 0; i < MAX_BINS/2; i++)
-		fft_in[i]  = fft_m[i];
-
-	int m = 0;
-	//gather the samples into a time domain array 
-	for (i= MAX_BINS/2; i < MAX_BINS; i++){
-
-		//i_sample = (1.0 * vfo_read(&tone_a)) / 2000000000.0;
-		if(r->mode == MODE_2TONE)
-			i_sample = (1.0 * (vfo_read(&tone_a) + vfo_read(&tone_b))) / 20000000.0;
-		else
-			i_sample = (1.0 * input_mic[j]) / 2000000000.0;
-		q_sample = 0;
-
-		j++;
-
-		__real__ fft_m[m] = i_sample;
-		__imag__ fft_m[m] = q_sample;
-
-		__real__ fft_in[i]  = i_sample;
-		__imag__ fft_in[i]  = q_sample;
-		m++;
-	}
-
-	//convert to frequency
-	fftw_execute(plan_fwd);
-
-
-	// NOTE: fft_out holds the fft output (in freq domain) of the 
-	// incoming mic samples 
-	// the naming is unfortunate
-
-	// apply the filter
-	for (i = 0; i < MAX_BINS; i++)
-		fft_out[i] *= tx_filter->fir_coeff[i];
-
-	// the usb extends from 0 to MAX_BINS/2 - 1, 
-	// the lsb extends from MAX_BINS - 1 to MAX_BINS/2 (reverse direction)
-	// zero out the other sideband
-
-	// TBD: Something strange is going on, this should have been the otherway
-
-/*
-	if (r->mode == MODE_USB || r->mode == MODE_CW)
-		// zero out the LSB
-		for (i = MAX_BINS/2; i < MAX_BINS; i++){
-			__real__ fft_out[i] = 0;
-			__imag__ fft_out[i] = 0;	
-		}
-	else  
-		// zero out the USB
-		for (i = 0; i < MAX_BINS/2; i++){
-			__real__ fft_out[i] = 0;
-			__imag__ fft_out[i] = 0;	
-		}
-*/
-	//now rotate to the tx_bin 
-	for (i = 0; i < MAX_BINS; i++){
-		int b = i + tx_shift;
-		if (b >= MAX_BINS)
-			b = b - MAX_BINS;
-		if (b < 0)
-			b = b + MAX_BINS;
-		r->fft_freq[b] = fft_out[i];
-	}
-
-	//convert back to time domain	
-	fftw_execute(r->plan_rev);
-
-	//send the output back to where it needs to go
-	for (i= 0; i < MAX_BINS/2; i++){
-		output_tx[i] = creal(rx_list->fft_time[i+(MAX_BINS/2)]) * volume;
-		output_speaker[i] = 0; 
-	}
 }
 
 
@@ -714,8 +625,12 @@ void sound_process(
 	int32_t *output_speaker, int32_t *output_tx, 
 	int n_samples)
 {
-	if (in_tx)
-		tx_process(input_rx, input_mic, output_speaker, output_tx, n_samples);
+	if (in_tx){
+		if (rx_list->mode == MODE_2TONE)
+			tx_2tone(input_rx, input_mic, output_speaker, output_tx, n_samples);
+		else
+			tx_process(input_rx, input_mic, output_speaker, output_tx, n_samples);
+	}
 	else
 		rx_process(input_rx, input_mic, output_speaker, output_tx, n_samples);
 }

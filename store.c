@@ -37,7 +37,15 @@ int record_get_integer(char *key, int default_value){
 		return atoi(r->value);
 }
 
-void update_record(char *key, char *value){
+void record_update_integer(char *key, int value){
+	struct record *r = get_record(key);
+	if (!r)
+			r = (struct record *)malloc(sizeof(struct record));
+	strcpy(r->key, key);
+	sprintf(r->value, "%ld", value);
+}
+
+void update_record_string(char *key, char *value){
 	struct record *r = get_record(key);
 	if (!r)
 			r = (struct record *)malloc(sizeof(struct record));
@@ -73,6 +81,18 @@ void load_records(){
 void dump_records(){
 	for (struct record *r = record_list; r; r = r->next)
 		printf("[%s] = <%s>\n", r->key, r->value);
+}
+
+void save_records(){
+	FILE *pf;
+	pf = fopen("sbitx.rc", "w");
+	if (!pf){
+		puts("*Error writing sbitx.rc\n");
+		return;
+	}
+	for (struct record *r = record_list; r; r = r->next)
+		fprintf(pf, "%s =%s\n", r->key, r->value);
+	fclose(pf);	
 }
 
 int main(int argc, char **argv){
