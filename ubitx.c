@@ -682,7 +682,11 @@ void setup(){
 
 	fserial = serialOpen("/dev/ttyUSB0", 38400);
 	if (!fserial){
-		puts("uBITX not connected");
+		fserial = serialOpen("/dev/ttyUSB1", 38400);
+		if (!fserial){
+			puts("uBITX not connected");
+			exit(-1);
+		}
 	}
 	delay(2000);	
 //	si570_init();
