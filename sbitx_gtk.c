@@ -244,58 +244,65 @@ struct field *get_field(char *cmd){
 static int waterfall_offset = 30;
 static int waterfall_depth = 30;
 static int  *wf;
+GdkPixbuf *waterfall_pixbuf;
+guint8 waterfall_map[300000];
 
 void init_waterfall(){
-	int needed = (MAX_BINS/2) * waterfall_depth * sizeof(int);
-	wf = malloc((MAX_BINS/2) * waterfall_depth * sizeof(int));
+	struct field *f = get_field("waterfall");
+
+	wf = malloc((MAX_BINS/2) * f->height * sizeof(int));
 	if (!wf){
 		puts("*Error: malloc failed on waterfall buffer");
 		exit(0);
 	}
 	puts("setting the wf to zero");
 	memset(wf, 0, (MAX_BINS/2) * waterfall_depth * sizeof(int));
+
+	for (int i = 0; i < f->width; i++)
+		for (int j = 0; j < f->height; j++){
+			int row = j * f->width * 3;
+			int	index = row + i * 3;
+			waterfall_map[index++] = 0;
+			waterfall_map[index++] = i % 256;
+			waterfall_map[index++] = j % 256; 
+	}
+	waterfall_pixbuf = gdk_pixbuf_new_from_data(waterfall_map,
+		GDK_COLORSPACE_RGB, FALSE, 8, f->width, f->height, f->width*3, NULL,NULL);
+		// format,         alpha?, bit,  widht,    height, rowstride, destryfn, data
+
+	printf("%ld return from pixbuff", (int)waterfall_pixbuf);	
 }
 
-void draw_waterfall(cairo_t *gfx){
-	int i,j, step, amplitude;	
-	float x,y,x_scale;
-	struct field *f;
-	int *p = wf;
 
+void draw_waterfall2(GtkWidget *widget, cairo_t *gfx){
+	struct field *f;
 	f = get_field("waterfall");
 
-	//now, draw them!!!
+	memmove(waterfall_map + f->width * 3, waterfall_map, f->width * (f->height - 1) * 3);
 
-	x_scale = (1.0 * f->width )/(MAX_BINS/2);
-//	puts("waterfall\n\n\n\n");	
-	for (i = 0; i < MAX_BINS/2; i++){
-		int x, y;
-		x = (x_scale * i) + f->x;
-		cairo_set_source_rgb(gfx, wf[i]/100, 1, 1);
-		cairo_rectangle(gfx, x, f->y + 10, 1, 1);
-		//printf("%d at %d, %d = %d\n", i, x, f->y, wf[offset]);
-	}
-/*
-	for (j = 0; j < waterfall_depth; j++){
-		amplitude = 0;
-		for (i = 0; i < MAX_BINS/2; i++){
-			amplitude += *p++;
-			if (i % step == 0){
-  			cairo_set_source_rgb(gfx, amplitude, 1, 1);
-				cairo_rectangle(gfx, x, y, 1, 1);
-  			cairo_fill(gfx);
-				x++;
-				amplitude = 0;
+	int index = 0;
+	for (int i = 0; i < f->width; i++){
+			int v = wf[i*2] + wf[1+i*2];
+			v *= 2;
+			if (v > 255)
+				v = 255;
+			if (v < 128){
+				waterfall_map[index++] = 0;
+				waterfall_map[index++] = v;
+				waterfall_map[index++] = 255-v; 
+			}else {
+				waterfall_map[index++] = v;
+				waterfall_map[index++] = 255-v;
+				waterfall_map[index++] = 0; 
 			}
-		}
-		y++;
-	} 
-*/
-	//make space for the next line of waterfall
-	memmove(wf + (MAX_BINS/2), wf, sizeof(int) * (MAX_BINS/2) * (waterfall_depth -1));
+	}
+
+	gdk_cairo_set_source_pixbuf(gfx, waterfall_pixbuf, f->x, f->y);		
+	cairo_paint(gfx);
+	cairo_fill(gfx);
 }
 
-void draw_spectrum(cairo_t *gfx){
+void draw_spectrum(GtkWidget *widget, cairo_t *gfx){
 	int x, y, sub_division, i, wf_index;
 	float x_scale = 0.0;
 	struct field *f;
@@ -356,14 +363,13 @@ void draw_spectrum(cairo_t *gfx){
 		fill_rect(gfx, f->x + needle_x, f->y, 1, f->height,  SPECTRUM_NEEDLE);
 	}
 
-	draw_waterfall(gfx);
-
+	draw_waterfall2(widget, gfx);
 }
 
-void draw_field(cairo_t *gfx, struct field *f){
+void draw_field(GtkWidget *widget, cairo_t *gfx, struct field *f){
 	struct font_style *s = font_table + 0;
 	if (!strcmp(f->cmd, "spectrum")){
-		draw_spectrum(gfx);
+		draw_spectrum(widget, gfx);
 		return;
 	}
 	if (!strcmp(f->cmd, "waterfall")){
@@ -379,7 +385,7 @@ void draw_field(cairo_t *gfx, struct field *f){
 	draw_text(gfx, f->x + f->label_width, f->y+2 , f->value , f->font_index);
 }
 
-void redraw_main_screen(cairo_t *gfx){
+void redraw_main_screen(GtkWidget *widget, cairo_t *gfx){
 	double dx1, dy1, dx2, dy2;
 	int x1, y1, x2, y2;
 
@@ -399,15 +405,15 @@ void redraw_main_screen(cairo_t *gfx){
 		cy1 = f->y;
 		cy2 = cy1 + f->height;
 		if (cairo_in_clip(gfx, cx1, cy1) || cairo_in_clip(gfx, cx2, cy2)){
-			draw_field(gfx, main_controls + i);
+			draw_field(widget, gfx, main_controls + i);
 		}
 	}
-	draw_spectrum(gfx);
+	draw_spectrum(widget, gfx);
 }
 
 /* gtk specific routines */
 static gboolean on_draw_event( GtkWidget* widget, cairo_t *cr, gpointer user_data ) {
-	redraw_main_screen(cr);	
+	redraw_main_screen(widget, cr);	
   return FALSE;
 }
 
@@ -813,8 +819,9 @@ gboolean ui_tick(gpointer gook){
 	ticks++;
 	if (ticks >= 10){
 		struct field *f = get_field("spectrum");
-
 		update_field(f);	//move this each time the spectrum watefall index is moved
+		f = get_field("waterfall");
+		update_field(f);
 		redraw_flag = 0;
 		ticks = 0;
 	}
