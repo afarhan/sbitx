@@ -187,7 +187,7 @@ struct field main_controls[] = {
 	/* beyond MAX_MAIN_CONROLS are the static text display */
 	//{8, "tune", 100,100, 100,20, "", 40, "14.000.000", FIELD_STATIC, FONT_LARGE_VALUE, "", 0,0,0},
 	{"spectrum", 150, 10 , 512, 100, "Spectrum ", 70, "7050 KHz", FIELD_STATIC, FONT_SMALL, "", 0,0,0},   
-	{"waterfall", 150, 130 , 512, 100, "Waterfall ", 70, "7050 KHz", FIELD_STATIC, FONT_SMALL, "", 0,0,0},
+	{"waterfall", 150, 130 , 512, 400, "Waterfall ", 70, "7050 KHz", FIELD_STATIC, FONT_SMALL, "", 0,0,0},
 	{"", 0, 0 ,0, 0, "end ", 1, "", FIELD_STATIC, FONT_SMALL, "", 0,0,0},
 };
 
@@ -242,22 +242,24 @@ struct field *get_field(char *cmd){
 /* rendering of the fields */
 
 static int waterfall_offset = 30;
-static int waterfall_depth = 30;
 static int  *wf;
 GdkPixbuf *waterfall_pixbuf;
-guint8 waterfall_map[300000];
+guint8 *waterfall_map;
 
 void init_waterfall(){
 	struct field *f = get_field("waterfall");
 
+	//this will store the db values of waterfall
 	wf = malloc((MAX_BINS/2) * f->height * sizeof(int));
 	if (!wf){
 		puts("*Error: malloc failed on waterfall buffer");
 		exit(0);
 	}
 	puts("setting the wf to zero");
-	memset(wf, 0, (MAX_BINS/2) * waterfall_depth * sizeof(int));
+	memset(wf, 0, (MAX_BINS/2) * f->height * sizeof(int));
 
+	//this will store the bitmap pixles, 3 bytes per pixel
+	waterfall_map = malloc(f->width * f->height * 3);
 	for (int i = 0; i < f->width; i++)
 		for (int j = 0; j < f->height; j++){
 			int row = j * f->width * 3;
