@@ -59,6 +59,36 @@ char output_pins[] = {
 static int xit = 512; 
 static int tuning_step = 50;
 
+struct band {
+	int frequency, low,  high, mode;
+};
+
+#define BAND10M	0
+#define BAND13M	1
+#define BAND15M 2	
+#define BAND17M 3	
+#define BAND20M 4	
+#define BAND30M 5
+#define BAND40M 6 
+#define BAND60M 7 
+#define BAND80M 8 
+ 	
+#define MAX_BANDS 9
+#define MAX_STACK 3 
+struct band band_stack[] = {
+		{3500000,300, 3000, MODE_LSB},
+		{3510000,500, 800, MODE_CWR},
+		{3573000,500, 800, MODE_DIGITAL},
+		{3700000,300, 3000, MODE_LSB},
+
+		{7000000,300, 3000, MODE_LSB},
+		{7040000,500, 800, MODE_CWR},
+		{7074000,300, 3000, MODE_DIGITAL},
+		{7150000,300, 3000, MODE_LSB},
+		{3700000,300, 3000, MODE_LSB},
+};
+int band_stack_index = 0;
+
 GtkWidget *display_area = NULL;
 int screen_width, screen_height;
 
@@ -223,6 +253,7 @@ struct field main_controls[] = {
 	{"spectrum", 340, 50, 400, 200, "Spectrum ", 70, "7050 KHz", FIELD_STATIC, FONT_SMALL, "", 0,0,0},   
 	{"waterfall", 340, 270 , 400, 210, "Waterfall ", 70, "7050 KHz", FIELD_STATIC, FONT_SMALL, "", 0,0,0},
 	{"#close", 750, 0 ,50, 50, "CLOSE", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
+	{"#off", 750, 430 ,50, 50, "OFF", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
 
 	/* band stack registers */
 	{"#10m", 0, 1 ,50, 50, "10 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
@@ -1077,6 +1108,8 @@ void do_cmd(char *cmd){
 		switch_band(request);
 	else if (!strcmp(request, "#close"))
 		gtk_window_iconify(GTK_WINDOW(window));
+	else if (!strcmp(request, "#off"))
+		exit(0);
 	else if (!strcmp(request, "#step=10KHz"))
 		tuning_step = 10000;
 	else if (!strcmp(request, "#step=1KHz"))
