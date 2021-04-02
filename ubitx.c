@@ -63,6 +63,7 @@ int fserial = 0;
 void radio_tune_to(u_int32_t f){
 	u_int8_t cmd[5];
 
+	f -= 600;
 	cmd[0] = CMD_FREQ;
 	memcpy(cmd+1, &f, 4);
 	for (int i = 0; i < 5; i++)
@@ -248,7 +249,7 @@ struct rx *add_rx(int frequency, short mode, int bpf_low, int bpf_high){
 	struct rx *r = malloc(sizeof(struct rx));
 	r->low_hz = bpf_low;
 	r->high_hz = bpf_high;
-	r->tuned_bin = 510; 
+	r->tuned_bin = 512; 
 
 	//create fft complex arrays to convert the frequency back to time
 	r->fft_time = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * MAX_BINS);
@@ -681,7 +682,7 @@ void setup(){
 	vfo_start(&tone_b, 1900, 0);
 
 	fserial = serialOpen("/dev/ttyUSB0", 38400);
-	if (!fserial){
+	if (fserial == -1){
 		fserial = serialOpen("/dev/ttyUSB1", 38400);
 		if (!fserial){
 			puts("uBITX not connected");
@@ -811,7 +812,7 @@ void sdr_request(char *request, char *response){
 			sound_mixer(audio_card, "Capture", tx_gain);
 	}
 	else if (!strcmp(cmd, "tx_power")){
-		tx_power = atoi(value);
+		tx_power = atoi(value) - 25;
 		if(in_tx)	
 			sound_mixer(audio_card, "Master", tx_power);
 	}
