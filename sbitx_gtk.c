@@ -91,6 +91,7 @@ int band_stack_index = 0;
 
 GtkWidget *display_area = NULL;
 int screen_width, screen_height;
+int spectrum_span = 25000;
 
 void do_cmd(char *cmd);
 #define MIN_KEY_UP 0xFF52
@@ -387,22 +388,24 @@ void draw_waterfall(GtkWidget *widget, cairo_t *gfx){
 }
 
 void draw_spectrum(GtkWidget *widget, cairo_t *gfx){
-	int x, y, sub_division, i;
-	float x_scale = 0.0;
+	int y, sub_division, i;
 	struct field *f;
 
 	f = get_field("spectrum");
 	sub_division = f->width / 10;
-	
+
+	// clear the spectrum	
 	fill_rect(gfx, f->x,f->y, f->width, f->height, SPECTRUM_BACKGROUND);
 	cairo_set_line_width(gfx, 1);
 	cairo_set_source_rgb(gfx, palette[SPECTRUM_GRID][0], palette[SPECTRUM_GRID][1], palette[SPECTRUM_GRID][2]);
 
+	//draw the horizontal grid
 	for (i =  0; i <= f->height; i += f->height/10){
 		cairo_move_to(gfx, f->x, f->y + i);
 		cairo_line_to(gfx, f->x + f->width, f->y + i); 
 	}
 
+	//draw the vertical grid
 	for (i = 0; i <= f->width; i += f->width/10){
 		cairo_move_to(gfx, f->x + i, f->y);
 		cairo_line_to(gfx, f->x + i, f->y + f->height); 
@@ -410,33 +413,50 @@ void draw_spectrum(GtkWidget *widget, cairo_t *gfx){
 	cairo_stroke(gfx);
 
 	//we only plot the second half of the bins (on the lower sideband
-	x_scale = (1.0 * f->width )/(MAX_BINS/2);
 	int last_y = 100;
 
+
+	int n_bins = (int)((1.0 * spectrum_span) / 46.875);
+	printf("n_bins %d\t", n_bins);
+	//the center frequency is at the center of the lower sideband,
+	//i.e, three-fourth way up the bins.
+	int starting_bin = (3 *MAX_BINS)/4 - n_bins/2;
+	int ending_bin = starting_bin + n_bins; 
+
+	float x_step = (1.0 * f->width )/n_bins;
+
+	//start the plot
 	cairo_set_source_rgb(gfx, palette[SPECTRUM_PLOT][0], 
 		palette[SPECTRUM_PLOT][1], palette[SPECTRUM_PLOT][2]);
 	cairo_move_to(gfx, f->x, f->y + f->height);
 
-	for (i = MAX_BINS/2; i < MAX_BINS; i++){
-		int x, y;
+	float x = 0;
+	int j = 0;
+	for (i = starting_bin; i <= ending_bin; i++){
+		int y;
 
 		// the center fft bin is at zero, from MAX_BINS/2 onwards,
 		// the bins are at lowest frequency (-ve frequency)
 		int offset = i;
 		offset = (offset - MAX_BINS/2);
-		x = (x_scale * offset);
+		//y axis is the power  in db of each bin, scaled to 100 db
 		y = ((power2dB(cnrmf(fft_bins[i])) + waterfall_offset) * f->height)/100; 
+		// limit y inside the spectrum display box
 		if ( y <  0)
 			y = 0;
 		if (y > f->height)
 			y = f->height - 1;
-		wf[x] = (y * 100)/f->height;
-		y = f->height - y;
-		cairo_line_to(gfx, f->x + x, f->y + y);
+		//the plot should be increase upwards
+		cairo_line_to(gfx, f->x + (int)x, f->y + f->height - y);
+
+		//fill the waterfall
+		for (int k = 0; k <= 1 + (int)x_step; k++)
+			wf[k + (int)x] = (y * 100)/f->height;
+		x += x_step;
 	}
 	cairo_stroke(gfx);
 
-	
+	printf("x_step = %g\n", x_step);
 	//draw the needle
 	for (struct rx *r = rx_list; r; r = r->next){
 		int needle_x  = (f->width*(MAX_BINS/2 - r->tuned_bin))/(MAX_BINS/2);
@@ -1110,12 +1130,25 @@ void do_cmd(char *cmd){
 		gtk_window_iconify(GTK_WINDOW(window));
 	else if (!strcmp(request, "#off"))
 		exit(0);
+
+	//tuning step
 	else if (!strcmp(request, "#step=10KHz"))
 		tuning_step = 10000;
 	else if (!strcmp(request, "#step=1KHz"))
 		tuning_step = 1000;
 	else if (!strcmp(request, "#step=50Hz"))
 		tuning_step = 50;
+
+	//spectrum bandwidth
+	else if (!strcmp(request, "#span=3KHz"))
+		spectrum_span = 3000;
+	else if (!strcmp(request, "#span=10KHz"))
+		spectrum_span = 10000;
+	else if (!strcmp(request, "#span=25KHz"))
+		spectrum_span = 25000;
+		
+
+	//this needs to directly pass on to the sdr core
 	else if(request[0] != '#')
 		sdr_request(request, response);
 }
