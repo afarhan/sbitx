@@ -1,0 +1,5 @@
+On WSJT-X
+From Settings > Radio, Choose 'None' and VOx operation
+From Settings > Audio, Input and Output Set to "plughw:CARD=Loopback,DEV=1"
+On sBITX
+Choose USB (LSB for now), volume at 100

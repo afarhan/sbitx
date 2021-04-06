@@ -417,7 +417,6 @@ void draw_spectrum(GtkWidget *widget, cairo_t *gfx){
 
 
 	int n_bins = (int)((1.0 * spectrum_span) / 46.875);
-	printf("n_bins %d\t", n_bins);
 	//the center frequency is at the center of the lower sideband,
 	//i.e, three-fourth way up the bins.
 	int starting_bin = (3 *MAX_BINS)/4 - n_bins/2;
@@ -456,7 +455,6 @@ void draw_spectrum(GtkWidget *widget, cairo_t *gfx){
 	}
 	cairo_stroke(gfx);
 
-	printf("x_step = %g\n", x_step);
 	//draw the needle
 	for (struct rx *r = rx_list; r; r = r->next){
 		int needle_x  = (f->width*(MAX_BINS/2 - r->tuned_bin))/(MAX_BINS/2);
