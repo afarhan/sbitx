@@ -33,7 +33,7 @@ fftw_plan plan_fwd, plan_tx;
 int bfo_freq = 27025570;
 int freq_hdr = 7050000;
 
-int	fd;
+static int tuning_method = TUNE_SI5351;
 
 static double volume 	= 100000.0;
 static double mic_gain = 200000000.0;

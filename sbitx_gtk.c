@@ -91,7 +91,7 @@ int band_stack_index = 0;
 
 GtkWidget *display_area = NULL;
 int screen_width, screen_height;
-int spectrum_span = 25000;
+int spectrum_span = 48000;
 
 void do_cmd(char *cmd);
 #define MIN_KEY_UP 0xFF52

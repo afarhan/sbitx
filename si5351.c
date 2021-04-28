@@ -1,11 +1,12 @@
 #include <stdio.h>
-#include "i2cBitBangingBus.h"
+#include <linux/types.h>
+#include <stdint.h>
+#include "i2cbb.h"
 #include <wiringPi.h>
 
 #define SDA 23 
 #define SCL 22
 
-i2cBitBangingBus *pbus;
 uint32_t 	usbCarrier= 7860000;
 
 // *************  SI5315 routines - tks Jerry Gaffke, KE7ER   ***********************
@@ -46,7 +47,7 @@ uint32_t 	usbCarrier= 7860000;
 #define SI5351BX_XTALPF 2               // 1:6pf  2:8pf  3:10pf
 
 // If using 27mhz crystal, set XTAL=27000000, MSA=33.  Then vco=891mhz
-#define SI5351BX_XTAL 24995000         // Crystal freq in Hz
+#define SI5351BX_XTAL 24997635         // Crystal freq in Hz
 #define SI5351BX_MSA  35                // VCOA is at 25mhz*35 = 875mhz
 
 // User program may have reason to poke new values into these 3 RAM variables
@@ -58,20 +59,18 @@ static int32_t calibration = 0;
 
 void i2cWrite(uint8_t reg, uint8_t val) {   // write reg via i2c
 
-	pbus->i2c_smbus_write_byte_data(SI5351BX_ADDR, reg, val);
+	i2cbb_write_byte_data(SI5351BX_ADDR, reg, val);
 }
 
 void i2cWriten(uint8_t reg, uint8_t *vals, uint8_t vcnt) {  // write array
 
-	pbus->i2c_smbus_write_i2c_block_data(SI5351BX_ADDR, reg, vcnt, vals);
+	i2cbb_write_i2c_block_data(SI5351BX_ADDR, reg, vcnt, vals);
 }
-
 
 void si5351bx_init() {                  // Call once at power-up, start PLLA
   uint8_t reg;  uint32_t msxp1;
 
-
-	pbus = new i2cBitBangingBus(SDA, SCL);
+  i2cbb_init(SDA, SCL);
   i2cWrite(149, 0);                     // SpreadSpectrum off
   i2cWrite(3, si5351bx_clken);          // Disable all CLK output drivers
   i2cWrite(183, SI5351BX_XTALPF << 6);  // Set 25mhz crystal load capacitance
@@ -86,10 +85,16 @@ void si5351bx_init() {                  // Call once at power-up, start PLLA
   i2cWriten(34, vals, 8);               // Write to 8 PLLA msynth regs
   i2cWrite(177, 0xa0);                  // Reset PLLA  & PPLB (0x80 resets PLLB)
 
+
+  //set the vcoa 
+  si5351bx_vcoa = (SI5351BX_XTAL * SI5351BX_MSA) + calibration; // apply the calibration correction factor
 }
 
 void si5351bx_setfreq(uint8_t clknum, uint32_t fout) {  // Set a CLK to fout Hz
   uint32_t  msa, msb, msc, msxp1, msxp2, msxp3p2top;
+
+  printf("Setting CLK %d as %d\n", clknum, fout);
+
   if ((fout < 500000) || (fout > 109000000)) // If clock freq out of range
     si5351bx_clken |= 1 << clknum;      //  shut down the clock
   else {
@@ -119,27 +124,24 @@ void si5351bx_setfreq(uint8_t clknum, uint32_t fout) {  // Set a CLK to fout Hz
 
 void si5351_set_calibration(int32_t cal){
     si5351bx_vcoa = (SI5351BX_XTAL * SI5351BX_MSA) + cal; // apply the calibration correction factor
-    si5351bx_setfreq(0, usbCarrier);
-    si5351bx_setfreq(1, 5000000);
-    si5351bx_setfreq(2, 13000000);
+   // si5351bx_setfreq(0, usbCarrier);
+   // si5351bx_setfreq(1, 5000000);
+   // si5351bx_setfreq(2, 13000000);
 	
 }
 
+/*
 void initOscillators(){
   //initialize the SI5351
   si5351bx_init();
-  si5351bx_vcoa = (SI5351BX_XTAL * SI5351BX_MSA) + calibration; // apply the calibration correction factor
-  si5351bx_setfreq(0, 14290000);
-  si5351bx_setfreq(1, 5000000);
-  si5351bx_setfreq(2, 13000000);
+  si5351bx_setfreq(0, 5000000); 
+  si5351bx_setfreq(1, 10000000);
+  si5351bx_setfreq(2, 27030000);
 }
 
-
-// to compile this
-// g++ -g -o si5351 si5351.cpp i2cBitBangingBus.cpp -lwiringPi -std=c++11
 
 int main(){
 	wiringPiSetup();
 	initOscillators();
 }
-
+*/

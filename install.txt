@@ -1,11 +1,27 @@
+UPDATE wiringPi
+cd /tmp
+wget https://project-downloads.drogon.net/wiringpi-latest.deb
+sudo dpkg -i wiringpi-latest.deb
+
+
+INSTALLING FFTW3
 install fftw3 from the tarball downloaded from www.fftw3.org, follow
 the instructions for the config, make.  run make install as sudo
+
+You have to run the same process once more for installation of the single
+precision float library.
+
 ./configure --enable-float
 make
 sudo make
 sudo apt-get install libasound2-dev
 sudo apt-get install libgtk-3-dev
 
+INSTALLING LOOPBACK
+sudo modprobe snd-aloop
+
+
+CONFIGURING SOUND
 Use VOX with loopback device
 plughw:CARD=Loopback,DEV=1
 
