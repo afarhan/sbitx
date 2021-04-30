@@ -493,7 +493,8 @@ void *sound_thread_function(void *ptr){
 	//switch to maximum priority
 	sch.sched_priority = sched_get_priority_max(SCHED_FIFO);
 	pthread_setschedparam(sound_thread, SCHED_FIFO, &sch);
-	
+
+  printf("opening %s sound card\n", device);	
 	if (sound_start_play(device)){
 		fprintf(stderr, "*Error opening play device");
 		return NULL;
