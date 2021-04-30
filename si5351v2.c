@@ -219,8 +219,6 @@ static void set_freq_fixeddiv(int clk, int pll, uint32_t frequency, int divider,
 void si5351bx_setfreq(uint8_t clk, uint32_t frequency){
   uint8_t pll;
 
-
-  printf("########## settting %d to %d\n", clk, frequency);
   if (clk == 2)
     pll = SI_SYNTH_PLL_B;
   else
