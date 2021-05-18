@@ -3,9 +3,11 @@ cd /tmp
 wget https://project-downloads.drogon.net/wiringpi-latest.deb
 sudo dpkg -i wiringpi-latest.deb
 
+You will next, install ncurses
+sudo apt-get install ncurses-dev
 
 INSTALLING FFTW3
-install fftw3 from the tarball downloaded from www.fftw3.org, follow
+install fftw3 from the tarball downloaded from www.fftw.org, follow
 the instructions for the config, make.  run make install as sudo
 
 You have to run the same process once more for installation of the single
