@@ -1,3 +1,15 @@
+Before installing
+sudo apt --fix-broken install
+
+Download the 32 bit package from the wsjt-x page (the one with armhf in the name),
+
+sudo dpkg -i wsjt...
+
+you may have to run if it complains about the locales
+
+sudo pkg-reconfigure locales
+
+
 On WSJT-X
 From Settings > Radio, Choose 'None' and VOx operation
 From Settings > Audio, Input and Output Set to "plughw:CARD=Loopback,DEV=1"
