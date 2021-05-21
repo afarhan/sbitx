@@ -246,7 +246,7 @@ struct field main_controls[] = {
 	
 	// top row
 	{ "#split", 340, 0, 55, 50, "SPLIT", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, "ON/OFF", 0,0,0},
-	{"#step", 390, 0 ,50, 50, "STEP", 1, "50Hz", FIELD_SELECTION, FONT_FIELD_VALUE, "10KHz/1KHz/50Hz", 0,0,0},
+	{"#step", 390, 0 ,50, 50, "STEP", 1, "50Hz", FIELD_SELECTION, FONT_FIELD_VALUE, "10KHz/1KHz/200Hz/50Hz", 0,0,0},
 	{"#step", 440, 0 ,50, 50, "VFO", 1, "A", FIELD_SELECTION, FONT_FIELD_VALUE, "A/B", 0,0,0},
 	{"#span", 690, 0 ,50, 50, "SPAN", 1, "25KHz", FIELD_SELECTION, FONT_FIELD_VALUE, "25KHz/10KHz/3KHz", 0,0,0},
 
@@ -1134,6 +1134,8 @@ void do_cmd(char *cmd){
 		tuning_step = 10000;
 	else if (!strcmp(request, "#step=1KHz"))
 		tuning_step = 1000;
+	else if (!strcmp(request, "#step=200Hz"))
+		tuning_step = 200;
 	else if (!strcmp(request, "#step=50Hz"))
 		tuning_step = 50;
 

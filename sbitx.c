@@ -34,7 +34,7 @@ fftw_complex *fft_in;			// holds the incoming samples in time domain (for rx as 
 fftw_complex *fft_m;			// holds previous samples for overlap and discard convolution 
 fftw_plan plan_fwd, plan_tx;
 /* int bfo_freq = 27025570; //for vxo */
-int bfo_freq = 27020000;
+int bfo_freq = 27034000;
 int freq_hdr = 7050000;
 
 static double volume 	= 100000.0;
@@ -58,15 +58,13 @@ struct filter *tx_filter;	//convolution filter
 #define CMD_FREQ (1)
 #define CMD_TX (2)
 #define CMD_RX (3)
+#define TUNING_SHIFT (-550)
 
 #define MDS_LEVEL (-135)
 int fserial = 0;
 
 void radio_tune_to(u_int32_t f){
-  si5351bx_setfreq(0, f + bfo_freq - 24000);
-  //si5351_reset();
-  //si5351bx_setfreq(1, bfo_freq);
-  //si5351bx_setfreq(2, bfo_freq);
+  si5351bx_setfreq(0, f + bfo_freq - 24000 + TUNING_SHIFT);
   printf("Setting radio to %d\n", f);
 }
 
@@ -199,7 +197,6 @@ void set_lpf(int frequency){
 }
 
 void set_lo(int frequency){
-/*	si570_freq(frequency + bfo_freq); */
 	freq_hdr = frequency;
 	printf("freq: %d\n", frequency);
 	set_lpf(frequency);
@@ -207,7 +204,6 @@ void set_lo(int frequency){
 }
 
 void set_rx1(int frequency){
-	//si570_freq(frequency + bfo_freq - ((rx_list->tuned_bin * 96000)/MAX_BINS));
 	radio_tune_to(frequency);
 	freq_hdr = frequency;
 	printf("freq: %d\n", frequency);
@@ -663,9 +659,14 @@ void setup_audio_codec(){
 
 void setup_oscillators(){
   //initialize the SI5351
-	wiringPiSetup();
+
+  delay(200);
   si5351bx_init();
-  si5351bx_setfreq(2, 27030000);
+  delay(200);
+  si5351bx_setfreq(2, bfo_freq);
+  delay(200);
+  si5351bx_setfreq(2, bfo_freq);
+
   si5351bx_setfreq(0, 7000000);
   si5351_reset();
 }

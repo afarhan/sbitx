@@ -219,6 +219,8 @@ static void set_freq_fixeddiv(int clk, int pll, uint32_t frequency, int divider,
 void si5351bx_setfreq(uint8_t clk, uint32_t frequency){
   uint8_t pll;
 
+  printf("Setting clock %d to %d\n", clk, frequency);
+
   if (clk == 2)
     pll = SI_SYNTH_PLL_B;
   else
@@ -237,6 +239,8 @@ void si5351bx_setfreq(uint8_t clk, uint32_t frequency){
 
 void si5351bx_init(){ 
   i2cbb_init(SDA, SCL);
+  si5351_reset();
+  si5351a_clkoff(1);
 }
 
 void si5351_set_calibration(int32_t cal){
