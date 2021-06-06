@@ -22,13 +22,13 @@ char pins[15] = {0, 2, 3, 6, 7,
 								10, 11, 12, 13, 14, 
 								21, 22, 23, 25, 27};
 
-#define ENC1_A (0)
-#define ENC1_B (2)
-#define ENC1_SW (3)
+#define ENC1_A (13)
+#define ENC1_B (12)
+#define ENC1_SW (14)
 
-#define ENC2_A (12)
-#define ENC2_B (13)
-#define ENC2_SW (14)
+#define ENC2_A (0)
+#define ENC2_B (2)
+#define ENC2_SW (3)
 
 #define SW1 (6)
 #define SW2 (10)

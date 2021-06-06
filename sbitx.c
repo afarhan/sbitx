@@ -422,7 +422,7 @@ void rx_process(int32_t *input_rx,  int32_t *input_mic,
 	//STEP 9: send the output back to where it needs to go
 	if (rx_list->output == 0)
 		for (i= 0; i < MAX_BINS/2; i++){
-			output_speaker[i] = cimag(r->fft_time[i+(MAX_BINS/2)]) * 1000000;
+			output_speaker[i] = cimag(r->fft_time[i+(MAX_BINS/2)]) * 10000000;
 			//keep transmit buffer empty
 			output_tx[i] = 0;
 		}

@@ -1,9 +1,7 @@
 #include <stdio.h>
 #include <alsa/asoundlib.h>
-//#include <sys/asoundlib.h>
 #include <pthread.h>
 #include "sound.h"
-//#include "queue.h"
 
 /* follows the tutorial at http://alsamodular.sourceforge.net/alsa_programming_howto.html
 Next thing to try is http://www.saunalahti.fi/~s7l/blog/2005/08/21/Full%20Duplex%20ALSA
