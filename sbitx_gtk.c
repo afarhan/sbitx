@@ -206,7 +206,7 @@ struct field {
 
 // the cmd fields that have '#' are not to be sent to the sdr
 struct field main_controls[] = {
-	{ "r1:freq", 500, 0, 130, 49, "", 5, "14000000", FIELD_NUMBER, FONT_LARGE_VALUE, "", 500000, 21500000, 100},
+	{ "r1:freq", 500, 0, 130, 49, "", 5, "14000000", FIELD_NUMBER, FONT_LARGE_VALUE, "", 500000, 30000000, 100},
 
 	// Main RX
 	{"#r1", 70, 55 ,100, 50, "MAIN RX", 1, "MAIN RX", FIELD_STATIC, FONT_FIELD_VALUE, "ON/OFF", 0,0,0},

@@ -42,7 +42,7 @@
 
 #define PLL_N 32
 #define PLLFREQ (xtal_freq_calibrated * PLL_N)
-int xtal_freq_calibrated = 25003170;
+int xtal_freq_calibrated = 25012725;
 
 uint32_t plla_freq, pllb_freq;
 
