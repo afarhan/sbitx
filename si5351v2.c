@@ -42,7 +42,9 @@
 
 #define PLL_N 32
 #define PLLFREQ (xtal_freq_calibrated * PLL_N)
-int xtal_freq_calibrated = 25012725;
+//int xtal_freq_calibrated = 25012725; // pcb
+int xtal_freq_calibrated = 25003150; // pcb
+
 
 uint32_t plla_freq, pllb_freq;
 
@@ -221,17 +223,18 @@ void si5351bx_setfreq(uint8_t clk, uint32_t frequency){
 
   printf("Setting clock %d to %d\n", clk, frequency);
 
-  if (clk == 2)
+  if (clk == 1)
     pll = SI_SYNTH_PLL_B;
   else
     pll = SI_SYNTH_PLL_A;
  
   //Serial.println(frequency);
-  if (frequency <= 100000000l){
+  /*if (frequency <= 100000000l){
     setup_pll(pll, 26, 0, 1);
     set_frequency_fixedpll(clk, pll, (xtal_freq_calibrated * 26), frequency, SI_R_DIV_1, SI5351_CLK_DRIVE_STRENGTH_8MA);
   }
-  else if (frequency < 150000000l)
+  else */
+  if (frequency < 150000000l)
     set_freq_fixeddiv(clk, pll, frequency, 6, SI5351_CLK_DRIVE_STRENGTH_8MA);
   else 
     set_freq_fixeddiv(clk, pll, frequency, 4, SI5351_CLK_DRIVE_STRENGTH_8MA);

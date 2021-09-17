@@ -17,9 +17,13 @@
 
 char audio_card[32];
 
-int tx_shift = 512;
+int tx_shift = 768;
 #define TX_LINE 4
 #define BAND_SELECT 5
+#define LPF_A 5
+#define LPF_B 6
+#define LPF_C 10
+#define LPF_D 11
 
 float fft_bins[MAX_BINS]; // spectrum ampltiudes  
 fftw_complex *fft_spectrum;
@@ -34,7 +38,7 @@ fftw_complex *fft_in;			// holds the incoming samples in time domain (for rx as 
 fftw_complex *fft_m;			// holds previous samples for overlap and discard convolution 
 fftw_plan plan_fwd, plan_tx;
 /* int bfo_freq = 27025570; //for vxo */
-//int bfo_freq = 27034000;
+// bfo_freq = 27034000;
 int bfo_freq = 40035000;
 int freq_hdr = 7050000;
 
@@ -173,14 +177,16 @@ void set_lpf_40mhz(int frequency){
 	static int prev_lpf = -1;
 	int lpf = 0;
 
+
 	if (frequency < 5500000)
-		lpf = 3;
+		lpf = LPF_D;
 	else if (frequency < 10500000)		
-		lpf = 2;
+		lpf = LPF_C;
 	else if (frequency < 21000000)		
-		lpf = 1;
+		lpf = LPF_B;
 	else if (frequency < 30000000)
-		lpf = 0;
+		lpf = LPF_A; 
+
 
 	if (lpf == prev_lpf){
 		puts("LPF not changed");
@@ -188,19 +194,67 @@ void set_lpf_40mhz(int frequency){
 	}
 
 	printf("##################Setting LPF to %d\n", lpf);
+  /*
 	//reset the 4017
 	digitalWrite(BAND_SELECT, HIGH);
 	delay(5);
 	digitalWrite(BAND_SELECT, LOW);
 	delay(1);
-
+  
 	//go to the band
 	for (int i = 0; i < lpf; i++){
 		digitalWrite(BAND_SELECT, HIGH);
 		delayMicroseconds(200);
 		digitalWrite(BAND_SELECT, LOW);
 		delayMicroseconds(200);
+	} 
+  */
+
+  digitalWrite(LPF_A, HIGH);
+  digitalWrite(LPF_B, HIGH);
+  digitalWrite(LPF_C, HIGH);
+  digitalWrite(LPF_D, HIGH);
+
+  digitalWrite(lpf, LOW); 
+	prev_lpf = lpf;
+}
+
+void set_lpf_40mhz_1w(int frequency){
+	static int prev_lpf = -1;
+	int lpf = 0;
+
+
+	if (frequency < 5500000)
+		lpf = 3;
+	else if (frequency < 10500000)		
+		lpf = 2;
+	else if (frequency < 21000000)		
+		lpf = 1;
+	else if (frequency < 30000000)
+		lpf = 0; 
+
+
+	if (lpf == prev_lpf){
+		puts("LPF not changed");
+		return;
 	}
+
+	printf("##################Setting LPF to %d\n", lpf);
+  
+	//reset the 4017
+	digitalWrite(BAND_SELECT, HIGH);
+	delay(5);
+	digitalWrite(BAND_SELECT, LOW);
+	delay(1);
+  
+	//go to the band
+	for (int i = 0; i < lpf; i++){
+		digitalWrite(BAND_SELECT, HIGH);
+		delayMicroseconds(200);
+		digitalWrite(BAND_SELECT, LOW);
+		delayMicroseconds(200);
+	} 
+ 
 	prev_lpf = lpf;
 }
 
@@ -254,7 +308,7 @@ void set_rx1(int frequency){
 	radio_tune_to(frequency);
 	freq_hdr = frequency;
 	printf("freq: %d\n", frequency);
-	set_lpf_40mhz(frequency);
+	set_lpf_40mhz_1w(frequency);
 }
 
 void set_volume(double v){
@@ -292,7 +346,7 @@ struct rx *add_tx(int frequency, short mode, int bpf_low, int bpf_high){
 	struct rx *r = malloc(sizeof(struct rx));
 	r->low_hz = bpf_low;
 	r->high_hz = bpf_high;
-	r->tuned_bin = 512; 
+	r->tuned_bin = 768; 
 
 	//create fft complex arrays to convert the frequency back to time
 	r->fft_time = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * MAX_BINS);
@@ -854,6 +908,11 @@ void setup_oscillators(){
 This is the one-time initialization code 
 */
 void setup(){
+
+  pinMode(LPF_A, OUTPUT);
+  pinMode(LPF_B, OUTPUT);
+  pinMode(LPF_C, OUTPUT);
+  pinMode(LPF_D, OUTPUT);
 
 	fft_init();
 	vfo_init_phase_table();

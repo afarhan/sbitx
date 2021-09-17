@@ -51,6 +51,10 @@ struct encoder enc_a, enc_b;
 
 #define TX_LINE 4
 #define BAND_SELECT 5
+#define LPF_A 5
+#define LPF_B 6
+#define LPF_C 10
+#define LPF_D 11
 
 char output_pins[] = {
 	TX_LINE, BAND_SELECT	
@@ -883,7 +887,14 @@ void init_gpio_pins(){
 		pullUpDnControl(pins[i], PUD_UP);
 	}
 	pinMode(TX_LINE, OUTPUT);
-	pinMode(BAND_SELECT, OUTPUT);
+	pinMode(LPF_A, OUTPUT);
+	pinMode(LPF_B, OUTPUT);
+	pinMode(LPF_C, OUTPUT);
+	pinMode(LPF_D, OUTPUT);
+  digitalWrite(LPF_A, LOW);
+  digitalWrite(LPF_B, LOW);
+  digitalWrite(LPF_C, LOW);
+  digitalWrite(LPF_D, LOW);
 	digitalWrite(TX_LINE, LOW);
 	digitalWrite(BAND_SELECT, LOW);
 }
