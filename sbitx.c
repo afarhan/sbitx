@@ -17,7 +17,7 @@
 
 char audio_card[32];
 
-int tx_shift = 768;
+int tx_shift = 512;
 #define TX_LINE 4
 #define BAND_SELECT 5
 #define LPF_A 5
@@ -40,7 +40,7 @@ fftw_plan plan_fwd, plan_tx;
 /* int bfo_freq = 27025570; //for vxo */
 // bfo_freq = 27034000;
 int bfo_freq = 40035000;
-int freq_hdr = 7050000;
+int freq_hdr = 7000000;
 
 static double volume 	= 100000.0;
 static double mic_gain = 200000000.0;
@@ -70,24 +70,10 @@ struct filter *tx_filter;	//convolution filter
 int fserial = 0;
 
 void radio_tune_to(u_int32_t f){
-  //si5351bx_setfreq(2, f + bfo_freq - 24000 + TUNING_SHIFT);
-  si5351bx_setfreq(0, f + bfo_freq - 24000 + TUNING_SHIFT);
+  si5351bx_setfreq(2, f + bfo_freq - 24000 + TUNING_SHIFT);
   printf("Setting radio to %d\n", f);
 }
 
-void radio_tx(int turn_on){
-	u_int8_t cmd[5];
-	if (turn_on){
-		cmd[0] = CMD_TX;
-	}
-	else{
-		cmd[0] = CMD_RX;
-	}
-	
-	for (int i = 0; i < 5; i++)
-		serialPutchar(fserial, cmd[i]);
-	printf("tx is %d\n", (int)cmd[0]);
-}
 
 /*
 //ffts for transmit, we only transmit one channel at a time
@@ -182,7 +168,7 @@ void set_lpf_40mhz(int frequency){
 		lpf = LPF_D;
 	else if (frequency < 10500000)		
 		lpf = LPF_C;
-	else if (frequency < 21000000)		
+	else if (frequency < 18500000)		
 		lpf = LPF_B;
 	else if (frequency < 30000000)
 		lpf = LPF_A; 
@@ -194,107 +180,29 @@ void set_lpf_40mhz(int frequency){
 	}
 
 	printf("##################Setting LPF to %d\n", lpf);
-  /*
-	//reset the 4017
-	digitalWrite(BAND_SELECT, HIGH);
-	delay(5);
-	digitalWrite(BAND_SELECT, LOW);
-	delay(1);
-  
-	//go to the band
-	for (int i = 0; i < lpf; i++){
-		digitalWrite(BAND_SELECT, HIGH);
-		delayMicroseconds(200);
-		digitalWrite(BAND_SELECT, LOW);
-		delayMicroseconds(200);
-	} 
-  */
 
-  digitalWrite(LPF_A, HIGH);
-  digitalWrite(LPF_B, HIGH);
-  digitalWrite(LPF_C, HIGH);
-  digitalWrite(LPF_D, HIGH);
+  digitalWrite(LPF_A, LOW);
+  digitalWrite(LPF_B, LOW);
+  digitalWrite(LPF_C, LOW);
+  digitalWrite(LPF_D, LOW);
 
-  digitalWrite(lpf, LOW); 
+  printf("################ setting %d high\n", lpf);
+  digitalWrite(lpf, HIGH); 
 	prev_lpf = lpf;
 }
 
-void set_lpf_40mhz_1w(int frequency){
-	static int prev_lpf = -1;
-	int lpf = 0;
-
-
-	if (frequency < 5500000)
-		lpf = 3;
-	else if (frequency < 10500000)		
-		lpf = 2;
-	else if (frequency < 21000000)		
-		lpf = 1;
-	else if (frequency < 30000000)
-		lpf = 0; 
-
-
-	if (lpf == prev_lpf){
-		puts("LPF not changed");
-		return;
+void radio_tx(int turn_on){
+	u_int8_t cmd[5];
+	if (turn_on){
+		cmd[0] = CMD_TX;
 	}
-
-	printf("##################Setting LPF to %d\n", lpf);
-  
-	//reset the 4017
-	digitalWrite(BAND_SELECT, HIGH);
-	delay(5);
-	digitalWrite(BAND_SELECT, LOW);
-	delay(1);
-  
-	//go to the band
-	for (int i = 0; i < lpf; i++){
-		digitalWrite(BAND_SELECT, HIGH);
-		delayMicroseconds(200);
-		digitalWrite(BAND_SELECT, LOW);
-		delayMicroseconds(200);
-	} 
- 
-	prev_lpf = lpf;
-}
-
-void set_lpf_27m(int frequency){
-	static int prev_lpf = -1;
-	int lpf = 0;
-
-	if (frequency < 2000000)
-		lpf = 5;
-	else if (frequency < 4000000)		
-		lpf = 4;
-	else if (frequency < 8000000)		
-		lpf = 3;
-	else if (frequency < 10500000)
-		lpf = 3;
-	else if (frequency < 15000000)
-		lpf = 2;
-	else if (frequency < 21500000)
-		lpf = 1;
-
-	if (lpf == prev_lpf){
-		puts("LPF not changed");
-		return;
+	else{
+		cmd[0] = CMD_RX;
 	}
-
-	printf("Setting LPF to %d\n", lpf);
-	//reset the 4017
-	digitalWrite(BAND_SELECT, HIGH);
-	delay(5);
-	digitalWrite(BAND_SELECT, LOW);
-	delay(1);
-
-	//go to the band
-	for (int i = 0; i < lpf; i++){
-		digitalWrite(BAND_SELECT, HIGH);
-		delayMicroseconds(200);
-		digitalWrite(BAND_SELECT, LOW);
-		delayMicroseconds(200);
-	}
-	prev_lpf = lpf;
+	
+	for (int i = 0; i < 5; i++)
+		serialPutchar(fserial, cmd[i]);
+	printf("tx is %d\n", (int)cmd[0]);
 }
 
 void set_lo(int frequency){
@@ -308,7 +216,7 @@ void set_rx1(int frequency){
 	radio_tune_to(frequency);
 	freq_hdr = frequency;
 	printf("freq: %d\n", frequency);
-	set_lpf_40mhz_1w(frequency);
+	set_lpf_40mhz(frequency);
 }
 
 void set_volume(double v){
@@ -346,7 +254,7 @@ struct rx *add_tx(int frequency, short mode, int bpf_low, int bpf_high){
 	struct rx *r = malloc(sizeof(struct rx));
 	r->low_hz = bpf_low;
 	r->high_hz = bpf_high;
-	r->tuned_bin = 768; 
+	r->tuned_bin = 512; 
 
 	//create fft complex arrays to convert the frequency back to time
 	r->fft_time = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * MAX_BINS);
@@ -593,8 +501,8 @@ void tx_2tone(
 	//gather the samples into a time domain array 
 	for (i= MAX_BINS/2; i < MAX_BINS; i++){
 
-	  //i_sample = (1.0 * vfo_read(&tone_a)) / 2000000000.0;
-		i_sample = (1.0 *  (vfo_read(&tone_b)  + vfo_read(&tone_a) )) / 20000000000.0;
+	  i_sample = (1.0 * vfo_read(&tone_a)) / 2000000000.0;
+		//i_sample = (1.0 *  (vfo_read(&tone_b)  + vfo_read(&tone_a) )) / 20000000000.0;
 		q_sample = 0;
 
 		j++;
@@ -660,99 +568,6 @@ void tx_2tone(
   }
 }
 
-void tx_process_old(
-	int32_t *input_rx, int32_t *input_mic, 
-	int32_t *output_speaker, int32_t *output_tx, 
-	int n_samples)
-{
-	int i;
-	double i_sample, q_sample;
-
-	// we are reusing the rx structure, we should
-	// have a seperate tx structure to work with	
-	struct rx *r = rx_list;
-
-	//first add the previous M samples
-	for (i = 0; i < MAX_BINS/2; i++)
-		fft_in[i]  = fft_m[i];
-
-	int m = 0;
-	int j = 0;
-	//gather the samples into a time domain array 
-	for (i= MAX_BINS/2; i < MAX_BINS; i++){
-
-		//i_sample = (1.0 * vfo_read(&tone_a)) / 2000000000.0;
-		if(r->mode == MODE_2TONE)
-			i_sample = (1.0 * (vfo_read(&tone_a) + vfo_read(&tone_b))) / 20000000.0;
-		else
-			i_sample = (1.0 * input_mic[j]) / 2000000000.0;
-		q_sample = 0;
-
-		j++;
-
-		__real__ fft_m[m] = i_sample;
-		__imag__ fft_m[m] = q_sample;
-
-		__real__ fft_in[i]  = i_sample;
-		__imag__ fft_in[i]  = q_sample;
-		m++;
-	}
-
-	//convert to frequency
-	fftw_execute(plan_fwd);
-
-
-	// NOTE: fft_out holds the fft output (in freq domain) of the 
-	// incoming mic samples 
-	// the naming is unfortunate
-
-	// apply the filter
-	for (i = 0; i < MAX_BINS; i++)
-		fft_out[i] *= tx_filter->fir_coeff[i];
-
-	// the usb extends from 0 to MAX_BINS/2 - 1, 
-	// the lsb extends from MAX_BINS - 1 to MAX_BINS/2 (reverse direction)
-	// zero out the other sideband
-
-	// TBD: Something strange is going on, this should have been the otherway
-
-
-	if (r->mode == MODE_LSB || r->mode == MODE_CWR)
-		// zero out the LSB
-		for (i = MAX_BINS/2; i < MAX_BINS; i++){
-			__real__ fft_out[i] = 0;
-			__imag__ fft_out[i] = 0;	
-		}
-	else  
-		// zero out the USB
-		for (i = 0; i < MAX_BINS/2; i++){
-			__real__ fft_out[i] = 0;
-			__imag__ fft_out[i] = 0;	
-		}
-
-	//now rotate to the tx_bin 
-	for (i = 0; i < MAX_BINS; i++){
-		int b = i + tx_shift;
-		if (b >= MAX_BINS)
-			b = b - MAX_BINS;
-		if (b < 0)
-			b = b + MAX_BINS;
-		r->fft_freq[b] = fft_out[i];
-	}
-
-	// the spectrum display is updated
-	spectrum_update();
-	//convert back to time domain	
-	fftw_execute(r->plan_rev);
-
-	//send the output back to where it needs to go
-	for (i= 0; i < MAX_BINS/2; i++){
-		output_tx[i] = creal(rx_list->fft_time[i+(MAX_BINS/2)]) * volume;
-    //output_tx[i] = 0;
-		output_speaker[i] = 0; 
-	}
-}
-
 void tx_process(
 	int32_t *input_rx, int32_t *input_mic, 
 	int32_t *output_speaker, int32_t *output_tx, 
@@ -773,9 +588,9 @@ void tx_process(
 	for (i= MAX_BINS/2; i < MAX_BINS; i++){
 
 		if (r->mode == MODE_2TONE)
-    {
 			i_sample = (1.0 * (vfo_read(&tone_a) + vfo_read(&tone_b))) / 20000000000.0;
-    }
+    else if (r->mode == MODE_CW)
+			i_sample = (1.0 * vfo_read(&tone_a)) / 10000000000.0;
 	  else {
 	  	i_sample = (1.0 * input_mic[j]) / 2000000000.0;
     }
@@ -897,10 +712,10 @@ void setup_oscillators(){
   si5351bx_init();
   delay(200);
   si5351bx_setfreq(1, bfo_freq);
+
   delay(200);
   si5351bx_setfreq(1, bfo_freq);
 
-  si5351bx_setfreq(2, 7000000 + bfo_freq);
   si5351_reset();
 }
 
@@ -1048,7 +863,9 @@ void sdr_request(char *request, char *response){
 		if (!strcmp(value, "on")){
 			in_tx = 1;
       fft_reset_m_bins();
+      //set_lpf_40mhz(freq_hdr);
 			digitalWrite(TX_LINE, HIGH);
+      delay(50);
 			radio_tx(1);	
       printf("Setting tx_power to %d, gain to %d\n", tx_power, tx_gain);
 			sound_mixer(audio_card, "Master", tx_power);

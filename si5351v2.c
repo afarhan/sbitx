@@ -42,9 +42,8 @@
 
 #define PLL_N 32
 #define PLLFREQ (xtal_freq_calibrated * PLL_N)
-//int xtal_freq_calibrated = 25012725; // pcb
-int xtal_freq_calibrated = 25003150; // pcb
-
+//int xtal_freq_calibrated = 25012725; // crystal oscillator 
+int xtal_freq_calibrated = 25000000; // tcxo
 
 uint32_t plla_freq, pllb_freq;
 
@@ -73,6 +72,12 @@ void si5351a_clkoff(uint8_t clk)
   //i2c_exit();
 }
 
+/*
+  Follow the AN619 application note for the Si5351
+  a = mult
+  b = num
+  c = denom
+*/
 
 static void setup_pll(uint8_t pll, uint8_t mult, uint32_t num, uint32_t denom)
 {
@@ -185,20 +190,11 @@ static void set_frequency_fixedpll(int clk, int pll, uint32_t pllfreq, uint32_t 
   int32_t denom = 0x80000l;
   uint32_t divider = pllfreq / freq; // range: 8 ~ 1800
   uint32_t integer_part = divider * freq;
-//  Serial.print("*");Serial.print(integer_part);
   uint32_t reminder = pllfreq -  integer_part;
-//  Serial.print("r");Serial.print(reminder);
 
   uint32_t num = ((uint64_t)reminder * (uint64_t)denom)/freq;
-/*
-  Serial.print("pll:");Serial.print(pllfreq);
-  Serial.print(", Freq:");
-  Serial.print(freq);Serial.print(",");
-  Serial.print(", divr:");  Serial.print(divider);
-  Serial.print(", rem:");Serial.print(reminder);
-  Serial.print(", num");
-  Serial.println(num);
-*/
+
+  printf("fixedpll: clk:%d, freq:%d, pll:%d, pllfreq:%d, rdiv:%d\n", clk, freq, pll, pllfreq, rdiv);
   setup_multisynth(clk, pll, divider, num, denom, rdiv, drive_strength);
 }
 
@@ -209,6 +205,7 @@ static void set_freq_fixeddiv(int clk, int pll, uint32_t frequency, int divider,
   int32_t multi = pllfreq / xtal_freq_calibrated;
   int32_t num = ((uint64_t)(pllfreq % xtal_freq_calibrated) * 0x80000)/xtal_freq_calibrated;
 
+  printf("fixeddiv clk:%d, freq:%d, pll:%d, pllfreq:%d, div: %d\n", clk, frequency, pll, pllfreq, divider);
 /*  Serial.print("317:");
   Serial.print(multi);Serial.print(",");
   Serial.print(num);Serial.print(",");
@@ -218,33 +215,28 @@ static void set_freq_fixeddiv(int clk, int pll, uint32_t frequency, int divider,
   setup_multisynth(clk, pll, divider, 0, 1, SI_R_DIV_1, drive_strength);
 }
 
-void si5351bx_setfreq(uint8_t clk, uint32_t frequency){
-  uint8_t pll;
 
-  printf("Setting clock %d to %d\n", clk, frequency);
+void si5351bx_setfreq(uint8_t clk, uint32_t frequency){
+  int pll;
 
   if (clk == 1)
     pll = SI_SYNTH_PLL_B;
   else
     pll = SI_SYNTH_PLL_A;
+
+  int pll_div = 650000000l / frequency;
+
+  //round to the next even integer
+  if (pll_div * 650000000l != frequency)
+    pll_div++;
  
-  //Serial.println(frequency);
-  /*if (frequency <= 100000000l){
-    setup_pll(pll, 26, 0, 1);
-    set_frequency_fixedpll(clk, pll, (xtal_freq_calibrated * 26), frequency, SI_R_DIV_1, SI5351_CLK_DRIVE_STRENGTH_8MA);
-  }
-  else */
-  if (frequency < 150000000l)
-    set_freq_fixeddiv(clk, pll, frequency, 6, SI5351_CLK_DRIVE_STRENGTH_8MA);
-  else 
-    set_freq_fixeddiv(clk, pll, frequency, 4, SI5351_CLK_DRIVE_STRENGTH_8MA);
+  if (pll_div & 1)
+    pll_div++;
+
+   set_freq_fixeddiv(clk, pll, frequency, pll_div, 
+                    SI5351_CLK_DRIVE_STRENGTH_8MA);
 }
 
-void si5351bx_init(){ 
-  i2cbb_init(SDA, SCL);
-  si5351_reset();
-  si5351a_clkoff(1);
-}
 
 void si5351_set_calibration(int32_t cal){
     xtal_freq_calibrated = cal;
