@@ -1,0 +1,15 @@
+// this is a comment, best skipped
+// 
+section = {
+  key1 = 'joe doe';
+  key2 = 'acme inc';
+  key3 = {
+    sub1 = 'something';
+    sub2 = 'else';
+  };
+};
+
+
+
+
+

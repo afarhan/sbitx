@@ -20,6 +20,10 @@ char audio_card[32];
 int tx_shift = 512;
 #define TX_LINE 4
 #define BAND_SELECT 5
+#define LPF_A 5
+#define LPF_B 6
+#define LPF_C 10
+#define LPF_D 11
 
 float fft_bins[MAX_BINS]; // spectrum ampltiudes  
 fftw_complex *fft_spectrum;
@@ -34,8 +38,9 @@ fftw_complex *fft_in;			// holds the incoming samples in time domain (for rx as 
 fftw_complex *fft_m;			// holds previous samples for overlap and discard convolution 
 fftw_plan plan_fwd, plan_tx;
 /* int bfo_freq = 27025570; //for vxo */
-int bfo_freq = 27034000;
-int freq_hdr = 7050000;
+// bfo_freq = 27034000;
+int bfo_freq = 40035000;
+int freq_hdr = 7000000;
 
 static double volume 	= 100000.0;
 static double mic_gain = 200000000.0;
@@ -48,6 +53,7 @@ static int in_tx = 0;
 struct vfo tone_a, tone_b; //these are audio tone generators
 
 struct rx *rx_list = NULL;
+struct rx *tx_list = NULL;
 struct filter *tx_filter;	//convolution filter
 
 /* radio control. We only need two functions to control the radio hardware:
@@ -64,23 +70,10 @@ struct filter *tx_filter;	//convolution filter
 int fserial = 0;
 
 void radio_tune_to(u_int32_t f){
-  si5351bx_setfreq(0, f + bfo_freq - 24000 + TUNING_SHIFT);
+  si5351bx_setfreq(2, f + bfo_freq - 24000 + TUNING_SHIFT);
   printf("Setting radio to %d\n", f);
 }
 
-void radio_tx(int turn_on){
-	u_int8_t cmd[5];
-	if (turn_on){
-		cmd[0] = CMD_TX;
-	}
-	else{
-		cmd[0] = CMD_RX;
-	}
-	
-	for (int i = 0; i < 5; i++)
-		serialPutchar(fserial, cmd[i]);
-	printf("tx is %d\n", (int)cmd[0]);
-}
 
 /*
 //ffts for transmit, we only transmit one channel at a time
@@ -120,6 +113,15 @@ void fft_init(){
 	make_hann_window(spectrum_window, MAX_BINS);
 }
 
+void fft_reset_m_bins(){
+	//zero up the previous 'M' bins
+	for (int i= 0; i < MAX_BINS/2; i++){
+		__real__ fft_m[i]  = 0.0;
+		__imag__ fft_m[i]  = 0.0;
+	}
+  puts("*flushed the m-bins");
+}
+
 int mag2db(double mag){
 	int m = abs(mag) * 10000000;
 	
@@ -157,49 +159,56 @@ void spectrum_update(){
   redraw();
 }
 
-void set_lpf(int frequency){
+void set_lpf_40mhz(int frequency){
 	static int prev_lpf = -1;
 	int lpf = 0;
 
-	if (frequency < 2000000)
-		lpf = 5;
-	else if (frequency < 4000000)		
-		lpf = 4;
-	else if (frequency < 8000000)		
-		lpf = 3;
-	else if (frequency < 10500000)
-		lpf = 3;
-	else if (frequency < 15000000)
-		lpf = 2;
-	else if (frequency < 21500000)
-		lpf = 1;
+
+	if (frequency < 5500000)
+		lpf = LPF_D;
+	else if (frequency < 10500000)		
+		lpf = LPF_C;
+	else if (frequency < 18500000)		
+		lpf = LPF_B;
+	else if (frequency < 30000000)
+		lpf = LPF_A; 
+
 
 	if (lpf == prev_lpf){
 		puts("LPF not changed");
 		return;
 	}
 
-	printf("Setting LPF to %d\n", lpf);
-	//reset the 4017
-	digitalWrite(BAND_SELECT, HIGH);
-	delay(5);
-	digitalWrite(BAND_SELECT, LOW);
-	delay(1);
+	printf("##################Setting LPF to %d\n", lpf);
 
-	//go to the band
-	for (int i = 0; i < lpf; i++){
-		digitalWrite(BAND_SELECT, HIGH);
-		delayMicroseconds(200);
-		digitalWrite(BAND_SELECT, LOW);
-		delayMicroseconds(200);
-	}
+  digitalWrite(LPF_A, LOW);
+  digitalWrite(LPF_B, LOW);
+  digitalWrite(LPF_C, LOW);
+  digitalWrite(LPF_D, LOW);
+
+  printf("################ setting %d high\n", lpf);
+  digitalWrite(lpf, HIGH); 
 	prev_lpf = lpf;
+}
+
+void radio_tx(int turn_on){
+	u_int8_t cmd[5];
+	if (turn_on){
+		cmd[0] = CMD_TX;
+	}
+	else{
+		cmd[0] = CMD_RX;
+	}
+	
+	for (int i = 0; i < 5; i++)
+		serialPutchar(fserial, cmd[i]);
+	printf("tx is %d\n", (int)cmd[0]);
 }
 
 void set_lo(int frequency){
 	freq_hdr = frequency;
 	printf("freq: %d\n", frequency);
-	set_lpf(frequency);
+	set_lpf_40mhz(frequency);
 	radio_tune_to(frequency);
 }
 
@@ -207,7 +216,7 @@ void set_rx1(int frequency){
 	radio_tune_to(frequency);
 	freq_hdr = frequency;
 	printf("freq: %d\n", frequency);
-	set_lpf(frequency);
+	set_lpf_40mhz(frequency);
 }
 
 void set_volume(double v){
@@ -235,6 +244,43 @@ void tx_init(int frequency, short mode, int bpf_low, int bpf_high){
 
 	tx_filter = filter_new(1024, 1025);
 	filter_tune(tx_filter, (1.0 * bpf_low)/96000.0, (1.0 * bpf_high)/96000.0 , 5);
+}
+
+struct rx *add_tx(int frequency, short mode, int bpf_low, int bpf_high){
+
+	//we assume that there are 96000 samples / sec, giving us a 48khz slice
+	//the tuning can go up and down only by 22 KHz from the center_freq
+
+	struct rx *r = malloc(sizeof(struct rx));
+	r->low_hz = bpf_low;
+	r->high_hz = bpf_high;
+	r->tuned_bin = 512; 
+
+	//create fft complex arrays to convert the frequency back to time
+	r->fft_time = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * MAX_BINS);
+	r->fft_freq = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * MAX_BINS);
+	r->plan_rev = fftw_plan_dft_1d(MAX_BINS, r->fft_freq, r->fft_time, FFTW_BACKWARD, FFTW_ESTIMATE);
+
+	r->output = 0;
+	r->next = NULL;
+	r->mode = mode;
+	
+	r->filter = filter_new(1024, 1025);
+	filter_tune(r->filter, (1.0 * bpf_low)/96000.0, (1.0 * bpf_high)/96000.0 , 5);
+
+	if (abs(bpf_high - bpf_low) < 1000){
+		r->agc_speed = 10;
+		r->agc_threshold = -60;
+		r->agc_loop = 0;
+	}
+	else {
+		r->agc_speed = 5;
+		r->agc_threshold = -60;
+		r->agc_loop = 0;
+	}
+
+  r->next = tx_list;
+  tx_list = r;
 }
 
 struct rx *add_rx(int frequency, short mode, int bpf_low, int bpf_high){
@@ -426,6 +472,7 @@ void rx_process(int32_t *input_rx,  int32_t *input_mic,
 			//keep transmit buffer empty
 			output_tx[i] = 0;
 		}
+
 }
 
 
@@ -442,7 +489,7 @@ void tx_2tone(
 {
 	int i, j, m;
 	double i_sample, q_sample;
-	struct rx *r = rx_list;
+	struct rx *r = tx_list;
 
 	// these are the sample from previous block that are 
 	// use as a par of overlap-and discard filtering (read about it in dspguid,com
@@ -454,8 +501,8 @@ void tx_2tone(
 	//gather the samples into a time domain array 
 	for (i= MAX_BINS/2; i < MAX_BINS; i++){
 
-		//i_sample = (1.0 * vfo_read(&tone_a)) / 2000000000.0;
-		i_sample = (1.0 *  (vfo_read(&tone_b)  + vfo_read(&tone_a) )) / 20000000000.0;
+	  i_sample = (1.0 * vfo_read(&tone_a)) / 2000000000.0;
+		//i_sample = (1.0 *  (vfo_read(&tone_b)  + vfo_read(&tone_a) )) / 20000000000.0;
 		q_sample = 0;
 
 		j++;
@@ -518,7 +565,7 @@ void tx_2tone(
 	for (i= 0; i < MAX_BINS/2; i++){
 		output_tx[i] = creal(rx_list->fft_time[i+(MAX_BINS/2)]) * volume;
 		output_speaker[i] = output_tx[i]; 
-	}
+  }
 }
 
 void tx_process(
@@ -529,9 +576,7 @@ void tx_process(
 	int i;
 	double i_sample, q_sample;
 
-	// we are reusing the rx structure, we should
-	// have a seperate tx structure to work with	
-	struct rx *r = rx_list;
+	struct rx *r = tx_list;
 
 	//first add the previous M samples
 	for (i = 0; i < MAX_BINS/2; i++)
@@ -542,26 +587,27 @@ void tx_process(
 	//gather the samples into a time domain array 
 	for (i= MAX_BINS/2; i < MAX_BINS; i++){
 
-		//i_sample = (1.0 * vfo_read(&tone_a)) / 2000000000.0;
-		if(r->mode == MODE_2TONE)
-			i_sample = (1.0 * (vfo_read(&tone_a) + vfo_read(&tone_b))) / 20000000.0;
-		else
-			i_sample = (1.0 * input_mic[j]) / 2000000000.0;
-		q_sample = 0;
+		if (r->mode == MODE_2TONE)
+			i_sample = (1.0 * (vfo_read(&tone_a) + vfo_read(&tone_b))) / 20000000000.0;
+    else if (r->mode == MODE_CW)
+			i_sample = (1.0 * vfo_read(&tone_a)) / 10000000000.0;
+	  else {
+	  	i_sample = (1.0 * input_mic[j]) / 2000000000.0;
+    }
+	  q_sample = 0;
 
-		j++;
+	  j++;
 
-		__real__ fft_m[m] = i_sample;
-		__imag__ fft_m[m] = q_sample;
+	  __real__ fft_m[m] = i_sample;
+	  __imag__ fft_m[m] = q_sample;
 
-		__real__ fft_in[i]  = i_sample;
-		__imag__ fft_in[i]  = q_sample;
-		m++;
+	  __real__ fft_in[i]  = i_sample;
+	  __imag__ fft_in[i]  = q_sample;
+	  m++;
 	}
 
 	//convert to frequency
 	fftw_execute(plan_fwd);
-
 
 	// NOTE: fft_out holds the fft output (in freq domain) of the 
 	// incoming mic samples 
@@ -591,6 +637,7 @@ void tx_process(
 			__imag__ fft_out[i] = 0;	
 		}
 
+
 	//now rotate to the tx_bin 
 	for (i = 0; i < MAX_BINS; i++){
 		int b = i + tx_shift;
@@ -608,7 +655,7 @@ void tx_process(
 
 	//send the output back to where it needs to go
 	for (i= 0; i < MAX_BINS/2; i++){
-		output_tx[i] = creal(rx_list->fft_time[i+(MAX_BINS/2)]) * volume;
+		output_tx[i] = creal(r->fft_time[i+(MAX_BINS/2)]) * volume;
 		output_speaker[i] = 0; 
 	}
 }
@@ -623,9 +670,9 @@ void sound_process(
 	int n_samples)
 {
 	if (in_tx){
-		if (rx_list->mode == MODE_2TONE)
-			tx_2tone(input_rx, input_mic, output_speaker, output_tx, n_samples);
-		else
+		//if (rx_list->mode == MODE_2TONE)
+		//	tx_2tone(input_rx, input_mic, output_speaker, output_tx, n_samples);
+		//else
 			tx_process(input_rx, input_mic, output_speaker, output_tx, n_samples);
 	}
 	else
@@ -655,6 +702,7 @@ void setup_audio_codec(){
 	sound_mixer(audio_card, "Master", 90);
 	sound_mixer(audio_card, "Output Mixer HiFi", 1);
 	sound_mixer(audio_card, "Output Mixer Mic Sidetone", 0);
+
 }
 
 void setup_oscillators(){
@@ -663,11 +711,11 @@ void setup_oscillators(){
   delay(200);
   si5351bx_init();
   delay(200);
-  si5351bx_setfreq(2, bfo_freq);
-  delay(200);
-  si5351bx_setfreq(2, bfo_freq);
+  si5351bx_setfreq(1, bfo_freq);
 
-  si5351bx_setfreq(0, 7000000);
+  delay(200);
+  si5351bx_setfreq(1, bfo_freq);
+
   si5351_reset();
 }
 
@@ -676,13 +724,20 @@ This is the one-time initialization code
 */
 void setup(){
 
+  pinMode(LPF_A, OUTPUT);
+  pinMode(LPF_B, OUTPUT);
+  pinMode(LPF_C, OUTPUT);
+  pinMode(LPF_D, OUTPUT);
+
 	fft_init();
 	vfo_init_phase_table();
   setup_oscillators();
 
 	add_rx(7000000, MODE_LSB, -3000, -300);
+	add_tx(7000000, MODE_LSB, -3000, -300);
 	rx_list->tuned_bin = 512;
-	tx_init(7000000, MODE_LSB, -3000, -300);
+  tx_list->tuned_bin = 512;
+	tx_init(7000000, MODE_USB, -3000, -300);
 
 	sound_thread_start("hw:0,0");
 	setup_audio_codec();
@@ -700,8 +755,6 @@ void setup(){
 		}
 	}
 	delay(2000);	
-//	si570_init();
-//	set_lo(7021000);
 }
 
 void sdr_request(char *request, char *response){
@@ -748,9 +801,11 @@ void sdr_request(char *request, char *response){
 			rx_list->mode = MODE_CW;
 		else if (!strcmp(value, "CWR"))
 			rx_list->mode = MODE_CWR;
-		else if (!strcmp(value, "2TONE")){
+		else if (!strcmp(value, "2TONE"))
 			rx_list->mode = MODE_2TONE;
-		}
+		
+    //set the tx mode to that of the rx1
+    tx_list->mode = rx_list->mode;
 
 		// An interesting but non-essential note:
 		// the sidebands inverted twice, to come out correctly after all
@@ -762,12 +817,17 @@ void sdr_request(char *request, char *response){
 		// converts to a second IF of 26.999 - 27.025 = 26 KHz
 		// Effectively, if a signal moves up, so does the second IF
 
-		if (rx_list->mode == MODE_USB || rx_list->mode == MODE_CW){
+		if (rx_list->mode == MODE_USB || rx_list->mode == MODE_CW ||
+      rx_list->mode == MODE_2TONE){
 			filter_tune(rx_list->filter, 
 				(1.0 * -3000)/96000.0, 
 				(1.0 * -300)/96000.0 , 
 				5);
 			puts("\n\n\ntx filter ");
+			filter_tune(tx_list->filter, 
+				(1.0 * -3000)/96000.0, 
+				(1.0 * -300)/96000.0 , 
+				5);
 			filter_tune(tx_filter, 
 				(1.0 * -3000)/96000.0, 
 				(1.0 * -300)/96000.0 , 
@@ -779,6 +839,10 @@ void sdr_request(char *request, char *response){
 				(1.0 * 3000)/96000.0 , 
 				5);
 			puts("\n\n\ntx filter ");
+			filter_tune(tx_list->filter, 
+				(1.0 * 300)/96000.0, 
+				(1.0 * 3000)/96000.0 , 
+				5);
 			filter_tune(tx_filter, 
 				(1.0 * 300)/96000.0, 
 				(1.0 * 3000)/96000.0 , 
@@ -798,8 +862,12 @@ void sdr_request(char *request, char *response){
 	else if (!strcmp(cmd, "tx")){
 		if (!strcmp(value, "on")){
 			in_tx = 1;
+      fft_reset_m_bins();
+      //set_lpf_40mhz(freq_hdr);
 			digitalWrite(TX_LINE, HIGH);
+      delay(50);
 			radio_tx(1);	
+      printf("Setting tx_power to %d, gain to %d\n", tx_power, tx_gain);
 			sound_mixer(audio_card, "Master", tx_power);
 			sound_mixer(audio_card, "Capture", tx_gain);
 			strcpy(response, "ok");
@@ -807,6 +875,7 @@ void sdr_request(char *request, char *response){
 		}
 		else {
 			in_tx = 0;
+      fft_reset_m_bins();
 			strcpy(response, "ok");
 			digitalWrite(TX_LINE, LOW);
 			radio_tx(0);

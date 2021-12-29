@@ -12,10 +12,12 @@
 #include <ncurses.h>
 #include "sdr.h"
 #include "sdr_ui.h"
+#include "ini.h"
 #include <gtk/gtk.h>
 #include <gdk/gdkkeysyms.h>
 #include <cairo.h>
 #include <wiringPi.h>
+#include <wiringSerial.h>
 
 /* Front Panel controls */
 char pins[15] = {0, 2, 3, 6, 7, 
@@ -51,13 +53,18 @@ struct encoder enc_a, enc_b;
 
 #define TX_LINE 4
 #define BAND_SELECT 5
+#define LPF_A 5
+#define LPF_B 6
+#define LPF_C 10
+#define LPF_D 11
 
 char output_pins[] = {
 	TX_LINE, BAND_SELECT	
 };
 
+static int serial_fd = -1;
 static int xit = 512; 
-static int tuning_step = 50;
+static int tuning_step = 1000;
 
 struct band {
 	int frequency, low,  high, mode;
@@ -72,22 +79,13 @@ struct band {
 #define BAND40M 6 
 #define BAND60M 7 
 #define BAND80M 8 
- 	
-#define MAX_BANDS 9
-#define MAX_STACK 3 
-struct band band_stack[] = {
-		{3500000,300, 3000, MODE_LSB},
-		{3510000,500, 800, MODE_CWR},
-		{3573000,500, 800, MODE_DIGITAL},
-		{3700000,300, 3000, MODE_LSB},
 
-		{7000000,300, 3000, MODE_LSB},
-		{7040000,500, 800, MODE_CWR},
-		{7074000,300, 3000, MODE_DIGITAL},
-		{7150000,300, 3000, MODE_LSB},
-		{3700000,300, 3000, MODE_LSB},
+struct band_memory{
+    int frequency;
+    int mode;
 };
-int band_stack_index = 0;
+
+
 
 GtkWidget *display_area = NULL;
 int screen_width, screen_height;
@@ -179,19 +177,6 @@ struct font_style font_table[] = {
 	get confused 
 */
 
-/*
-#define R1FREQ_CONTROL 1
-#define R1MODE_CONTROL 2
-#define BAND_CONTROL 3
-#define R1GAIN_CONROL 4
-
-#define FREQUENCY_DISPLAY 0 
-#define SPECTRUM_CONTROL 7 
-#define WATERFALL_CONTROL 9 
-
-//#define MAX_MAIN_CONTROLS 7 
-*/
-
 struct field {
 	char	*cmd;
 	int		x, y, width, height;
@@ -206,7 +191,7 @@ struct field {
 
 // the cmd fields that have '#' are not to be sent to the sdr
 struct field main_controls[] = {
-	{ "r1:freq", 500, 0, 130, 49, "", 5, "14000000", FIELD_NUMBER, FONT_LARGE_VALUE, "", 500000, 21500000, 100},
+	{ "r1:freq", 500, 0, 130, 49, "", 5, "14000000", FIELD_NUMBER, FONT_LARGE_VALUE, "", 500000, 30000000, 100},
 
 	// Main RX
 	{"#r1", 70, 55 ,100, 50, "MAIN RX", 1, "MAIN RX", FIELD_STATIC, FONT_FIELD_VALUE, "ON/OFF", 0,0,0},
@@ -218,7 +203,8 @@ struct field main_controls[] = {
 
 	{ "r1:agc", 70, 150, 55, 50, "AGC", 40, "SLOW", FIELD_SELECTION, FONT_FIELD_VALUE, "OFF/SLOW/FAST", 0, 1024, 1},
 	{ "r1:gain", 125, 150, 55, 50, "IF GAIN", 40, "60", FIELD_NUMBER, FONT_FIELD_VALUE, "", 0, 100, 1},
-	{  "#band", 180, 150, 55, 50, "Band", 40, "80M", FIELD_SELECTION, FONT_FIELD_VALUE, "160M/80M/60M/40M/30M/20M/17M/15M/10M", 0,0, 0},
+	//{  "#band", 180, 150, 55, 50, "Band", 40, "80M", FIELD_SELECTION, FONT_FIELD_VALUE, "160M/80M/60M/40M/30M/20M/17M/15M/10M", 0,0, 0},
+	{  "#band", 180, 150, 55, 50, "Band", 40, "80M", FIELD_SELECTION, FONT_FIELD_VALUE, "10M/15M/17M/20M/30M/40M/60M/80M", 0,0, 0},
 	{"r1:mute", 235, 150 ,55, 50, "MUTE", 1, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, "ON/OFF", 0,0,0},
 
 	// Sub RX
@@ -251,8 +237,8 @@ struct field main_controls[] = {
 	{"#span", 690, 0 ,50, 50, "SPAN", 1, "25KHz", FIELD_SELECTION, FONT_FIELD_VALUE, "25KHz/10KHz/3KHz", 0,0,0},
 
 	/* beyond MAX_MAIN_CONROLS are the static text display */
-	{"spectrum", 340, 50, 400, 200, "Spectrum ", 70, "7050 KHz", FIELD_STATIC, FONT_SMALL, "", 0,0,0},   
-	{"waterfall", 340, 270 , 400, 210, "Waterfall ", 70, "7050 KHz", FIELD_STATIC, FONT_SMALL, "", 0,0,0},
+	{"spectrum", 340, 50, 400, 200, "Spectrum ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, "", 0,0,0},   
+	{"waterfall", 340, 270 , 400, 210, "Waterfall ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, "", 0,0,0},
 	{"#close", 750, 0 ,50, 50, "CLOSE", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
 	{"#off", 750, 430 ,50, 50, "OFF", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
 
@@ -355,7 +341,7 @@ void init_waterfall(){
 		GDK_COLORSPACE_RGB, FALSE, 8, f->width, f->height, f->width*3, NULL,NULL);
 		// format,         alpha?, bit,  widht,    height, rowstride, destryfn, data
 
-	printf("%ld return from pixbuff", (int)waterfall_pixbuf);	
+//	printf("%ld return from pixbuff", (int)waterfall_pixbuf);	
 }
 
 
@@ -767,10 +753,12 @@ static void tx_off(){
 
 static gboolean on_key_release (GtkWidget *widget, GdkEventKey *event, gpointer user_data) {
 	key_modifier = 0;
-/*
-	if (event->keyval == MIN_KEY_TAB)
+
+	if (event->keyval == MIN_KEY_TAB){
 		tx_off();
-*/
+    puts("Transmit off");
+  }
+
 }
 
 static gboolean on_key_press (GtkWidget *widget, GdkEventKey *event, gpointer user_data) {
@@ -809,6 +797,7 @@ static gboolean on_key_press (GtkWidget *widget, GdkEventKey *event, gpointer us
 			break;
 		case MIN_KEY_TAB:
 			tx_on();
+      puts("Tx is ON!");
 			break;
 		case 't':
 			tx_on();
@@ -883,7 +872,16 @@ void init_gpio_pins(){
 		pullUpDnControl(pins[i], PUD_UP);
 	}
 	pinMode(TX_LINE, OUTPUT);
-	pinMode(BAND_SELECT, OUTPUT);
+	pinMode(LPF_A, OUTPUT);
+	pinMode(LPF_B, OUTPUT);
+	pinMode(LPF_C, OUTPUT);
+	pinMode(LPF_D, OUTPUT);
+	pinMode(PTT, INPUT);
+	pullUpDnControl(PTT, PUD_UP);
+  digitalWrite(LPF_A, LOW);
+  digitalWrite(LPF_B, LOW);
+  digitalWrite(LPF_C, LOW);
+  digitalWrite(LPF_D, LOW);
 	digitalWrite(TX_LINE, LOW);
 	digitalWrite(BAND_SELECT, LOW);
 }
@@ -946,6 +944,80 @@ int enc_read(struct encoder *e) {
   return result;
 }
 
+char cat_command[100];
+
+void cat_init(){
+  serial_fd = serialOpen("/dev/pts/2", 38400);
+  if (serial_fd == -1){
+    puts("*Error: Serial port didn't open\n");
+  }
+  strcpy(cat_command, ""); 
+}
+
+
+void cat_poll(){
+  char c, buff[100];
+
+  while(serialDataAvail(serial_fd)){
+    c = serialGetchar(serial_fd);
+    int l = strlen(cat_command);
+    if (l < sizeof(cat_command) - 1){
+      cat_command[l++] = c;
+      cat_command[l] = 0;
+    }
+    if (c == ';'){
+      if (!strcmp(cat_command, "ID;"))
+        serialPuts(serial_fd, "ID020;");
+      else if (!strncmp(cat_command, "FA", 2)){ //read the frequency
+	      struct field *f = get_field("r1:freq");
+	      int freq = atoi(f->value);	
+        if (cat_command[2] != ';'){
+          int freq = atoi(cat_command + 5);
+	        sprintf(f->value, "%d", freq);
+	        sprintf(buff, "r1:freq=%d", freq);	
+	        update_field(f);
+	        do_cmd(buff);
+        }
+        serialPrintf(serial_fd, "FA000%08d;", atoi(f->value));
+      }
+      else if(!strncmp(cat_command, "IF", 2)){
+	      struct field *f = get_field("r1:freq");
+        serialPrintf(serial_fd, "IF000%8d     +00000000002000000 ;", f->value);
+        //                       12345678456789012345678901234567890
+      }
+      else if (!strncmp(cat_command, "PS", 2))
+        serialPrintf(serial_fd, "PS1;");
+      else if (!strncmp(cat_command, "AI", 2))
+        serialPrintf(serial_fd, "AI1;");
+      else if (!strncmp(cat_command, "MD", 2)){
+          switch(cat_command[2]){
+          case '1': set_field("r1:mode", "LSB");break;
+          case '2': set_field("r1:mode", "USB");break;
+          case '3': set_field("r1:mode", "CW");break;
+          case '4': set_field("r1:mode", "NBFM");break;
+          case '7': set_field("r1:mode", "CWR");break;
+          }
+          struct field *f = get_field("r1:mode");
+          if (!strcmp(f->value, "USB"))
+            serialPuts(serial_fd, "MD2;");
+          else if (!strcmp(f->value, "LSB"))
+            serialPuts(serial_fd, "MD1;");
+          else if (!strcmp(f->value, "CW"))
+            serialPuts(serial_fd, "MD3;");
+          else if (!strcmp(f->value, "CWR"))
+            serialPuts(serial_fd, "MD7;");
+          else if (!strcmp(f->value, "NBFM"))
+            serialPuts(serial_fd, "MD4;");
+      }
+      else if (!strcmp(cat_command, "RX;")){
+        serialPuts(serial_fd, "RX0;");
+      }
+    
+      printf("*** CAT : %s\n", cat_command);
+      cat_command[0] = 0;
+    }
+  }
+}
 
 gboolean ui_tick(gpointer gook){
 	int static ticks = 0;
@@ -960,6 +1032,8 @@ gboolean ui_tick(gpointer gook){
 		ticks = 0;
 	}
 
+  cat_poll();
+
 	// check the tuning knob
 	struct field *f = get_field("r1:freq");
 	int tuning = enc_read(&enc_b);
@@ -969,12 +1043,15 @@ gboolean ui_tick(gpointer gook){
 		else if (tuning > 0)
 			edit_field(f, MIN_KEY_UP);
 	}
+
+ 
+ /*  
 	//check the push-to-talk
 	if (digitalRead(PTT) == LOW && in_tx == 0)
 		tx_on();	
 	else if (digitalRead(PTT) == HIGH && in_tx == 1)
 		tx_off();
-
+  */
 	int scroll = enc_read(&enc_a);
 	if (scroll && f_focus){
 		if (scroll < 0)
@@ -1058,6 +1135,12 @@ void switch_band(){
 		new_freq = 3500000 + freq_khz;
 	else if (!strcmp(f_band->value, "160M"))
 		new_freq = 1800000 + freq_khz;
+	else if (!strcmp(f_band->value, "30M"))
+		new_freq = 10000000 + freq_khz;
+	else if (!strcmp(f_band->value, "17M"))
+		new_freq = 18000000 + freq_khz;
+	else if (!strcmp(f_band->value, "60M"))
+		new_freq = 5500000 + freq_khz;
 	else
 		new_freq = old_freq;
 
@@ -1153,11 +1236,36 @@ void do_cmd(char *cmd){
 		sdr_request(request, response);
 }
 
+static int user_settings_handler(void* user, const char* section, 
+            const char* name, const char* value)
+{
+    char cmd[1000];
+    char new_value[200];
+
+    strcpy(new_value, value);
+    if (!strcmp(section, "r1")){
+      sprintf(cmd, "%s:%s", section, name);
+      set_field(cmd, new_value);
+    }
+    else if (!strcmp(section, "tx")){
+      strcpy(cmd, name);
+      set_field(cmd, new_value);
+    }
+    
+    // if it is an empty section
+    else if (strlen(section) == 0){
+      sprintf(cmd, "#%s", name);
+      set_field(cmd, new_value); 
+    }
+    return 1;
+}
+
 int main( int argc, char* argv[] ) {
 
 	puts("sBITX v0.30");
 	ui_init(argc, argv);
 	wiringPiSetup();
+	init_gpio_pins();
 	setup();
 	struct field *f;
 
@@ -1166,13 +1274,16 @@ int main( int argc, char* argv[] ) {
 	//set the radio to some decent defaults
 	do_cmd("r1:freq=7100000");
 	do_cmd("r1:mode=LSB");	
+	do_cmd("#step=1000");	
+  do_cmd("#span=25KHZ");
 	
 	f = get_field("spectrum");
 	update_field(f);
 	set_volume(3000000);
-	init_gpio_pins();
-	enc_init(&enc_b, ENC_FAST, ENC1_A, ENC1_B);
-	enc_init(&enc_a, ENC_SLOW, ENC2_A, ENC2_B);
+	//enc_init(&enc_b, ENC_FAST, ENC1_A, ENC1_B);
+	//enc_init(&enc_a, ENC_SLOW, ENC2_A, ENC2_B);
+	enc_init(&enc_a, ENC_FAST, ENC1_B, ENC1_A);
+	enc_init(&enc_b, ENC_SLOW, ENC2_B, ENC2_A);
 
 	if (argc > 1 && !strcmp(argv[1], "calibrate"))
 		do_calibration();
@@ -1181,14 +1292,20 @@ int main( int argc, char* argv[] ) {
 	printf("g_timeout_add() = %d\n", e);
 
 	set_field("#band", "40M");
-	set_field("r1:freq", "7050000");
+	set_field("r1:freq", "7000000");
 	set_field("r1:mode", "USB");
 	set_field("tx_gain", "24");
 	set_field("tx_power", "100");
 	set_field("r1:gain", "41");
 	set_field("r1:volume", "85");
-  gtk_main();
 
+  if (ini_parse("sbitx_user_settings.ini", user_settings_handler, NULL)<0){
+    printf("Unable to load sbitx_user_settings.ini\n");
+  }
+
+  cat_init();
+  gtk_main();
+  
   return 0;
 }
 
