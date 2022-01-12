@@ -194,7 +194,6 @@ static void set_frequency_fixedpll(int clk, int pll, uint32_t pllfreq, uint32_t 
 
   uint32_t num = ((uint64_t)reminder * (uint64_t)denom)/freq;
 
-  //printf("fixedpll: clk:%d, freq:%d, pll:%d, pllfreq:%d, rdiv:%d\n", clk, freq, pll, pllfreq, rdiv);
   setup_multisynth(clk, pll, divider, num, denom, rdiv, drive_strength);
 }
 
@@ -246,10 +245,8 @@ void si5351bx_init(){
   i2cbb_init(SDA, SCL);
   si5351_reset();
   si5351a_clkoff(1);
-
-  delay(1000);
-
 }
+
 /*
 void main(int argc, char **argv){
 	wiringPiSetup();

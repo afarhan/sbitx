@@ -1069,13 +1069,12 @@ gboolean ui_tick(gpointer gook){
 	}
 
  
-   
 	//check the push-to-talk
 	if (digitalRead(PTT) == LOW && in_tx == 0)
 		tx_on();	
 	else if (digitalRead(PTT) == HIGH && in_tx == 1)
 		tx_off();
-  
+
 	int scroll = enc_read(&enc_a);
 	if (scroll && f_focus){
 		if (scroll < 0)
@@ -1285,7 +1284,6 @@ static int user_settings_handler(void* user, const char* section,
 }
 
 
-
 int main( int argc, char* argv[] ) {
 
 	puts("sBITX v0.30");
@@ -1309,6 +1307,7 @@ int main( int argc, char* argv[] ) {
 	f = get_field("spectrum");
 	update_field(f);
 	set_volume(3000000);
+
 	enc_init(&enc_a, ENC_FAST, ENC1_B, ENC1_A);
 	enc_init(&enc_b, ENC_SLOW, ENC2_B, ENC2_A);
 
