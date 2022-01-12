@@ -194,7 +194,7 @@ static void set_frequency_fixedpll(int clk, int pll, uint32_t pllfreq, uint32_t 
 
   uint32_t num = ((uint64_t)reminder * (uint64_t)denom)/freq;
 
-  printf("fixedpll: clk:%d, freq:%d, pll:%d, pllfreq:%d, rdiv:%d\n", clk, freq, pll, pllfreq, rdiv);
+  //printf("fixedpll: clk:%d, freq:%d, pll:%d, pllfreq:%d, rdiv:%d\n", clk, freq, pll, pllfreq, rdiv);
   setup_multisynth(clk, pll, divider, num, denom, rdiv, drive_strength);
 }
 
@@ -205,7 +205,7 @@ static void set_freq_fixeddiv(int clk, int pll, uint32_t frequency, int divider,
   int32_t multi = pllfreq / xtal_freq_calibrated;
   int32_t num = ((uint64_t)(pllfreq % xtal_freq_calibrated) * 0x80000)/xtal_freq_calibrated;
 
-  printf("fixeddiv clk:%d, freq:%d, pll:%d, pllfreq:%d, div: %d\n", clk, frequency, pll, pllfreq, divider);
+  //printf("fixeddiv clk:%d, freq:%d, pll:%d, pllfreq:%d, div: %d\n", clk, frequency, pll, pllfreq, divider);
 /*  Serial.print("317:");
   Serial.print(multi);Serial.print(",");
   Serial.print(num);Serial.print(",");
@@ -242,6 +242,14 @@ void si5351_set_calibration(int32_t cal){
     xtal_freq_calibrated = cal;
 }
 
+void si5351bx_init(){ 
+  i2cbb_init(SDA, SCL);
+  si5351_reset();
+  si5351a_clkoff(1);
+
+  delay(1000);
+
+}
 /*
 void main(int argc, char **argv){
 	wiringPiSetup();

@@ -71,7 +71,7 @@ int fserial = 0;
 
 void radio_tune_to(u_int32_t f){
   si5351bx_setfreq(2, f + bfo_freq - 24000 + TUNING_SHIFT);
-  printf("Setting radio to %d\n", f);
+  //printf("Setting radio to %d\n", f);
 }
 
 
@@ -175,18 +175,18 @@ void set_lpf_40mhz(int frequency){
 
 
 	if (lpf == prev_lpf){
-		puts("LPF not changed");
+		//puts("LPF not changed");
 		return;
 	}
 
-	printf("##################Setting LPF to %d\n", lpf);
+	//printf("##################Setting LPF to %d\n", lpf);
 
   digitalWrite(LPF_A, LOW);
   digitalWrite(LPF_B, LOW);
   digitalWrite(LPF_C, LOW);
   digitalWrite(LPF_D, LOW);
 
-  printf("################ setting %d high\n", lpf);
+  //printf("################ setting %d high\n", lpf);
   digitalWrite(lpf, HIGH); 
 	prev_lpf = lpf;
 }
@@ -202,12 +202,12 @@ void radio_tx(int turn_on){
 	
 	for (int i = 0; i < 5; i++)
 		serialPutchar(fserial, cmd[i]);
-	printf("tx is %d\n", (int)cmd[0]);
+	//printf("tx is %d\n", (int)cmd[0]);
 }
 
 void set_lo(int frequency){
 	freq_hdr = frequency;
-	printf("freq: %d\n", frequency);
+	//printf("freq: %d\n", frequency);
 	set_lpf_40mhz(frequency);
 	radio_tune_to(frequency);
 }
@@ -269,12 +269,12 @@ struct rx *add_tx(int frequency, short mode, int bpf_low, int bpf_high){
 	filter_tune(r->filter, (1.0 * bpf_low)/96000.0, (1.0 * bpf_high)/96000.0 , 5);
 
 	if (abs(bpf_high - bpf_low) < 1000){
-		r->agc_speed = 10;
+		r->agc_speed = 300;
 		r->agc_threshold = -60;
 		r->agc_loop = 0;
 	}
 	else {
-		r->agc_speed = 5;
+		r->agc_speed = 300;
 		r->agc_threshold = -60;
 		r->agc_loop = 0;
 	}
@@ -306,14 +306,16 @@ struct rx *add_rx(int frequency, short mode, int bpf_low, int bpf_high){
 	filter_tune(r->filter, (1.0 * bpf_low)/96000.0, (1.0 * bpf_high)/96000.0 , 5);
 
 	if (abs(bpf_high - bpf_low) < 1000){
-		r->agc_speed = 10;
+		r->agc_speed = 300;
 		r->agc_threshold = -60;
 		r->agc_loop = 0;
+    r->signal_avg = 0;
 	}
 	else {
-		r->agc_speed = 5;
+		r->agc_speed = 300;
 		r->agc_threshold = -60;
 		r->agc_loop = 0;
+    r->signal_avg = 0;
 	}
 
 	r->next = rx_list;
@@ -322,56 +324,58 @@ struct rx *add_rx(int frequency, short mode, int bpf_low, int bpf_high){
 
 int count = 0;
 
+/* In our first cut, we will implement a signal strength meter */
 double agc(struct rx *r){
 	int i;
-	r->signal_strength = 0.0;
+  double signal_strength;
 
-	//we only look at the first 80 bins as the audio doesn't go beyond 4 KHz
-	// find the largest amplitude
-	for (i=0; i < 80; i++){
-		double s = cabs(r->fft_time[i+(MAX_BINS/2)]);
-		if (r->signal_strength < s) 
-			r->signal_strength = s;
+  if (r->agc_speed == -1){
+	  for (i=0; i < MAX_BINS/2; i++)
+			__imag__ (r->fft_time[i+(MAX_BINS/2)]) *=10000000;
+    return 10000000;
+  }
+
+  signal_strength = 0.0;
+
+  //find the peak signal amplitude
+	for (i=0; i < MAX_BINS/2; i++){
+		double s = cimag(r->fft_time[i+(MAX_BINS/2)]) * 1000;
+		if (signal_strength < s) 
+			signal_strength = s;
 	}
+  r->signal_avg = (r->signal_avg * 0.93) + (signal_strength * 0.07);
 
-	//store the signal strenght in a buffer of last r->agc_speed blocks of 
-	if (r->agc_loop >= r->agc_speed)
-		r->agc_loop = 0;
+  /* climb up the agc quickly if the signal is beyond the threshold */
+  if (signal_strength > r->signal_strength){
+    r->agc_gain = 100000000000/signal_strength;
+    r->signal_strength = signal_strength;
+    r->agc_loop = r->agc_speed;
+   
+    //scale down the signal accordingly 
+	  for (i=0; i < MAX_BINS/2; i++){
+			__imag__ (r->fft_time[i+(MAX_BINS/2)]) *= r->agc_gain;
+    }
+    printf("\nAttack!\n");
+  }
+  else if (r->agc_loop <= 0 ){
+    //if (signal_strength < 4 * r->signal_strength)
+    //  r->agc_gain = (r->agc_gain * 9)/10;
+    r->signal_strength = signal_strength;
+    double decay_rate = (1.0*(r->agc_gain-r->signal_strength))/(MAX_BINS*30);
+    for (i = 0; i < MAX_BINS/2; i++){
+			  __imag__ (r->fft_time[i+(MAX_BINS/2)]) *= r->agc_gain;
+        r->agc_gain -= decay_rate;
+    }
+    printf("\nDecay! %d\n", r->agc_gain);
+  }
+  else{
+    for (i = 0; i < MAX_BINS/2; i++)
+		  __imag__ (r->fft_time[i+(MAX_BINS/2)]) *= r->agc_gain;
+    r->agc_loop--;
+  }
 
-	//we now try to maintain a level of signal to 1000,000 
-	r->agc_reading[r->agc_loop++] = r->signal_strength;
-
-	//find the gain reduction needed
-	double gain = 1000.0;
-	for (i = 0; i < r->agc_speed; i++)
-		if (gain > 100 / r->agc_reading[i])
-			gain = 100 / r->agc_reading[i];
-
-	//if (gain > 200)
-	//	gain = 200;
-
-	//we have to ramp up the gain from r->agc_gain to the new gain in 100 steps
-	double gain_step = (gain - r->agc_gain) / 100.0;
-	for (i = 0; i < 100; i++)
-		__imag__ r->fft_time[i+(MAX_BINS/2)] = cimag(r->fft_time[i+(MAX_BINS/2)]) * (r->agc_gain + gain_step);
-
-	for (i= 100; i < MAX_BINS/2; i++)
-		__imag__ r->fft_time[i+(MAX_BINS/2)] = cimag(r->fft_time[i+(MAX_BINS/2)]) * gain;
-
-
-	//convert signal strength, in-place, to dbm
-	r->signal_strength *= r->signal_strength;
-	r->signal_strength = power2dB(r->signal_strength);
-	r->signal_strength += MDS_LEVEL;
-	if ((count++ % 20) == 0){
-	//	for (i = 0; i < 10; i++)
-	//		printf("%g ", r->agc_reading[i]);
-	//	printf("speed %d, hang %d, step %g # %g - %g dBm\n", 
-	//		r->agc_speed, r->agc_loop, gain_step, gain, r->signal_strength);
-	}
-	//printf("gain %f, new gain %f, step %f\n", r->agc_gain, gain, gain_step); 	
-	r->agc_gain = gain;
-	return gain;
+  printf("s meter: %d %d %d \r", (int)r->agc_gain, (int)r->signal_strength, r->agc_loop);
+  return 100000000000 / r->agc_gain;  
 }
 
 void rx_process(int32_t *input_rx,  int32_t *input_mic, 
@@ -463,12 +467,14 @@ void rx_process(int32_t *input_rx,  int32_t *input_mic,
 	fftw_execute(r->plan_rev);
 
 	//STEP 8 : AGC
-	//double gain = agc(r);
+  //if (agc != -1)
+	  agc(r);
 	
 	//STEP 9: send the output back to where it needs to go
 	if (rx_list->output == 0)
 		for (i= 0; i < MAX_BINS/2; i++){
-			output_speaker[i] = cimag(r->fft_time[i+(MAX_BINS/2)]) * 10000000;
+			//output_speaker[i] = cimag(r->fft_time[i+(MAX_BINS/2)]) * gain;
+			 output_speaker[i] = cimag(r->fft_time[i+(MAX_BINS/2)]);
 			//keep transmit buffer empty
 			output_tx[i] = 0;
 		}
@@ -680,6 +686,19 @@ void sound_process(
 }
 
 
+void set_rx_filter(){
+	if (rx_list->mode == MODE_LSB || rx_list->mode == MODE_CWR) 
+    filter_tune(rx_list->filter, 
+      (1.0 * rx_list->low_hz)/96000.0, 
+      (1.0 * rx_list->high_hz)/96000.0 , 
+      5);
+  else
+    filter_tune(rx_list->filter, 
+      (1.0 * -rx_list->high_hz)/96000.0, 
+      (1.0 * -rx_list->low_hz)/96000.0 , 
+      5);
+}
+
 /* 
 Write code that mus repeatedly so things, it is called during the idle time 
 of the event loop 
@@ -760,7 +779,7 @@ void setup(){
 void sdr_request(char *request, char *response){
 	char cmd[100], value[1000];
 
-	printf("[%s]\n", request);
+	//printf("[%s]\n", request);
 
 	char *p = strchr(request, '=');
 	int n = p - request;
@@ -775,7 +794,7 @@ void sdr_request(char *request, char *response){
 		int d = atoi(value);
 		volume = d * 100;
 		set_volume(volume);
-		printf("Volume set to %d\n", volume);
+		//printf("Volume set to %d\n", volume);
 		strcpy(response, "ok");	
 	}
 	else*/ if (!strcmp(cmd, "xit")){
@@ -783,13 +802,13 @@ void sdr_request(char *request, char *response){
 		set_lo(d);
 		if (d > 0 && d < 2048)
 			tx_shift = -d;
-		printf("xit set to %d\n", freq_hdr);
+		//printf("xit set to %d\n", freq_hdr);
 		strcpy(response, "ok");	
 	} 
 	else if (!strcmp(cmd, "r1:freq")){
 		int d = atoi(value);
 		set_rx1(d);
-		printf("Frequency set to %d\n", freq_hdr);
+		//printf("Frequency set to %d\n", freq_hdr);
 		strcpy(response, "ok");	
 	} 
 	else if (!strcmp(cmd, "r1:mode")){
@@ -823,7 +842,7 @@ void sdr_request(char *request, char *response){
 				(1.0 * -3000)/96000.0, 
 				(1.0 * -300)/96000.0 , 
 				5);
-			puts("\n\n\ntx filter ");
+			//puts("\n\n\ntx filter ");
 			filter_tune(tx_list->filter, 
 				(1.0 * -3000)/96000.0, 
 				(1.0 * -300)/96000.0 , 
@@ -849,7 +868,7 @@ void sdr_request(char *request, char *response){
 				5);
 		}
 		
-		printf("mode set to %d\n", rx_list->mode);
+		//printf("mode set to %d\n", rx_list->mode);
 		strcpy(response, "ok");
 	}
 	else if (!strcmp(cmd, "txmode")){
@@ -907,7 +926,24 @@ void sdr_request(char *request, char *response){
 		if(!in_tx)	
 			sound_mixer(audio_card, "Master", rx_vol);
 	}
-	else
+	else if(!strcmp(cmd, "r1:high")){
+    rx_list->high_hz = atoi(value);
+    set_rx_filter();
+  }
+	else if(!strcmp(cmd, "r1:low")){
+    rx_list->low_hz = atoi(value);
+    set_rx_filter();
+  }
+  else if (!strcmp(cmd, "r1:agc")){
+    if (!strcmp(value, "OFF"))
+      rx_list->agc_speed = -1;
+    else if (!strcmp(value, "SLOW"))
+      rx_list->agc_speed = 100;
+    else if (!strcmp(value, "FAST"))
+      rx_list->agc_speed = 30;
+    printf("AGC set to %d\n", rx_list->agc_speed);
+  }
+  else
 		printf("*Error request[%s] not accepted\n", request);
 }
 

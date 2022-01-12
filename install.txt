@@ -1,11 +1,14 @@
+##Step 1:
 UPDATE wiringPi
 cd /tmp
 wget https://project-downloads.drogon.net/wiringpi-latest.deb
 sudo dpkg -i wiringpi-latest.deb
 
+##Step 2:
 You will next, install ncurses
 sudo apt-get install ncurses-dev
 
+##Step 3:
 INSTALLING FFTW3
 install fftw3 from the tarball downloaded from www.fftw.org, follow
 the instructions for the config, make.  run make install as sudo
@@ -16,13 +19,21 @@ precision float library.
 ./configure --enable-float
 make
 sudo make
+
+
+
+##Step 3:
 sudo apt-get install libasound2-dev
 sudo apt-get install libgtk-3-dev
 
+
+
+##Step 4:
 INSTALLING LOOPBACK
 sudo modprobe snd-aloop
 
 
+##Step 5:
 CONFIGURING SOUND
 Use VOX with loopback device
 plughw:CARD=Loopback,DEV=1
@@ -39,3 +50,12 @@ avoid_warnings=1
 # Enable audio (loads snd_bcm2835)
 #dtparam=audio=on
 dtoverlay=audioinjector-wm8731-audio
+
+#step 5 (add serial port for CAT control)
+socat -d -d pty,raw,echo=0 pty,raw,echo=0 &
+
+
+# step 7, installing tty0tty (it can be made persistent through reboots)
+first, install the kernel headers
+sudo apt install raspberrypi-kernel-headers
+

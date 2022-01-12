@@ -256,6 +256,31 @@ struct field main_controls[] = {
 	
 };
 
+
+void write_gui_ini(){
+  FILE *pf = fopen("gui_main.ini", "w");
+	int total = sizeof(main_controls) / sizeof(struct field);
+	for (int i = 0; i < total; i++){
+		struct field *f = main_controls + i;
+    fprintf(pf, "[%s]\n", f->cmd);
+    fprintf(pf, "x = %d\n", f->x);
+    fprintf(pf, "y = %d\n", f->y);
+    fprintf(pf, "width = %d\n", f->width);
+    fprintf(pf, "height = %d\n", f->height);
+    fprintf(pf, "label = %s\n", f->label);
+    fprintf(pf, "label_width = %d\n", f->label_width);
+    fprintf(pf, "value = %s\n", f->value);
+    fprintf(pf, "value = %d\n", f->value_type);
+    fprintf(pf, "font_index = %d\n", f->font_index);
+    fprintf(pf, "selection = %s\n", f->selection);
+    fprintf(pf, "min = %d\n", f->min);
+    fprintf(pf, "max = %d\n", f->max);
+    fprintf(pf, "step = %d\n\n", f->step);
+  }
+  fclose(pf);
+}
+
+
 //static int field_in_focus = -1;
 //static int field_in_hover = 0;
 
@@ -827,7 +852,6 @@ static gboolean on_key_press (GtkWidget *widget, GdkEventKey *event, gpointer us
 
 static gboolean on_scroll (GtkWidget *widget, GdkEventScroll *event, gpointer data) {
 	
-	printf("Scroll = %d\n", event->direction);
 	if (f_focus){
 		if (event->direction == 0)
 			edit_field(f_focus, MIN_KEY_UP);
@@ -1045,13 +1069,13 @@ gboolean ui_tick(gpointer gook){
 	}
 
  
- /*  
+   
 	//check the push-to-talk
 	if (digitalRead(PTT) == LOW && in_tx == 0)
 		tx_on();	
 	else if (digitalRead(PTT) == HIGH && in_tx == 1)
 		tx_off();
-  */
+  
 	int scroll = enc_read(&enc_a);
 	if (scroll && f_focus){
 		if (scroll < 0)
@@ -1260,6 +1284,8 @@ static int user_settings_handler(void* user, const char* section,
     return 1;
 }
 
+
+
 int main( int argc, char* argv[] ) {
 
 	puts("sBITX v0.30");
@@ -1271,6 +1297,9 @@ int main( int argc, char* argv[] ) {
 
 	f = main_controls;
 
+  /* write_gui_ini was used to dump the gui layout controls into an ini file */
+  //write_gui_ini(); 
+
 	//set the radio to some decent defaults
 	do_cmd("r1:freq=7100000");
 	do_cmd("r1:mode=LSB");	
@@ -1280,8 +1309,6 @@ int main( int argc, char* argv[] ) {
 	f = get_field("spectrum");
 	update_field(f);
 	set_volume(3000000);
-	//enc_init(&enc_b, ENC_FAST, ENC1_A, ENC1_B);
-	//enc_init(&enc_a, ENC_SLOW, ENC2_A, ENC2_B);
 	enc_init(&enc_a, ENC_FAST, ENC1_B, ENC1_A);
 	enc_init(&enc_b, ENC_SLOW, ENC2_B, ENC2_A);
 

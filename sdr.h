@@ -140,13 +140,20 @@ struct rx {
 	fftw_complex *fft_freq;
 	fftw_complex *fft_time;
 
-	//agc speed should not cross
-	int agc_speed;
+	/*
+    * agc() is called once for every block of samples. The samples
+    are in time-domain. Consider each call to agc as a 'tick'.
+    * agc_speed is the max ticks that the agc will hang for
+    * agc_loop tracks how many more ticks to go before the decay
+    * agc_decay rate sets the slope for agc decay.
+  */
+  int agc_speed;
 	int agc_threshold;
 	int agc_loop;
-	double agc_reading[MAX_BINS];
 	double signal_strength;
 	double agc_gain;
+  int agc_decay_rate;
+  double signal_avg;
 	
 	struct filter *filter;	//convolution filter
 	int output;							//-1 = nowhere, 0 = audio, rest is a tcp socket
