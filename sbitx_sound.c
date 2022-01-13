@@ -132,6 +132,7 @@ static int n_periods_per_buffer = 2;       /* Number of periods */
 static snd_pcm_t *pcm_play_handle=0;   	//handle for the pcm device
 static snd_pcm_t *pcm_capture_handle=0;   	//handle for the pcm device
 static snd_pcm_t *loopback_play_handle=0;   	//handle for the pcm device
+static snd_pcm_t *loopback_capture_handle=0;   	//handle for the pcm device
 
 static snd_pcm_stream_t play_stream = SND_PCM_STREAM_PLAYBACK;	//playback stream
 static snd_pcm_stream_t capture_stream = SND_PCM_STREAM_CAPTURE;	//playback stream
@@ -239,6 +240,80 @@ int sound_start_play(char *device){
 		return(-1);
 	}
 //	puts("All hw params set to play sound");
+
+	return 0;
+}
+
+
+int sound_start_loopback_capture(char *device){
+	snd_pcm_hw_params_alloca(&hwparams);
+
+	int e = snd_pcm_open(&loopback_capture_handle, device, capture_stream, 0);
+	
+	if (e < 0) {
+		fprintf(stderr, "Error opening loop capture device %s: %s\n", pcm_capture_name, snd_strerror(e));
+		return -1;
+	}
+
+	e = snd_pcm_hw_params_any(loopback_capture_handle, hwparams);
+
+	if (e < 0) {
+		fprintf(stderr, "*Error setting capture access (%d)\n", e);
+		return(-1);
+	}
+
+	e = snd_pcm_hw_params_set_access(loopback_capture_handle, hwparams, SND_PCM_ACCESS_RW_INTERLEAVED);
+	if (e < 0) {
+		fprintf(stderr, "*Error setting capture access.\n");
+		return(-1);
+	}
+
+  /* Set sample format */
+	e = snd_pcm_hw_params_set_format(loopback_capture_handle, hwparams, SND_PCM_FORMAT_S32_LE);
+	if (e < 0) {
+		fprintf(stderr, "*Error setting capture format.\n");
+		return(-1);
+	}
+
+
+	/* Set sample rate. If the exact rate is not supported */
+	/* by the hardware, use nearest possible rate.         */ 
+	exact_rate = rate;
+	e = snd_pcm_hw_params_set_rate_near(loopback_capture_handle, hwparams, &exact_rate, 0);
+	if ( e< 0) {
+		fprintf(stderr, "*Error setting capture rate.\n");
+		return(-1);
+	}
+
+	if (rate != exact_rate)
+		fprintf(stderr, "#The capture rate %d changed to %d Hz\n", rate, exact_rate);
+
+	/* Set number of channels */
+	if ((e = snd_pcm_hw_params_set_channels(loopback_capture_handle, hwparams, 2)) < 0) {
+		fprintf(stderr, "*Error setting capture channels.\n");
+		return(-1);
+	}
+
+	/* Set number of periods. Periods used to be called fragments. */ 
+	if ((e = snd_pcm_hw_params_set_periods(loopback_capture_handle, hwparams, n_periods_per_buffer, 0)) < 0) {
+		fprintf(stderr, "*Error setting capture periods.\n");
+		return(-1);
+	}
+
+
+	// the buffer size is each periodsize x n_periods
+	snd_pcm_uframes_t  n_frames= (buff_size  * n_periods_per_buffer)/ 8;
+	//printf("trying for buffer size of %ld\n", n_frames);
+	e = snd_pcm_hw_params_set_buffer_size_near(loopback_play_handle, hwparams, &n_frames);
+	if (e < 0) {
+		    fprintf(stderr, "*Error setting capture buffersize.\n");
+		    return(-1);
+	}
+
+	if (snd_pcm_hw_params(loopback_capture_handle, hwparams) < 0) {
+		fprintf(stderr, "*Error setting capture HW params.\n");
+		return(-1);
+	}
 
 	return 0;
 }
@@ -463,7 +538,7 @@ int sound_loop(){
     while ((pcmreturn = snd_pcm_writei(loopback_play_handle, 
 			data_out, frames)) < 0) {
        snd_pcm_prepare(loopback_play_handle);
-				puts("preparing loopback");
+			//puts("preparing loopback");
     } 
 	}
 }
@@ -508,6 +583,10 @@ void *sound_thread_function(void *ptr){
 		return NULL;
 	}
 
+	if (sound_start_loopback_capture("plughw:1,0")){
+		fprintf(stderr, "*Error opening loopback capture device");
+		return NULL;
+	}
 	sound_thread_continue = 1;
 
 	sound_loop();

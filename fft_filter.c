@@ -182,8 +182,8 @@ int filter_tune(struct filter *f, float const low,float const high,float const k
   assert(fabs(high) <= 0.5);
 
   float gain = 1./((float)f->N);
-	printf("# Gain is %lf\n", gain);
-	printf("# filter elements %d\n", f->N);
+	//printf("# Gain is %lf\n", gain);
+	//printf("# filter elements %d\n", f->N);
 
   for(int n = 0; n < f->N; n++){
     float s;

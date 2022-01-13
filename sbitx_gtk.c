@@ -554,7 +554,7 @@ static gboolean on_draw_event( GtkWidget* widget, cairo_t *cr, gpointer user_dat
 }
 
 static gboolean on_resize(GtkWidget *widget, GdkEventConfigure *event, gpointer user_data) {
-	printf("size changed to %d x %d\n", event->width, event->height);
+	//printf("size changed to %d x %d\n", event->width, event->height);
 	screen_width = event->width;
 	screen_height = event->height;
 }
@@ -683,10 +683,12 @@ static void focus_field(struct field *f){
 	if (f){
 		f_focus = f_hover = f;
 	}
+  /*
 	if (f_focus)
 		printf("focus is on %d\n", f_focus->cmd);
 	else
 		printf("focus lost\n");
+  */
 	update_field(f_hover);
 
 	//is it a toggle field?
@@ -845,7 +847,7 @@ static gboolean on_key_press (GtkWidget *widget, GdkEventKey *event, gpointer us
 		default:
 			if (f_focus)
 				edit_field(f_focus, event->keyval); 
-			printf("key = %d (%c)\n", event->keyval, (char)event->keyval); 	
+			//printf("key = %d (%c)\n", event->keyval, (char)event->keyval); 	
 	}
   return FALSE; 
 }
@@ -864,7 +866,7 @@ static gboolean on_scroll (GtkWidget *widget, GdkEventScroll *event, gpointer da
 static gboolean on_mouse_press (GtkWidget *widget, GdkEventButton *event, gpointer data) {
 	struct field *f;
 	if (event->type == GDK_BUTTON_PRESS && event->button == GDK_BUTTON_PRIMARY){
-		printf("mouse event at %d, %d\n", (int)(event->x), (int)(event->y));
+		//printf("mouse event at %d, %d\n", (int)(event->x), (int)(event->y));
 		for (int i = 0; i < sizeof(main_controls)/sizeof(struct field); i++) {
 			f = main_controls + i;
 			if (f->x < event->x && event->x < f->x + f->width 

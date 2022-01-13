@@ -355,7 +355,7 @@ double agc(struct rx *r){
 	  for (i=0; i < MAX_BINS/2; i++){
 			__imag__ (r->fft_time[i+(MAX_BINS/2)]) *= r->agc_gain;
     }
-    printf("\nAttack!\n");
+    //printf("\nAttack!\n");
   }
   else if (r->agc_loop <= 0 ){
     //if (signal_strength < 4 * r->signal_strength)
@@ -366,7 +366,7 @@ double agc(struct rx *r){
 			  __imag__ (r->fft_time[i+(MAX_BINS/2)]) *= r->agc_gain;
         r->agc_gain -= decay_rate;
     }
-    printf("\nDecay! %d\n", r->agc_gain);
+    //printf("\nDecay! %d\n", r->agc_gain);
   }
   else{
     for (i = 0; i < MAX_BINS/2; i++)
@@ -374,7 +374,7 @@ double agc(struct rx *r){
     r->agc_loop--;
   }
 
-  printf("s meter: %d %d %d \r", (int)r->agc_gain, (int)r->signal_strength, r->agc_loop);
+  //printf("s meter: %d %d %d \r", (int)r->agc_gain, (int)r->signal_strength, r->agc_loop);
   return 100000000000 / r->agc_gain;  
 }
 
