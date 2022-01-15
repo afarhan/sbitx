@@ -1,14 +1,16 @@
-/****************** SERVER CODE ****************/
-
 #include <stdio.h>
 #include <unistd.h>
+#include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <string.h>
 #include <arpa/inet.h>
 #include <stdlib.h>
+#include <errno.h>
+#include <fcntl.h>
+#include "sdr.h"
 
-int welcomeSocket, newSocket;
+static int welcome_socket = -1, data_socket = -1;
 #define MAX_DATA 1000
 char incoming_data[MAX_DATA];
 int incoming_ptr;
@@ -84,7 +86,7 @@ int check_cmd(char *cmd, char *token){
 }
 
 void send_response(char *response){
-    send(newSocket, response, strlen(response), 0);
+    send(data_socket, response, strlen(response), 0);
 }
 
 int freq = 7000000;
@@ -98,6 +100,7 @@ void send_freq(){
 void set_freq(char *f){
   freq = atoi(f);
   send_response("RPRT 0\n");
+
 }
 
 void tx_control(int s){
@@ -139,31 +142,7 @@ void interpret_command(char *cmd){
     tx_control(-1);
 }
 
-void start_server(){
-  char buffer[MAX_DATA];
-  struct sockaddr_in serverAddr;
-  struct sockaddr_storage serverStorage;
-  socklen_t addr_size;
-
-  welcomeSocket = socket(PF_INET, SOCK_STREAM, 0);
-  
-  serverAddr.sin_family = AF_INET;
-  serverAddr.sin_port = htons(4532);
-  serverAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
-  memset(serverAddr.sin_zero, '\0', sizeof serverAddr.sin_zero);  
-
-  /*---- Bind the address struct to the socket ----*/
-  bind(welcomeSocket, (struct sockaddr *) &serverAddr, sizeof(serverAddr));
-
-  /*---- Listen on the socket, with 5 max connection requests queued ----*/
-  if(listen(welcomeSocket,5)==0)
-    printf("Listening\n");
-  else
-    printf("Error\n");
-  incoming_ptr = 0;
-}
-
-void on_server(char *data, int len){
+void hamlib_handler(char *data, int len){
   for (int i = 0; i < len; i++){
     if (data[i] == '\n'){
       incoming_data[incoming_ptr] = 0;
@@ -177,6 +156,64 @@ void on_server(char *data, int len){
   }
 }
 
+void hamlib_start(){
+  char buffer[MAX_DATA];
+  struct sockaddr_in serverAddr;
+  struct sockaddr_storage serverStorage;
+  socklen_t addr_size;
+
+  welcome_socket = socket(PF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
+  
+  serverAddr.sin_family = AF_INET;
+  serverAddr.sin_port = htons(4532);
+  serverAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
+  memset(serverAddr.sin_zero, '\0', sizeof serverAddr.sin_zero);  
+
+  /*---- Bind the address struct to the socket ----*/
+  bind(welcome_socket, (struct sockaddr *) &serverAddr, sizeof(serverAddr));
+
+  /*---- Listen on the socket, with 5 max connection requests queued ----*/
+  if(listen(welcome_socket,5)==0)
+    printf("Listening\n");
+  else
+    printf("Error\n");
+  incoming_ptr = 0;
+}
+
+
+void hamlib_slice(){
+  struct sockaddr_storage server_storage;
+  socklen_t addr_size;
+  int e, len;
+  char buffer[1024];
+
+  if (data_socket == -1){
+    addr_size = sizeof server_storage;
+    e = accept(welcome_socket, (struct sockaddr *) &server_storage, &addr_size);
+    if (e == -1)
+      return;
+    puts("Accepted connection\n");
+    incoming_ptr = 0;
+    data_socket = e;
+    fcntl(data_socket, F_SETFL, fcntl(data_socket, F_GETFL) | O_NONBLOCK);
+  }
+  else { 
+    len = recv(data_socket, buffer, sizeof(buffer), 0);
+    if (len >= 0){
+      buffer[len] = 0;
+      hamlib_handler(buffer, len);
+    }
+    else {
+      //e = errno();
+      if (errno == EAGAIN || errno == EWOULDBLOCK)
+        return;
+      //for other errors, just close the socket
+      close(data_socket);
+      data_socket = 0;      
+    }
+  } 
+}
+/*
 int main(){
   struct sockaddr_storage serverStorage;
   socklen_t addr_size;
@@ -184,20 +221,13 @@ int main(){
   int len;
 
   puts("Starting server\n");
-  start_server();
+  hamlib_start();
   puts("Server started\n");
   while (1){
-    addr_size = sizeof serverStorage;
-    newSocket = accept(welcomeSocket, (struct sockaddr *) &serverStorage, &addr_size);
-    puts("Accepted connection\n");
-    incoming_ptr = 0;
-    /*---- Send message to the socket of the incoming connection ----*/
-    while(len = recv(newSocket, buffer, sizeof(buffer), 0)){
-      buffer[len] = 0;
-      on_server(buffer, len);
-    } 
-    close(newSocket);
+    hamlib_slice();
+    usleep(1000);
   }
   return 0;
 }
+*/
 

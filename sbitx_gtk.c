@@ -10,14 +10,15 @@
 #include <sys/mman.h>
 #include <sys/ioctl.h>
 #include <ncurses.h>
-#include "sdr.h"
-#include "sdr_ui.h"
-#include "ini.h"
 #include <gtk/gtk.h>
 #include <gdk/gdkkeysyms.h>
 #include <cairo.h>
 #include <wiringPi.h>
 #include <wiringSerial.h>
+#include "sdr.h"
+#include "sdr_ui.h"
+#include "ini.h"
+#include "hamlib.h"
 
 /* Front Panel controls */
 char pins[15] = {0, 2, 3, 6, 7, 
@@ -223,7 +224,7 @@ struct field main_controls[] = {
 	{ "tx_gain", 70, 370, 55, 50, "MIC", 40, "50", FIELD_NUMBER, FONT_FIELD_VALUE, "", 0, 100, 1},
 	{ "tx_power", 125, 370, 55, 50, "DRIVE", 40, "40", FIELD_NUMBER, FONT_FIELD_VALUE, "", 0, 100, 1},
 	{ "tx_comp", 180, 370, 55, 50, "COMP", 40, "0", FIELD_NUMBER, FONT_FIELD_VALUE, "", 0, 10, 1},
-	{ "tx_bw", 235, 370, 55, 50, "BW", 40, "2.7KHz", FIELD_SELECTION, FONT_FIELD_VALUE, "3KHz/2.2KHz/1.8KHz", 0,0, 0},
+	{ "mod", 235, 370, 55, 50, "MOD", 40, "MIC", FIELD_SELECTION, FONT_FIELD_VALUE, "MIC/LINE", 0,0, 0},
 
 	{ "tx_wpm", 70, 420, 55, 50, "WPM", 40, "12", FIELD_NUMBER, FONT_FIELD_VALUE, "", 1, 50, 1},
 	{ "tx_key", 125, 420, 55, 50, "KEY", 40, "HARD", FIELD_SELECTION, FONT_FIELD_VALUE, "SOFT/HARD", 0, 0, 0},
@@ -969,7 +970,7 @@ int enc_read(struct encoder *e) {
   }
   return result;
 }
-
+/*
 char cat_command[100];
 
 void cat_init(){
@@ -1044,6 +1045,7 @@ void cat_poll(){
     }
   }
 }
+*/
 
 gboolean ui_tick(gpointer gook){
 	int static ticks = 0;
@@ -1058,7 +1060,7 @@ gboolean ui_tick(gpointer gook){
 		ticks = 0;
 	}
 
-  cat_poll();
+  hamlib_slice();
 
 	// check the tuning knob
 	struct field *f = get_field("r1:freq");
@@ -1331,7 +1333,7 @@ int main( int argc, char* argv[] ) {
     printf("Unable to load sbitx_user_settings.ini\n");
   }
 
-  cat_init();
+  hamlib_start();
   gtk_main();
   
   return 0;

@@ -6,8 +6,6 @@
 /* follows the tutorial at http://alsamodular.sourceforge.net/alsa_programming_howto.html
 Next thing to try is http://www.saunalahti.fi/~s7l/blog/2005/08/21/Full%20Duplex%20ALSA
 
-
-
 	We are using 4 bytes per sample, 
 	each frame is consists of two channels of audio, hene 8 bytes 
   We are shooting for 2048 samples per period. that is 8K
@@ -144,6 +142,8 @@ static int exact_rate;   /* Sample rate returned by */
 static int	sound_thread_continue = 0;
 pthread_t sound_thread;
 
+int use_virtual_cable = 0;
+
 /* this function should be called just once in the application process.
 Calling it frequently will result in more allocation of hw_params memory blocks
 without releasing them.
@@ -248,10 +248,10 @@ int sound_start_play(char *device){
 int sound_start_loopback_capture(char *device){
 	snd_pcm_hw_params_alloca(&hwparams);
 
-	int e = snd_pcm_open(&loopback_capture_handle, device, capture_stream, 0);
+	int e = snd_pcm_open(&loopback_capture_handle, device, capture_stream, SND_PCM_NONBLOCK);
 	
 	if (e < 0) {
-		fprintf(stderr, "Error opening loop capture device %s: %s\n", pcm_capture_name, snd_strerror(e));
+		fprintf(stderr, "Error open loop capture device %s: %s\n", pcm_capture_name, snd_strerror(e));
 		return -1;
 	}
 
@@ -274,7 +274,6 @@ int sound_start_loopback_capture(char *device){
 		fprintf(stderr, "*Error setting capture format.\n");
 		return(-1);
 	}
-
 
 	/* Set sample rate. If the exact rate is not supported */
 	/* by the hardware, use nearest possible rate.         */ 
@@ -482,14 +481,16 @@ int sound_start_loopback_play(char *device){
 	return 0;
 }
 
+static int count = 0;
 int sound_loop(){
-	int32_t		*data_in, *data_out, *input_i, *output_i, *input_q, *output_q;
-  int pcmreturn, i, j;
+	int32_t		*line_in, *data_in, *data_out, *input_i, *output_i, *input_q, *output_q;
+  int pcmreturn, i, j, loopreturn;
   short s1, s2;
   int frames;
 
 	//we allocate enough for two channels of in32_t sized samples	
   data_in = (int32_t *)malloc(buff_size * 2);
+  line_in = (int32_t *)malloc(buff_size * 2);
   data_out = (int32_t *)malloc(buff_size * 2);
   input_i = (int32_t *)malloc(buff_size * 2);
   output_i = (int32_t *)malloc(buff_size * 2);
@@ -506,11 +507,16 @@ int sound_loop(){
 
 		//restart the pcm capture if there is an error reading the samples
 		//this is opened as a blocking device, hence we derive accurate timing 
-  	while ((pcmreturn = snd_pcm_readi(pcm_capture_handle, 
+    if (use_virtual_cable)
+  	  while((pcmreturn = snd_pcm_readi(pcm_capture_handle, line_in, frames)) < 0){ 
+          snd_pcm_prepare(loopback_capture_handle);
+      }  
+    else 
+  	  while ((pcmreturn = snd_pcm_readi(pcm_capture_handle, 
 								data_in,
 								frames)) < 0) {
-      snd_pcm_prepare(pcm_capture_handle);
-  	}
+        snd_pcm_prepare(pcm_capture_handle);
+  	  }
 
 		//there are two samples of 32-bit in each frame
 		i = 0; 
@@ -520,8 +526,13 @@ int sound_loop(){
 			input_q[i] = data_in[j++];
 			i++;
 		}
-		
+	
+    count++;	
 		sound_process(input_i, input_q, output_i, output_q, pcmreturn);
+    if (count % 100 == 0){
+      if (use_virtual_cable)
+        printf("%d\n", count);
+    }
 
 		i = 0; 
 		j = 0;	
@@ -602,7 +613,12 @@ void sound_thread_stop(){
 	sound_thread_continue = 0;
 }
 
-
+void sound_input_loop(int loop){
+  if (loop)
+    use_virtual_cable = 0;
+  else
+    use_virtual_cable = 1;
+}
 
 //demo, uncomment it to test it out
 /*

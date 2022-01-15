@@ -51,7 +51,7 @@ static int tx_gain = 100;
 static double spectrum_speed = 0.1;
 static int in_tx = 0;
 struct vfo tone_a, tone_b; //these are audio tone generators
-
+static int tx_use_line = 0;
 struct rx *rx_list = NULL;
 struct rx *tx_list = NULL;
 struct filter *tx_filter;	//convolution filter
@@ -675,12 +675,8 @@ void sound_process(
 	int32_t *output_speaker, int32_t *output_tx, 
 	int n_samples)
 {
-	if (in_tx){
-		//if (rx_list->mode == MODE_2TONE)
-		//	tx_2tone(input_rx, input_mic, output_speaker, output_tx, n_samples);
-		//else
+	if (in_tx)
 			tx_process(input_rx, input_mic, output_speaker, output_tx, n_samples);
-	}
 	else
 		rx_process(input_rx, input_mic, output_speaker, output_tx, n_samples);
 }
@@ -942,6 +938,12 @@ void sdr_request(char *request, char *response){
     else if (!strcmp(value, "FAST"))
       rx_list->agc_speed = 30;
     printf("AGC set to %d\n", rx_list->agc_speed);
+  }
+  else if (!strcmp(cmd, "mod")){
+    if (!strcmp(value, "MIC"))
+      tx_use_line = 0;
+    else if (!strcmp(value, "LINE"))
+      tx_use_line = 1;
   }
   else
 		printf("*Error request[%s] not accepted\n", request);
