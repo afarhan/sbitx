@@ -11,7 +11,12 @@ sudo pkg-reconfigure locales
 
 
 On WSJT-X
+Settings>Radio, Choose "Hamlib NET", the NetServer is set to "127.0.0.1"
 From Settings > Radio, Choose 'None' and VOx operation
-From Settings > Audio, Input and Output Set to "plughw:CARD=Loopback,DEV=1"
+From Settings > Audio, Input Set to "plughw:CARD=Loopback,DEV=1", "Mono"
+From Settings > Audio, Output Set to "plughw:CARD=Loopback,DEV=1", "Both"
 On sBITX
 Choose USB (LSB for now), volume at 100
+
+add the line to /etc/rc.local
+  sudo modprobe snd-aloop timer_source="hw:0,0,0"

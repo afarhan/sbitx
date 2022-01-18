@@ -16,6 +16,7 @@
 #include <wiringPi.h>
 #include <wiringSerial.h>
 #include "sdr.h"
+#include "sound.h"
 #include "sdr_ui.h"
 #include "ini.h"
 #include "hamlib.h"
@@ -970,6 +971,14 @@ int enc_read(struct encoder *e) {
   }
   return result;
 }
+
+void hamlib_tx(int tx_on){
+  if (tx_on)
+    sound_use_loop_input(1);
+  else
+    sound_use_loop_input(0);
+}
+
 /*
 char cat_command[100];
 
@@ -1325,7 +1334,7 @@ int main( int argc, char* argv[] ) {
 	set_field("r1:freq", "7000000");
 	set_field("r1:mode", "USB");
 	set_field("tx_gain", "24");
-	set_field("tx_power", "100");
+	set_field("tx_power", "85");
 	set_field("r1:gain", "41");
 	set_field("r1:volume", "85");
 

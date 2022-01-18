@@ -1,7 +1,11 @@
 #include <stdio.h>
 #include <alsa/asoundlib.h>
 #include <pthread.h>
+#include <complex.h>
+#include <fftw3.h>
+#include <time.h>
 #include "sound.h"
+#include "sdr.h"
 
 /* follows the tutorial at http://alsamodular.sourceforge.net/alsa_programming_howto.html
 Next thing to try is http://www.saunalahti.fi/~s7l/blog/2005/08/21/Full%20Duplex%20ALSA
@@ -50,6 +54,7 @@ examples of using sound_mixer function:
 
 */
 
+struct vfo tone_c; //these are audio tone generators
 
 void sound_volume(char *card_name, char *element, int volume)
 {
@@ -248,7 +253,7 @@ int sound_start_play(char *device){
 int sound_start_loopback_capture(char *device){
 	snd_pcm_hw_params_alloca(&hwparams);
 
-	int e = snd_pcm_open(&loopback_capture_handle, device, capture_stream, SND_PCM_NONBLOCK);
+	int e = snd_pcm_open(&loopback_capture_handle, device, capture_stream, 0);
 	
 	if (e < 0) {
 		fprintf(stderr, "Error open loop capture device %s: %s\n", pcm_capture_name, snd_strerror(e));
@@ -294,7 +299,7 @@ int sound_start_loopback_capture(char *device){
 	}
 
 	/* Set number of periods. Periods used to be called fragments. */ 
-	if ((e = snd_pcm_hw_params_set_periods(loopback_capture_handle, hwparams, n_periods_per_buffer, 0)) < 0) {
+	if ((e = snd_pcm_hw_params_set_periods(loopback_capture_handle, hwparams, 16, 0)) < 0) {
 		fprintf(stderr, "*Error setting capture periods.\n");
 		return(-1);
 	}
@@ -366,7 +371,7 @@ int sound_start_capture(char *device){
 	}
 
 	if (rate != exact_rate)
-		fprintf(stderr, "#The capture rate %d changed to %d Hz\n", rate, exact_rate);
+		printf("#The capture rate %d changed to %d Hz\n", rate, exact_rate);
 
 
 	/* Set number of channels */
@@ -457,7 +462,7 @@ int sound_start_loopback_play(char *device){
 	// frame = bytes_per_sample x n_channel
 	// period = frames transfered at a time (160 for voip, etc.)
 	// we use two periods per buffer.
-	if ((e = snd_pcm_hw_params_set_periods(loopback_play_handle, hwparams, n_periods_per_buffer, 0)) < 0) {
+	if ((e = snd_pcm_hw_params_set_periods(loopback_play_handle, hwparams, 8, 0)) < 0) {
 		fprintf(stderr, "*Error setting playback periods.\n");
 		return(-1);
 	}
@@ -481,7 +486,19 @@ int sound_start_loopback_play(char *device){
 	return 0;
 }
 
+void sound_process2(int32_t *input_i, int32_t *input_q, int32_t *output_i, int32_t *output_q, int n_samples){
+ 
+	for (int i= 0; i < n_samples; i++){
+		output_i[i] = input_i[i];
+		output_q[i] = 0;
+	}	
+}
+
 static int count = 0;
+static struct timespec gettime_now;
+static long int last_time = 0;
+static long int last_sec = 0;
+static int nframes = 0;
 int sound_loop(){
 	int32_t		*line_in, *data_in, *data_out, *input_i, *output_i, *input_q, *output_q;
   int pcmreturn, i, j, loopreturn;
@@ -504,12 +521,20 @@ int sound_loop(){
   snd_pcm_writei(pcm_play_handle, data_out, frames);
  
   while(sound_thread_continue) {
-
 		//restart the pcm capture if there is an error reading the samples
 		//this is opened as a blocking device, hence we derive accurate timing 
     if (use_virtual_cable)
-  	  while((pcmreturn = snd_pcm_readi(pcm_capture_handle, line_in, frames)) < 0){ 
-          snd_pcm_prepare(loopback_capture_handle);
+  	  while((pcmreturn = snd_pcm_readi(loopback_capture_handle, data_in, frames)) < 0){ 
+        if (pcmreturn == -EBADFD)
+          printf("EBADFD ");
+        else if (pcmreturn == -EPIPE)
+          printf("EPIPE ");
+        else if (pcmreturn == -ESTRPIPE)
+          printf("ESTRPIPE ");
+    //   else  
+    //      printf("E %d ", pcmreturn);
+        putchar('y');
+        snd_pcm_prepare(loopback_capture_handle);
       }  
     else 
   	  while ((pcmreturn = snd_pcm_readi(pcm_capture_handle, 
@@ -526,13 +551,12 @@ int sound_loop(){
 			input_q[i] = data_in[j++];
 			i++;
 		}
-	
-    count++;	
-		sound_process(input_i, input_q, output_i, output_q, pcmreturn);
-    if (count % 100 == 0){
-      if (use_virtual_cable)
-        printf("%d\n", count);
-    }
+    if (use_virtual_cable)
+		  sound_process2(input_i, input_q, output_i, output_q, pcmreturn);
+    else
+		  sound_process(input_i, input_q, output_i, output_q, pcmreturn);
+    putchar('2');
+	//	sound_process2(input_i, input_q, output_i, output_q, pcmreturn);
 
 		i = 0; 
 		j = 0;	
@@ -540,18 +564,26 @@ int sound_loop(){
 			data_out[j++] = output_i[i];
 			data_out[j++] = output_q[i++];
 		}
-		
+		putchar('3');
     while ((pcmreturn = snd_pcm_writei(pcm_play_handle, 
 			data_out, frames)) < 0) {
        snd_pcm_prepare(pcm_play_handle);
     }
- 
-    while ((pcmreturn = snd_pcm_writei(loopback_play_handle, 
-			data_out, frames)) < 0) {
+    if((pcmreturn = snd_pcm_writei(loopback_play_handle, 
+			data_out, frames)) < 0){
+        putchar('c');
+        /* if (pcmreturn == -EPIPE)
+          printf(" EPIPE ");
+        else */ if (pcmreturn == -EBADFD)
+          printf(" EBADFD ");
+        else if (pcmreturn == -ESTRPIPE)
+          printf(" ESTRPIPE ");
        snd_pcm_prepare(loopback_play_handle);
 			//puts("preparing loopback");
     } 
+    printf("]\n");
 	}
+  printf("********Ending sound thread\n");
 }
 
 //check that we haven't free()-ed up the hwparams block
@@ -584,6 +616,7 @@ void *sound_thread_function(void *ptr){
 		return NULL;
 	}
 
+  printf("opening plughw:1,0 sound card\n", device);	
 	if(sound_start_loopback_play("plughw:1,0")){
 		fprintf(stderr, "*Error opening loopback play device");
 		return NULL;
@@ -599,7 +632,7 @@ void *sound_thread_function(void *ptr){
 		return NULL;
 	}
 	sound_thread_continue = 1;
-
+  vfo_start(&tone_c, 700, 0);
 	sound_loop();
 	sound_stop();
 }
@@ -613,11 +646,11 @@ void sound_thread_stop(){
 	sound_thread_continue = 0;
 }
 
-void sound_input_loop(int loop){
+void sound_use_loop_input(int loop){
   if (loop)
-    use_virtual_cable = 0;
-  else
     use_virtual_cable = 1;
+  else
+    use_virtual_cable = 0;
 }
 
 //demo, uncomment it to test it out

@@ -8,12 +8,15 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <fcntl.h>
-#include "sdr.h"
+#include <complex.h>
 
 static int welcome_socket = -1, data_socket = -1;
 #define MAX_DATA 1000
 char incoming_data[MAX_DATA];
 int incoming_ptr;
+
+void set_field(char *id, char *value);
+void  hamlib_tx(int tx_on);
 
 //copied from gqrx on github
 static char dump_state_response[] =
@@ -100,14 +103,20 @@ void send_freq(){
 void set_freq(char *f){
   freq = atoi(f);
   send_response("RPRT 0\n");
-
+  char s[100];
+  sprintf(s, "%d", freq);
+  set_field("r1:freq", s);
 }
 
 void tx_control(int s){
-  if (s == 1)
+  if (s == 1){
     in_tx = 1;
-  if (s == 0)
+    hamlib_tx(in_tx);
+  }
+  if (s == 0){
     in_tx = 0;
+    hamlib_tx(in_tx);
+  }
   if (s != -1)
     send_response("RPRT 0\n");
   if (in_tx == 1)
@@ -132,14 +141,20 @@ void interpret_command(char *cmd){
     send_freq("7074000\n");
   else if (check_cmd(cmd, "F"))
     set_freq(cmd + 2);
-  else if (check_cmd(cmd, "T 0"))
-    tx_control(0);
-  else if (check_cmd(cmd, "T 1"))
-    tx_control(1);
+  if (cmd[0] == 'T'){
+    if (!strcmp(cmd, "T 0"))
+      tx_control(0);
+    else if (!strcmp(cmd, "T 1"))
+      tx_control(1);
+  }
   else if (check_cmd(cmd, "s"))
     send_response("0\n");
   else if (check_cmd(cmd, "t"))
     tx_control(-1);
+  else if (check_cmd(cmd, "q")){
+    close(data_socket);
+    data_socket = -1;
+  }
 }
 
 void hamlib_handler(char *data, int len){
@@ -179,7 +194,6 @@ void hamlib_start(){
     printf("Error\n");
   incoming_ptr = 0;
 }
-
 
 void hamlib_slice(){
   struct sockaddr_storage server_storage;
