@@ -521,6 +521,7 @@ int sound_loop(){
   snd_pcm_writei(pcm_play_handle, data_out, frames);
  
   while(sound_thread_continue) {
+    printf("[%d ", count++);
 		//restart the pcm capture if there is an error reading the samples
 		//this is opened as a blocking device, hence we derive accurate timing 
     if (use_virtual_cable)
@@ -533,7 +534,7 @@ int sound_loop(){
           printf("ESTRPIPE ");
     //   else  
     //      printf("E %d ", pcmreturn);
-        putchar('y');
+        putchar('a');
         snd_pcm_prepare(loopback_capture_handle);
       }  
     else 
@@ -543,6 +544,7 @@ int sound_loop(){
         snd_pcm_prepare(pcm_capture_handle);
   	  }
 
+    putchar('b');
 		//there are two samples of 32-bit in each frame
 		i = 0; 
 		j = 0;	
@@ -564,14 +566,15 @@ int sound_loop(){
 			data_out[j++] = output_i[i];
 			data_out[j++] = output_q[i++];
 		}
-		putchar('3');
+		putchar('c');
     while ((pcmreturn = snd_pcm_writei(pcm_play_handle, 
 			data_out, frames)) < 0) {
        snd_pcm_prepare(pcm_play_handle);
+      putchar('d');
     }
-    if((pcmreturn = snd_pcm_writei(loopback_play_handle, 
+    while((pcmreturn = snd_pcm_writei(loopback_play_handle, 
 			data_out, frames)) < 0){
-        putchar('c');
+        putchar('e');
         /* if (pcmreturn == -EPIPE)
           printf(" EPIPE ");
         else */ if (pcmreturn == -EBADFD)
@@ -616,8 +619,8 @@ void *sound_thread_function(void *ptr){
 		return NULL;
 	}
 
-  printf("opening plughw:1,0 sound card\n", device);	
-	if(sound_start_loopback_play("plughw:1,0")){
+  printf("opening hw:4,0 sound card\n");	
+	if(sound_start_loopback_play("hw:4,0")){
 		fprintf(stderr, "*Error opening loopback play device");
 		return NULL;
 	}

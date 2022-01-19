@@ -12,7 +12,7 @@ sudo pkg-reconfigure locales
 
 On WSJT-X
 Settings>Radio, Choose "Hamlib NET", the NetServer is set to "127.0.0.1"
-From Settings > Radio, Choose 'None' and VOx operation
+#From Settings > Radio, Choose 'None' and VOx operation
 From Settings > Audio, Input Set to "plughw:CARD=Loopback,DEV=1", "Mono"
 From Settings > Audio, Output Set to "plughw:CARD=Loopback,DEV=1", "Both"
 On sBITX
