@@ -101,7 +101,10 @@ void send_freq(){
 }
 
 void set_freq(char *f){
-  freq = atoi(f);
+  if (!strncmp(f, "VFO", 3))
+    freq = atoi(f+5);
+  else
+    freq = atoi(f);
   send_response("RPRT 0\n");
   char s[100];
   sprintf(s, "%d", freq);
@@ -142,9 +145,9 @@ void interpret_command(char *cmd){
   else if (check_cmd(cmd, "F"))
     set_freq(cmd + 2);
   if (cmd[0] == 'T'){
-    if (!strcmp(cmd, "T 0"))
+    if (!strcmp(cmd, "T 0") || !strcmp(cmd, "T VFOA 0"))
       tx_control(0);
-    else if (!strcmp(cmd, "T 1"))
+    else if (!strcmp(cmd, "T 1") || !strcmp(cmd, "T VFOA 1"))
       tx_control(1);
   }
   else if (check_cmd(cmd, "s"))
