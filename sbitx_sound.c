@@ -255,7 +255,9 @@ int sound_start_play(char *device){
 int sound_start_loopback_capture(char *device){
 	snd_pcm_hw_params_alloca(&hwparams);
 
-	int e = snd_pcm_open(&loopback_capture_handle, device, capture_stream, SND_PCM_NONBLOCK );
+
+	printf ("opening audio tx stream to %s\n", device); 
+	int e = snd_pcm_open(&loopback_capture_handle, device, capture_stream, SND_PCM_NONBLOCK);
 	
 	if (e < 0) {
 		fprintf(stderr, "Err: Opening loop capture  %s: %s\n", device, snd_strerror(e));
@@ -427,6 +429,7 @@ int sound_start_loopback_play(char *device){
 
 	snd_pcm_hw_params_alloca(&hwparams);	//more alloc
 
+	printf ("opening audio rx stream to %s\n", device); 
 	int e = snd_pcm_open(&loopback_play_handle, device, play_stream, SND_PCM_NONBLOCK);
 	
 	if (e < 0) {
@@ -453,7 +456,6 @@ int sound_start_loopback_play(char *device){
 		fprintf(stderr, "*Error setting loopback format.\n");
 		return(-1);
 	}
-
 
 	/* Set sample rate. If the exact rate is not supported */
 	/* by the hardware, use nearest possible rate.         */ 
@@ -503,12 +505,25 @@ int sound_start_loopback_play(char *device){
 	return 0;
 }
 
+// this is only a test process to be substituted to try loopback 
+// it was used to debug timing errors
 void sound_process2(int32_t *input_i, int32_t *input_q, int32_t *output_i, int32_t *output_q, int n_samples){
  
 	for (int i= 0; i < n_samples; i++){
-		output_i[i] = input_i[i];
+		output_i[i] = input_q[i];
 		output_q[i] = 0;
 	}	
+}
+
+//check that we haven't free()-ed up the hwparams block
+//don't call this function at all until that is fixed
+//you don't have to call it anyway
+void sound_stop(){
+	snd_pcm_drop(pcm_play_handle);
+	snd_pcm_drain(pcm_play_handle);
+
+	snd_pcm_drop(pcm_capture_handle);
+	snd_pcm_drain(pcm_capture_handle);
 }
 
 static int count = 0;
@@ -516,6 +531,14 @@ static struct timespec gettime_now;
 static long int last_time = 0;
 static long int last_sec = 0;
 static int nframes = 0;
+int32_t	resample_in[10000];
+int32_t	resample_out[10000];
+
+
+
+
+int last_second = 0;
+int nsamples = 0;
 int sound_loop(){
 	int32_t		*line_in, *data_in, *data_out, *input_i, *output_i, *input_q, *output_q;
   int pcmreturn, i, j, loopreturn;
@@ -534,24 +557,27 @@ int sound_loop(){
   frames = buff_size / 8;
 	
   snd_pcm_prepare(pcm_play_handle);
+  snd_pcm_prepare(loopback_capture_handle);
   snd_pcm_writei(pcm_play_handle, data_out, frames);
   snd_pcm_writei(pcm_play_handle, data_out, frames);
 
-	q_init(&qloop, 24000);
- 
+	q_init(&qloop, 100000);
+	//Note: the virtual cable samples queue should be flushed at the start of tx
+ 	qloop.stall = 1;
+	
   while(sound_thread_continue) {
 
 		//restart the pcm capture if there is an error reading the samples
 		//this is opened as a blocking device, hence we derive accurate timing 
-		while ((pcmreturn = snd_pcm_readi(pcm_capture_handle, data_in, frames)) < 0) {
-			snd_pcm_prepare(pcm_capture_handle);
-  	}
 
-		clock_gettime(CLOCK_MONOTONIC, &gettime_now);
-		printf("[%d %ld %d ", count++, gettime_now.tv_nsec/1000 - last_time, pcmreturn);
 		last_time = gettime_now.tv_nsec/1000;
 
+		while ((pcmreturn = snd_pcm_readi(pcm_capture_handle, data_in, frames)) < 0)
+			snd_pcm_prepare(pcm_capture_handle);
+		i = 0; 
+		j = 0;
     if (use_virtual_cable){
+			//this will loop until at least one block is received
   	  while((pcmreturn = snd_pcm_readi(loopback_capture_handle, data_in, frames)) < 0){ 
         if (pcmreturn == -EBADFD)
           printf("EBADFD ");
@@ -559,27 +585,57 @@ int sound_loop(){
           printf("EPIPE ");
         else if (pcmreturn == -ESTRPIPE)
           printf("ESTRPIPE ");
-    //   else  
-    //      printf("E %d ", pcmreturn);
         snd_pcm_prepare(loopback_capture_handle);
+				continue;
       }
-		for (int li=0; li < pcmreturn; li++)
-			queue_write(&qloop, data_in[li*2]);
-		printf(":%d", pcmreturn);  
-	}
-	//there are two samples of 32-bit in each frame
-	i = 0; 
-	j = 0;	
-	while (i < pcmreturn){
-		input_i[i] = data_in[j++];
-		input_q[i] = data_in[j++];
-		i++;
-	}
+			//we have some data in here.
+			j = 0; //make it 1 for the right channel, as 1,3,5.. are left and 2,4,6.. are right 
+			for (i = 0; i < pcmreturn; i++){
+					q_write(&qloop, data_in[j]);
+					j += 2;	
+			}
+			//unstall if q length is more than 2000 samples available
+			int qlen = q_length(&qloop);
+			if (qlen > 4000){
+				qloop.stall = 0;
+				putchar('u');
+			}
+			if (qlen < 1024){
+				qloop.stall = 1;
+				putchar('s');
+			}
+			for (i = 0; i < 1024; i++){
+				if (qloop.stall)
+					input_i[i] = 0;
+				else		
+					input_i[i] = q_read(&qloop);
+				input_q[i] = input_i[i];
+			}
+
+			//printf("ret %d, q=%d, %d\n", pcmreturn, q_length(&qloop), qloop.stall);
+		}
+		else {
+			while (i < pcmreturn){
+				input_i[i] = data_in[j++];
+				input_q[i] = data_in[j++];
+				i++;
+			}
+		}
+		clock_gettime(CLOCK_MONOTONIC, &gettime_now);
+		if (gettime_now.tv_sec != last_sec){
+			//printf("############## %d\n", nsamples);
+			last_sec = gettime_now.tv_sec;
+			nsamples = 0;
+			count = 0;
+		}
+		if (pcmreturn > 0)
+			nsamples += pcmreturn;
+		//printf("%d %ld %d\n", count++, nsamples, pcmreturn);
+
     if (use_virtual_cable)
-	sound_process2(input_i, input_q, output_i, output_q, pcmreturn);
+			sound_process2(input_i, input_q, output_i, output_q, 1024);
     else
-	sound_process(input_i, input_q, output_i, output_q, pcmreturn);
-	//	sound_process2(input_i, input_q, output_i, output_q, pcmreturn);
+			sound_process(input_i, input_q, output_i, output_q, pcmreturn);
 
 		i = 0; 
 		j = 0;	
@@ -591,34 +647,22 @@ int sound_loop(){
 			data_out, frames)) < 0) {
        snd_pcm_prepare(pcm_play_handle);
     }
-    while((pcmreturn = snd_pcm_writei(loopback_play_handle, 
+    if((pcmreturn = snd_pcm_writei(loopback_play_handle, 
 			data_out, frames)) < 0){
-        /* if (pcmreturn == -EPIPE)
-          printf(" EPIPE ");
-        else */ if (pcmreturn == -EBADFD)
-          printf(" EBADFD ");
+        if (pcmreturn == -EPIPE){
+         // printf(" lptx ");
+       		snd_pcm_prepare(loopback_play_handle);
+				}
+        else  if (pcmreturn == -EBADFD)
+          printf(" rx EBADFD ");
         else if (pcmreturn == -ESTRPIPE)
-          printf(" ESTRPIPE ");
+          printf(" rx ESTRPIPE ");
        snd_pcm_prepare(loopback_play_handle);
 			//puts("preparing loopback");
     }
-		printf("]\n"); 
   }
   printf("********Ending sound thread\n");
 }
-
-//check that we haven't free()-ed up the hwparams block
-//don't call this function at all until that is fixed
-//you don't have to call it anyway
-void sound_stop(){
-	snd_pcm_drop(pcm_play_handle);
-	snd_pcm_drain(pcm_play_handle);
-
-	snd_pcm_drop(pcm_capture_handle);
-	snd_pcm_drain(pcm_capture_handle);
-}
-
-
 /*
 We process the sound in a background thread.
 It will call the user-supplied function sound_process()  
@@ -656,7 +700,6 @@ void *sound_thread_function(void *ptr){
 	sound_loop();
 	sound_stop();
 }
-
 
 int sound_thread_start(char *device){
 	pthread_create( &sound_thread, NULL, sound_thread_function, (void*)device);

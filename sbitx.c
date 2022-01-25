@@ -64,8 +64,8 @@ struct filter *tx_filter;	//convolution filter
 #define CMD_FREQ (1)
 #define CMD_TX (2)
 #define CMD_RX (3)
-#define TUNING_SHIFT (-550)
-
+//#define TUNING_SHIFT (-550)
+#define TUNING_SHIFT (0)
 #define MDS_LEVEL (-135)
 int fserial = 0;
 
@@ -754,7 +754,7 @@ void setup(){
   tx_list->tuned_bin = 512;
 	tx_init(7000000, MODE_USB, -3000, -300);
 
-	sound_thread_start("hw:0,0");
+	sound_thread_start("plughw:0,0");
 	setup_audio_codec();
 
 	sleep(1);

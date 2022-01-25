@@ -13,7 +13,7 @@ void q_init(struct Queue *p, int length){
 	p->underflow = 0;
 	p->overflow = 0;
 	p->max_q = length;
-	p->data = malloc(length+1);
+	p->data = malloc((length+1) * sizeof(int32_t));
 	memset(p->data, 0, p->max_q+1);
 }
 
@@ -24,7 +24,7 @@ int q_length(struct Queue *p){
     return ((p->head + p->max_q) - p->tail);
 }
 
-void q_write(struct Queue *p, int w){
+void q_write(struct Queue *p, int32_t w){
 
   if (p->head + 1 == p->tail || p->tail == 0 && p->head == p->max_q-1){
     p->overflow++;
@@ -37,8 +37,8 @@ void q_write(struct Queue *p, int w){
   }
 }
 
-int q_read(struct Queue *p){
- int data;
+int32_t q_read(struct Queue *p){
+ int32_t data;
 
   if (p->tail == p->head){
     p->underflow++;
