@@ -193,6 +193,10 @@ struct field {
 	int	 	min, max, step;
 };
 
+
+struct field *active_layout = NULL;
+char settings_updated = 0;
+
 // the cmd fields that have '#' are not to be sent to the sdr
 struct field main_controls[] = {
 	{ "r1:freq", 500, 0, 130, 49, "", 5, "14000000", FIELD_NUMBER, FONT_LARGE_VALUE, "", 500000, 30000000, 100},
@@ -256,15 +260,19 @@ struct field main_controls[] = {
 	{"#40m", 0, 300 ,50, 50, "40 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
 	{"#80m", 0, 350 ,50, 50, "60 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
 
-	
+	//the last control has empty cmd field 
+	{"", 0, 0 ,0, 0, "", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
 };
 
 
+
+void set_field(char *id, char *value);
+
 void write_gui_ini(){
   FILE *pf = fopen("gui_main.ini", "w");
-	int total = sizeof(main_controls) / sizeof(struct field);
-	for (int i = 0; i < total; i++){
-		struct field *f = main_controls + i;
+	int total = sizeof(active_layout) / sizeof(struct field);
+	for (int i = 0; active_layout[i].cmd[0] > 0; i++){
+		struct field *f = active_layout + i;
     fprintf(pf, "[%s]\n", f->cmd);
     fprintf(pf, "x = %d\n", f->x);
     fprintf(pf, "y = %d\n", f->y);
@@ -284,11 +292,61 @@ void write_gui_ini(){
 }
 
 
+static void save_user_settings(){
+	static int last_save_at = 0;
+	char file_path[200];	//dangerous, find the MAX_PATH and replace 200 with it
+
+	//attempt to save settings only if it has been 30 seconds since the 
+	//last time the settings were saved
+	int now = millis();
+	if (now < last_save_at + 30000 ||  !settings_updated)
+		return;
+
+	char *path = getenv("HOME");
+	strcpy(file_path, path);
+	strcat(file_path, "/.sbitx/user_settings.ini");
+
+	FILE *f = fopen(file_path, "w");
+	if (!f){
+		printf("Unable to save %s\n", file_path);
+		return;
+	}
+	for (int i= 0; i < active_layout[i].cmd[0] > 0; i++)
+		fprintf(f, "%s=%s\n", active_layout[i].cmd, active_layout[i].value);
+	fclose(f);
+	printf("settings are saved\n");
+	settings_updated = 0;
+}
+
+static int user_settings_handler(void* user, const char* section, 
+            const char* name, const char* value)
+{
+    char cmd[1000];
+    char new_value[200];
+
+		printf("%s.ini [%s] setting %s = %s\n", user, section, name, value);
+    strcpy(new_value, value);
+    if (!strcmp(section, "r1")){
+      sprintf(cmd, "%s:%s", section, name);
+      set_field(cmd, new_value);
+    }
+    else if (!strcmp(section, "tx")){
+      strcpy(cmd, name);
+      set_field(cmd, new_value);
+    }
+    
+    // if it is an empty section
+    else if (strlen(section) == 0){
+      sprintf(cmd, "%s", name);
+      set_field(cmd, new_value); 
+    }
+    return 1;
+}
 //static int field_in_focus = -1;
 //static int field_in_hover = 0;
 
 static struct field *f_focus = NULL;
-static struct field *f_hover = main_controls;
+static struct field *f_hover = NULL;
 
 //the main app window
 GtkWidget *window;
@@ -330,9 +388,9 @@ static void rect(cairo_t *gfx, int x, int y, int w, int h, int color, int thickn
 }
 
 struct field *get_field(char *cmd){
-	for (int i = 0; i < sizeof(main_controls)/sizeof(struct field); i++)
-		if (!strcmp(main_controls[i].cmd, cmd))
-			return main_controls + i;
+	for (int i = 0; active_layout[i].cmd[0] > 0; i++)
+		if (!strcmp(active_layout[i].cmd, cmd))
+			return active_layout + i;
 	return NULL;
 }
 
@@ -535,16 +593,15 @@ void redraw_main_screen(GtkWidget *widget, cairo_t *gfx){
 	y2 = (int)dy2;
 
 	fill_rect(gfx, x1, y1, x2-x1, y2-y1, COLOR_BACKGROUND);
-	int total = sizeof(main_controls) / sizeof(struct field);
-	for (int i = 0; i < total; i++){
+	for (int i = 0; active_layout[i].cmd[0] > 0; i++){
 		double cx1, cx2, cy1, cy2;
-		struct field *f = main_controls + i;
+		struct field *f = active_layout + i;
 		cx1 = f->x;
 		cx2 = cx1 + f->width;
 		cy1 = f->y;
 		cy2 = cy1 + f->height;
 		if (cairo_in_clip(gfx, cx1, cy1) || cairo_in_clip(gfx, cx2, cy2)){
-			draw_field(widget, gfx, main_controls + i);
+			draw_field(widget, gfx, active_layout + i);
 		}
 	}
 	draw_spectrum(widget, gfx);
@@ -587,7 +644,6 @@ static void hover_field(struct field *f){
 }
 
 static void edit_field(struct field *f, int action){
-	//struct field *f = main_controls + field_index;
 	int v;
 
 	if (f->value_type == FIELD_NUMBER){
@@ -671,6 +727,7 @@ static void edit_field(struct field *f, int action){
 	sprintf(buff, "%s=%s", f->cmd, f->value);
 	do_cmd(buff);
 	update_field(f);
+	settings_updated++;
 }
 
 static void focus_field(struct field *f){
@@ -838,7 +895,7 @@ static gboolean on_key_press (GtkWidget *widget, GdkEventKey *event, gpointer us
 	//key_modifier = event->keyval;
 	switch(event->keyval){
 		case MIN_KEY_UP:
-			if (f_focus == NULL && f_hover > main_controls){
+			if (f_focus == NULL && f_hover > active_layout){
 				hover_field(f_hover - 1);
 				//printf("Up, hover %s\n", f_hover->cmd);
 			}else if (f_focus){
@@ -910,8 +967,8 @@ static gboolean on_mouse_press (GtkWidget *widget, GdkEventButton *event, gpoint
 	struct field *f;
 	if (event->type == GDK_BUTTON_PRESS && event->button == GDK_BUTTON_PRIMARY){
 		//printf("mouse event at %d, %d\n", (int)(event->x), (int)(event->y));
-		for (int i = 0; i < sizeof(main_controls)/sizeof(struct field); i++) {
-			f = main_controls + i;
+		for (int i = 0; active_layout[i].cmd[0] > 0; i++) {
+			f = active_layout + i;
 			if (f->x < event->x && event->x < f->x + f->width 
 					&& f->y < event->y && event->y < f->y + f->height)
 				focus_field(f);
@@ -1215,6 +1272,7 @@ gboolean ui_tick(gpointer gook){
 	}
 
   hamlib_slice();
+	save_user_settings();
 
 	// check the tuning knob
 	struct field *f = get_field("r1:freq");
@@ -1416,41 +1474,19 @@ void do_cmd(char *cmd){
 		sdr_request(request, response);
 }
 
-static int user_settings_handler(void* user, const char* section, 
-            const char* name, const char* value)
-{
-    char cmd[1000];
-    char new_value[200];
-
-    strcpy(new_value, value);
-    if (!strcmp(section, "r1")){
-      sprintf(cmd, "%s:%s", section, name);
-      set_field(cmd, new_value);
-    }
-    else if (!strcmp(section, "tx")){
-      strcpy(cmd, name);
-      set_field(cmd, new_value);
-    }
-    
-    // if it is an empty section
-    else if (strlen(section) == 0){
-      sprintf(cmd, "#%s", name);
-      set_field(cmd, new_value); 
-    }
-    return 1;
-}
 
 
 int main( int argc, char* argv[] ) {
 
 	puts("sBITX v0.30");
+	active_layout = main_controls;
 	ui_init(argc, argv);
 	wiringPiSetup();
 	init_gpio_pins();
 	setup();
 	struct field *f;
 
-	f = main_controls;
+	f = active_layout;
 
   /* write_gui_ini was used to dump the gui layout controls into an ini file */
   //write_gui_ini(); 
@@ -1466,7 +1502,7 @@ int main( int argc, char* argv[] ) {
 	set_volume(3000000);
 
 	enc_init(&enc_a, ENC_FAST, ENC1_B, ENC1_A);
-	enc_init(&enc_b, ENC_SLOW, ENC2_B, ENC2_A);
+	enc_init(&enc_b, ENC_SLOW, ENC2_A, ENC2_B);
 
 	if (argc > 1 && !strcmp(argv[1], "calibrate"))
 		do_calibration();
@@ -1482,10 +1518,16 @@ int main( int argc, char* argv[] ) {
 	set_field("r1:gain", "41");
 	set_field("r1:volume", "85");
 
-  if (ini_parse("sbitx_user_settings.ini", user_settings_handler, NULL)<0){
-    printf("Unable to load sbitx_user_settings.ini\n");
+	char directory[200];	//dangerous, find the MAX_PATH and replace 200 with it
+	char *path = getenv("HOME");
+	strcpy(directory, path);
+	strcat(directory, "/.sbitx/user_settings.ini");
+  if (ini_parse(directory, user_settings_handler, NULL)<0){
+    printf("Unable to load ~/.sbitx/user_settings.ini\n");
   }
 
+	// you don't want to save the recently loaded settings
+	settings_updated = 0;
   hamlib_start();
   gtk_main();
   

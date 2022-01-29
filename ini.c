@@ -197,7 +197,7 @@ int ini_parse_stream(ini_reader reader, void* stream, ini_handler handler,
         else if (*start) {
             /* Not a comment, must be a name[=:]value pair */
             end = find_chars_or_comment(start, "=:");
-            if (*end == '=' || *end == ':') {
+            if (*end == '=') {
                 *end = '\0';
                 name = rstrip(start);
                 value = end + 1;
