@@ -40,6 +40,7 @@ char pins[15] = {0, 2, 3, 6, 7,
 #define SW4 (7)
 #define SW5 (22)
 #define PTT (7)
+#define DASH (21)
 
 #define ENC_FAST 1
 #define ENC_SLOW 5
@@ -67,6 +68,7 @@ char output_pins[] = {
 static int serial_fd = -1;
 static int xit = 512; 
 static int tuning_step = 1000;
+static int tx_mode = MODE_USB;
 
 struct band {
 	int frequency, low,  high, mode;
@@ -79,7 +81,6 @@ struct band {
 #define BAND20M 4	
 #define BAND30M 5
 #define BAND40M 6 
-#define BAND60M 7 
 #define BAND80M 8 
 
 struct band_memory{
@@ -166,6 +167,7 @@ struct font_style {
 	int weight;
 	int type;
 };
+
 struct font_style font_table[] = {
 	{FONT_FIELD_LABEL, 0, 1, 1, "Mono", 14, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
 	{FONT_FIELD_VALUE, 1, 1, 1, "Mono", 14, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
@@ -227,8 +229,8 @@ struct field main_controls[] = {
 	{ "tx_comp", 180, 370, 55, 50, "COMP", 40, "0", FIELD_NUMBER, FONT_FIELD_VALUE, "", 0, 10, 1},
 	{ "mod", 235, 370, 55, 50, "MOD", 40, "MIC", FIELD_SELECTION, FONT_FIELD_VALUE, "MIC/LINE", 0,0, 0},
 
-	{ "tx_wpm", 70, 420, 55, 50, "WPM", 40, "12", FIELD_NUMBER, FONT_FIELD_VALUE, "", 1, 50, 1},
-	{ "tx_key", 125, 420, 55, 50, "KEY", 40, "HARD", FIELD_SELECTION, FONT_FIELD_VALUE, "SOFT/HARD", 0, 0, 0},
+	{ "#tx_wpm", 70, 420, 55, 50, "WPM", 40, "12", FIELD_NUMBER, FONT_FIELD_VALUE, "", 1, 50, 1},
+	{ "#tx_key", 125, 420, 55, 50, "KEY", 40, "HARD", FIELD_SELECTION, FONT_FIELD_VALUE, "SOFT/HARD", 0, 0, 0},
 	{ "tx_vox", 180, 420, 55, 50, "VOX", 40, "ON", FIELD_TOGGLE, FONT_FIELD_VALUE, "ON/OFF", 0, 0, 0},
 	{ "tx_record", 235, 420, 55, 50, "RECORD", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, "ON/OFF", 0,0, 0},
 	
@@ -252,8 +254,7 @@ struct field main_controls[] = {
 	{"#20m", 0, 200 ,50, 50, "20 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
 	{"#30m", 0, 250 ,50, 50, "30 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
 	{"#40m", 0, 300 ,50, 50, "40 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
-	{"#60m", 0, 350 ,50, 50, "60 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
-	{"#80m", 0, 400 ,50, 50, "80 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
+	{"#80m", 0, 350 ,50, 50, "60 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
 
 	
 };
@@ -440,7 +441,7 @@ void draw_spectrum(GtkWidget *widget, cairo_t *gfx){
 	//start the plot
 	cairo_set_source_rgb(gfx, palette[SPECTRUM_PLOT][0], 
 		palette[SPECTRUM_PLOT][1], palette[SPECTRUM_PLOT][2]);
-	cairo_move_to(gfx, f->x, f->y + f->height);
+	cairo_move_to(gfx, f->x + f->width, f->y + f->height);
 
 	float x = 0;
 	int j = 0;
@@ -459,7 +460,7 @@ void draw_spectrum(GtkWidget *widget, cairo_t *gfx){
 		if (y > f->height)
 			y = f->height - 1;
 		//the plot should be increase upwards
-		cairo_line_to(gfx, f->x + (int)x, f->y + f->height - y);
+		cairo_line_to(gfx, f->x + f->width - (int)x, f->y + f->height - y);
 
 		//fill the waterfall
 		for (int k = 0; k <= 1 + (int)x_step; k++)
@@ -584,7 +585,6 @@ static void hover_field(struct field *f){
 	f_hover = f;
 	update_field(f);
 }
-
 
 static void edit_field(struct field *f, int action){
 	//struct field *f = main_controls + field_index;
@@ -760,14 +760,37 @@ void set_field(char *id, char *value){
 }
 
 static int in_tx = 0;
+static int key_down = 0;
+static int tx_start_time = 0;
 static void tx_on(){
 	char response[100];
+
+	struct field *f = get_field("r1:mode");
+	if (f){
+		if (!strcmp(f->value, "CW"))
+			tx_mode = MODE_CW;
+		else if (!strcmp(f->value, "CWR"))
+			tx_mode = MODE_CWR;
+		else if (!strcmp(f->value, "USB"))
+			tx_mode = MODE_USB;
+		else if (!strcmp(f->value, "LSB"))
+			tx_mode = MODE_LSB;
+		else if (!strcmp(f->value, "NBFM"))
+			tx_mode = MODE_NBFM;
+		else if (!strcmp(f->value, "AM"))
+			tx_mode = MODE_AM;
+		else if (!strcmp(f->value, "2TONE"))
+			tx_mode = MODE_2TONE;
+		else if (!strcmp(f->value, "DIGITAL"))
+			tx_mode = MODE_DIGITAL;
+	}
 
 	if (in_tx == 0){
 		digitalWrite(TX_LINE, HIGH);
 		sdr_request("tx=on", response);	
 		in_tx = 1;
 	}
+	tx_start_time = millis();
 }
 
 static void tx_off(){
@@ -777,7 +800,25 @@ static void tx_off(){
 		digitalWrite(TX_LINE, LOW);
 		sdr_request("tx=off", response);	
 		in_tx = 0;
+		sdr_request("key=up", response);
 	}
+}
+
+int static cw_keydown = 0;
+int	static cw_hold_until = 0;
+int static cw_hold_duration = 150;
+
+static void cw_key(int state){
+	char response[100];
+	if (state == 1 && cw_keydown == 0){
+		sdr_request("key=down", response);
+		cw_keydown = 1;
+	}
+	else if (state == 0 && cw_keydown == 1){
+		sdr_request("key=up", response);
+		cw_keydown = 0;
+	}
+	//printf("cw key = %d\n", cw_keydown);
 }
 
 static gboolean on_key_release (GtkWidget *widget, GdkEventKey *event, gpointer user_data) {
@@ -906,6 +947,8 @@ void init_gpio_pins(){
 	pinMode(LPF_D, OUTPUT);
 	pinMode(PTT, INPUT);
 	pullUpDnControl(PTT, PUD_UP);
+	pinMode(DASH, INPUT);
+	pullUpDnControl(DASH, PUD_UP);
   digitalWrite(LPF_A, LOW);
   digitalWrite(LPF_B, LOW);
   digitalWrite(LPF_C, LOW);
@@ -1056,6 +1099,108 @@ void cat_poll(){
 }
 */
 
+static int keyer_last_was_dash = 0;
+static int keyer_tx_until = 0;
+void do_cw(){
+	//start txn of cw
+	if (!in_tx && digitalRead(PTT)==LOW){
+		tx_on();
+		cw_key(1);
+		cw_hold_until = millis() + cw_hold_duration;
+	}
+	
+	if (in_tx){
+		int key_state = digitalRead(PTT);
+		if (key_state == LOW){				//key is down
+			if (!cw_keydown)
+				cw_key(1);
+			cw_hold_until = millis() + cw_hold_duration; 
+		}
+		else { 												// the key is up
+			if (cw_keydown)
+				cw_key(0); 
+			if (millis() > cw_hold_until){
+				delay(20);
+				tx_off();
+			}	
+		}
+	} 
+}
+
+
+/*
+	All timing is in milliseconds, millis() gives the time in milliseconds since program started
+*/
+void do_keyer(){
+	static int keydown_until = 0;
+	static int keyup_until = 0;
+	static int last_symbol = ' ';
+
+	int is_dot = digitalRead(PTT) == LOW ? 1 : 0;		//the keyer reads low when pressed
+	int is_dash = digitalRead(DASH) == LOW ? 1 : 0;
+	int now = millis();
+	int dot_period = 100; 
+
+
+	//turn it on if something is pressed
+	if (!in_tx){
+		if (is_dot || is_dash){
+			tx_on();
+			last_symbol = ' ';
+			keydown_until = 0;
+			keyup_until = 0;
+			printf("starting cw tx");
+		}
+		else
+			return;
+	}
+
+	if (keydown_until > now)
+		return;
+
+	//we get here only if there is no key down at the moment
+	if (cw_keydown)
+		cw_key(0);
+
+	//wait until the 'off' period is over
+	if (keyup_until > now)
+		return;
+
+	printf("dot %d dash %d dn %d up %d [%c]\r", is_dot, is_dash, 
+		now -keydown_until, now- keyup_until, last_symbol);	
+	//printf("new symbol! %d %d [%c]\n", keydown_until-now, keyup_until-now, last_symbol);
+	if ((is_dot && is_dash && last_symbol != '.') || (is_dot && ! is_dash)){
+		cw_key(1);
+		keydown_until = now + dot_period;
+		keyup_until = keydown_until + dot_period;
+		last_symbol = '.';
+		printf("dot! %d %d [%c]\n", keydown_until-now, keyup_until-now, last_symbol);
+	}  
+	else if ((is_dash && is_dot && last_symbol != '-') || (is_dash && ! is_dot)){
+		cw_key(1);
+		keydown_until = now + (3 * dot_period);
+		keyup_until = keydown_until + dot_period;
+		last_symbol = '-';
+		printf("dash! %d %d [%c]\n", keydown_until-now, keyup_until-now, last_symbol);
+	}
+	else { //we are here after the space since last symbol has elapsed
+		if (last_symbol == 'w'){
+			keyup_until = now + (4 * dot_period);		
+			last_symbol = ' ';
+			printf("beteween words\n");
+		}
+		else if (last_symbol == '.' || last_symbol == '-'){
+			keyup_until = now + (2 * dot_period);
+			last_symbol = 'w';
+			printf("between letters\n");
+		}
+		else if (last_symbol == ' '){
+			tx_off();
+			printf("out of tx!\n");
+		}
+	}	
+}
+
 gboolean ui_tick(gpointer gook){
 	int static ticks = 0;
 
@@ -1082,11 +1227,10 @@ gboolean ui_tick(gpointer gook){
 	}
 
  
-	//check the push-to-talk
-	if (digitalRead(PTT) == LOW && in_tx == 0)
-		tx_on();	
-	else if (digitalRead(PTT) == HIGH && in_tx == 1)
-		tx_off();
+	f = get_field("r1:mode");
+	//straight key in CW
+	if (f && (!strcmp(f->value, "CW") || !strcmp(f->value, "CWR"))) 
+		do_keyer();	
 
 	int scroll = enc_read(&enc_a);
 	if (scroll && f_focus){

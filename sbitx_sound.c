@@ -253,9 +253,8 @@ int sound_start_play(char *device){
 
 
 int sound_start_loopback_capture(char *device){
+
 	snd_pcm_hw_params_alloca(&hwparams);
-
-
 	printf ("opening audio tx stream to %s\n", device); 
 	int e = snd_pcm_open(&loopback_capture_handle, device, capture_stream, SND_PCM_NONBLOCK);
 	

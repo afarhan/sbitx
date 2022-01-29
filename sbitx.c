@@ -56,12 +56,17 @@ struct rx *rx_list = NULL;
 struct rx *tx_list = NULL;
 struct filter *tx_filter;	//convolution filter
 
-/* radio control. We only need two functions to control the radio hardware:
-- tune the radio
-- turn the tx on/off
+/* 
+	CW shaping:
+	The CW waveshaping is done with a linear rise of the ampltidue from 0 to 1000
+	and similarly the fall is from 1000 to 0 in cw_shaping steps.
+
 */
 
-#define CMD_FREQ (1)
+int cw_shape = 1; 		//change to 3 for a clickier shaping
+int	cw_amplitude = 0; // this increases to 1000 and falls back to 0
+int cw_keydown = 0;
+
 #define CMD_TX (2)
 #define CMD_RX (3)
 //#define TUNING_SHIFT (-550)
@@ -73,7 +78,6 @@ void radio_tune_to(u_int32_t f){
   si5351bx_setfreq(2, f + bfo_freq - 24000 + TUNING_SHIFT);
   //printf("Setting radio to %d\n", f);
 }
-
 
 /*
 //ffts for transmit, we only transmit one channel at a time
@@ -190,7 +194,7 @@ void set_lpf_40mhz(int frequency){
   digitalWrite(lpf, HIGH); 
 	prev_lpf = lpf;
 }
-
+/*
 void radio_tx(int turn_on){
 	u_int8_t cmd[5];
 	if (turn_on){
@@ -204,7 +208,7 @@ void radio_tx(int turn_on){
 		serialPutchar(fserial, cmd[i]);
 	//printf("tx is %d\n", (int)cmd[0]);
 }
-
+*/
 void set_lo(int frequency){
 	freq_hdr = frequency;
 	//printf("freq: %d\n", frequency);
@@ -446,7 +450,7 @@ void rx_process(int32_t *input_rx,  int32_t *input_mic,
 	}
 
 	// STEP 5:zero out the other sideband
-	if (r->mode == MODE_LSB || r->mode == MODE_CWR) 
+	if (r->mode == MODE_USB || r->mode == MODE_CW || r->mode == MODE_2TONE) 
 		for (i = MAX_BINS/2; i < MAX_BINS; i++){
 			__real__ r->fft_freq[i] = 0;
 			__imag__ r->fft_freq[i] = 0;	
@@ -531,7 +535,7 @@ void tx_2tone(
 		fft_out[i] *= tx_filter->fir_coeff[i];
 
 	// zero out the other sideband
-	if (r->mode == MODE_LSB || r->mode == MODE_CWR)
+	if (r->mode == MODE_USB || r->mode == MODE_CW || r->mode == MODE_DIGITAL || r->mode == MODE_2TONE)
 		for (i = MAX_BINS/2; i < MAX_BINS; i++){
 			__real__ r->fft_freq[i] = 0;
 			__imag__ r->fft_freq[i] = 0;	
@@ -595,10 +599,25 @@ void tx_process(
 
 		if (r->mode == MODE_2TONE)
 			i_sample = (1.0 * (vfo_read(&tone_a) + vfo_read(&tone_b))) / 20000000000.0;
-    else if (r->mode == MODE_CW)
-			i_sample = (1.0 * vfo_read(&tone_a)) / 10000000000.0;
+    else if (r->mode == MODE_CW || r->mode == MODE_CWR){
+			//the cw shaping is done here by ramping the amplitude up and down at cw_shape rate
+			if (cw_keydown && cw_amplitude < 1000){
+				cw_amplitude += cw_shape;
+				if (cw_amplitude > 1000)
+					cw_amplitude = 1000;
+			}
+			else if (cw_keydown == 0 && cw_amplitude > 0){
+				cw_amplitude -= cw_shape;
+				if(cw_amplitude < 0)
+					cw_amplitude = 0;	
+			}
+			output_speaker[j] = (vfo_read(&tone_a)/1000) * cw_amplitude ;
+			//i_sample = ((vfo_read(&tone_a) * ((1.0) *cw_amplitude)) / 1000.0) / 10000000000.0;
+			i_sample = (1.0 * output_speaker[j]) / 10000000000.0;
+		}
 	  else {
 	  	i_sample = (1.0 * input_mic[j]) / 2000000000.0;
+			output_speaker[j] = 0;
     }
 	  q_sample = 0;
 
@@ -630,14 +649,14 @@ void tx_process(
 	// TBD: Something strange is going on, this should have been the otherway
 
 
-	if (r->mode == MODE_LSB || r->mode == MODE_CWR)
-		// zero out the LSB
+	if (r->mode == MODE_USB || r->mode == MODE_CW || r->mode == MODE_DIGITAL || r->mode == MODE_2TONE)
+		// zero out the USB
 		for (i = MAX_BINS/2; i < MAX_BINS; i++){
 			__real__ fft_out[i] = 0;
 			__imag__ fft_out[i] = 0;	
 		}
 	else  
-		// zero out the USB
+		// zero out the LSB
 		for (i = 0; i < MAX_BINS/2; i++){
 			__real__ fft_out[i] = 0;
 			__imag__ fft_out[i] = 0;	
@@ -662,7 +681,9 @@ void tx_process(
 	//send the output back to where it needs to go
 	for (i= 0; i < MAX_BINS/2; i++){
 		output_tx[i] = creal(r->fft_time[i+(MAX_BINS/2)]) * volume;
-		output_speaker[i] = 0; 
+		//the output_speaker has the modulating signal for non-voice modes
+		if (r->mode != MODE_CWR && r->mode != MODE_CW && r->mode != MODE_DIGITAL)
+			output_speaker[i] = 0; 
 	}
 }
 
@@ -683,7 +704,8 @@ void sound_process(
 
 
 void set_rx_filter(){
-	if (rx_list->mode == MODE_LSB || rx_list->mode == MODE_CWR) 
+	if (rx_list->mode == MODE_USB || rx_list->mode == MODE_CW || rx_list->mode == MODE_DIGITAL ||
+			rx_list->mode == MODE_2TONE) 
     filter_tune(rx_list->filter, 
       (1.0 * rx_list->low_hz)/96000.0, 
       (1.0 * rx_list->high_hz)/96000.0 , 
@@ -752,7 +774,7 @@ void setup(){
 	add_tx(7000000, MODE_LSB, -3000, -300);
 	rx_list->tuned_bin = 512;
   tx_list->tuned_bin = 512;
-	tx_init(7000000, MODE_USB, -3000, -300);
+	tx_init(7000000, MODE_LSB, -3000, -300);
 
 	sound_thread_start("plughw:0,0");
 	setup_audio_codec();
@@ -775,7 +797,7 @@ void setup(){
 void sdr_request(char *request, char *response){
 	char cmd[100], value[1000];
 
-	//printf("[%s]\n", request);
+	printf("[%s]\n", request);
 
 	char *p = strchr(request, '=');
 	int n = p - request;
@@ -832,8 +854,7 @@ void sdr_request(char *request, char *response){
 		// converts to a second IF of 26.999 - 27.025 = 26 KHz
 		// Effectively, if a signal moves up, so does the second IF
 
-		if (rx_list->mode == MODE_USB || rx_list->mode == MODE_CW ||
-      rx_list->mode == MODE_2TONE){
+		if (rx_list->mode == MODE_LSB || rx_list->mode == MODE_CWR){
 			filter_tune(rx_list->filter, 
 				(1.0 * -3000)/96000.0, 
 				(1.0 * -300)/96000.0 , 
@@ -878,10 +899,8 @@ void sdr_request(char *request, char *response){
 		if (!strcmp(value, "on")){
 			in_tx = 1;
       fft_reset_m_bins();
-      //set_lpf_40mhz(freq_hdr);
 			digitalWrite(TX_LINE, HIGH);
       delay(50);
-			radio_tx(1);	
       printf("Setting tx_power to %d, gain to %d\n", tx_power, tx_gain);
 			sound_mixer(audio_card, "Master", tx_power);
 			sound_mixer(audio_card, "Capture", tx_gain);
@@ -893,11 +912,17 @@ void sdr_request(char *request, char *response){
       fft_reset_m_bins();
 			strcpy(response, "ok");
 			digitalWrite(TX_LINE, LOW);
-			radio_tx(0);
 			sound_mixer(audio_card, "Master", rx_vol);
 			sound_mixer(audio_card, "Capture", rx_gain);
 			spectrum_reset();
 		}
+	}
+	else if (!strcmp(cmd, "key") & in_tx){
+		if(!strcmp(value, "down"))
+			cw_keydown = 1;
+		else
+			cw_keydown = 0;
+		printf("in_tx = %d key=%d\n", in_tx, cw_keydown);
 	}
 	else if (!strcmp(cmd, "tx_gain")){
 		tx_gain = atoi(value);
@@ -944,7 +969,13 @@ void sdr_request(char *request, char *response){
       tx_use_line = 0;
     else if (!strcmp(value, "LINE"))
       tx_use_line = 1;
-  }
+  } 
+	else if (!strcmp(cmd, "tx_key")){
+		if (!strcmp(value, "SOFT"))
+			cw_shape = 3;
+		else if (!strcmp(value, "HARD"))
+			cw_shape = 1;
+	}
   else
 		printf("*Error request[%s] not accepted\n", request);
 }

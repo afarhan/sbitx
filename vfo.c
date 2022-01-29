@@ -14,15 +14,8 @@ void vfo_init_phase_table(){
 	for (int i = 0; i < MAX_PHASE_COUNT; i++){
 		double d = (M_PI/2) * ((double)i)/((double)MAX_PHASE_COUNT);
 		phase_table[i] = (int)(sin(d) * 1073741824.0);
-		//phase_table[i] = (int)(sin(d) * 16777216.0);
-		//printf("\t%d,\n", (int)(sin(d) * 1073741824.0));
 	}
 }
-
-/*
-phase_increment = (65536 * freq) / 44100
-*/
-
 
 void vfo_start(struct vfo *v, int frequency_hz, int start_phase){
 	v->phase_increment = (frequency_hz * 65536) / sampling_freq;

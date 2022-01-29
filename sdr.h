@@ -68,7 +68,7 @@ All the incoming samples are converted to frequency domain in sound_process().
 The fft_out stores these as frequency bins.
 These are fft_out bins are also used to paint the spectrum and waterfall.
 
-You can have any number of receivers working with different slices of the spectrum.
+You can have any number of radios working with different slices of the spectrum.
 At the moment, only ssb (and CW as a single sideband signal) are demodulated.
 Each receiver is inserted a node in a linked list that starts at rx_list.
 
@@ -76,8 +76,8 @@ Each receiver is defined by the struct rx. The rx
 Each receiver copies the fft_bins to by shifting it around to bring the desired 
 to baseband. 
 
-You can have a number of receivers that work simultaneously on different
-slices of the spectrum
+Each tx is also based on a struct rx but it is used to describe and hold state
+for the transmission. The data required is the same!
 */
 
 extern float fft_bins[];
