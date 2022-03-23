@@ -167,7 +167,6 @@ void set_lpf_40mhz(int frequency){
 	static int prev_lpf = -1;
 	int lpf = 0;
 
-
 	if (frequency < 5500000)
 		lpf = LPF_D;
 	else if (frequency < 10500000)		
@@ -176,7 +175,6 @@ void set_lpf_40mhz(int frequency){
 		lpf = LPF_B;
 	else if (frequency < 30000000)
 		lpf = LPF_A; 
-
 
 	if (lpf == prev_lpf){
 		//puts("LPF not changed");
@@ -194,6 +192,7 @@ void set_lpf_40mhz(int frequency){
   digitalWrite(lpf, HIGH); 
 	prev_lpf = lpf;
 }
+
 /*
 void radio_tx(int turn_on){
 	u_int8_t cmd[5];

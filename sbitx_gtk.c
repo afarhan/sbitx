@@ -1,3 +1,7 @@
+/*
+The initial sync between the gui values, the core radio values, settings, et al are manually set.
+*/
+
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -70,25 +74,57 @@ static int xit = 512;
 static int tuning_step = 1000;
 static int tx_mode = MODE_USB;
 
+#define BAND80M	0
+#define BAND40M	1
+#define BAND30M 2	
+#define BAND20M 3	
+#define BAND17M 4	
+#define BAND15M 5
+#define BAND12M 6 
+#define BAND10M 7 
+
+#define STACK_DEPTH 4
 struct band {
-	int frequency, low,  high, mode;
+	char name[10];
+	int	start;
+	int	stop;
+	int	power;
+	int	max;
+	int drive;
+	int index;
+	int	freq[STACK_DEPTH];
+	int mode[STACK_DEPTH];
 };
 
-#define BAND10M	0
-#define BAND13M	1
-#define BAND15M 2	
-#define BAND17M 3	
-#define BAND20M 4	
-#define BAND30M 5
-#define BAND40M 6 
-#define BAND80M 8 
-
-struct band_memory{
-    int frequency;
-    int mode;
+struct band band_stack[] = {
+	{"80M", 3500000, 4000000, 30, 30, 82, 0, 
+		{3500000,3574000,3600000,3700000},{MODE_CW, MODE_USB, MODE_CW,MODE_LSB}},
+	{"40M", 7000000,7300000, 30, 30, 84, 0,
+		{7000000,7040000,7074000,7150000},{MODE_CW, MODE_CW, MODE_USB, MODE_LSB}},
+	{"30M", 10100000, 1015000, 25,25,85, 0,
+		{10100000, 10100000, 10136000, 10150000}, {MODE_CW, MODE_CW, MODE_USB, MODE_USB}},
+	{"20M", 14000000, 14400000, 25,25,92, 0,
+		{14010000, 14040000, 14074000, 14200000}, {MODE_CW, MODE_CW, MODE_USB, MODE_USB}},
+	{"17M", 18068000, 18168000, 25,25,94, 0,
+		{18068000, 18100000, 18110000, 18160000}, {MODE_CW, MODE_CW, MODE_USB, MODE_USB}},
+	{"15M", 21000000, 21500000, 20,20,96, 0,
+		{21010000, 21040000, 21074000, 21250000}, {MODE_CW, MODE_CW, MODE_USB, MODE_USB}},
+	{"12M", 24890000, 24990000, 10, 10, 96, 0,
+		{24890000, 24910000, 24950000, 24990000}, {MODE_CW, MODE_CW, MODE_USB, MODE_USB}},
+	{"10M", 28000000, 29700000, 6, 6, 96, 0,
+		{28000000, 28040000, 28074000, 28250000}, {MODE_CW, MODE_CW, MODE_USB, MODE_USB}}  
 };
 
+#define INC_OFF 0
+#define INC_RIT 1
+#define INC_XIT	2
 
+#define VFO_A 0 
+#define VFO_B 2 
+
+int selected_band = 21;
+int	selected_vfo = VFO_A;
+int select_incremental_tuning = INC_OFF;
 
 GtkWidget *display_area = NULL;
 int screen_width, screen_height;
@@ -127,9 +163,9 @@ float palette[][3] = {
 	{1,0,1},		//COLOR_LABEL
 	//spectrum
 	{0,0,0},	//SPECTRUM_BACKGROUND
-	{0.25, 0.25, 0.25}, //SPECTRUM_GRID
+	{0.1, 0.1, 0.1}, //SPECTRUM_GRID
 	{1,1,0},	//SPECTRUM_PLOT
-	{1,1,1}, 	//SPECTRUM_NEEDLE
+	{0.2,0.2,0.2}, 	//SPECTRUM_NEEDLE
 	{0.5,0.5,0.5}, COLOR_CONTROL_BOX
 };
 
@@ -174,6 +210,7 @@ struct font_style font_table[] = {
 	{FONT_LARGE_FIELD, 0, 1, 1, "Mono", 14, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
 	{FONT_LARGE_VALUE, 1, 1, 1, "Arial", 24, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
 	{FONT_SMALL, 0, 1, 1, "Mono", 10, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
+	{FONT_LOG, 0, 1, 0, "Mono", 14, CAIRO_FONT_WEIGHT_BOLD, CAIRO_FONT_SLANT_NORMAL},
 };
 /*
 	Warning: The field selection is used for TOGGLE and SELECTION fields
@@ -199,72 +236,60 @@ char settings_updated = 0;
 
 // the cmd fields that have '#' are not to be sent to the sdr
 struct field main_controls[] = {
-	{ "r1:freq", 500, 0, 130, 49, "", 5, "14000000", FIELD_NUMBER, FONT_LARGE_VALUE, "", 500000, 30000000, 100},
+	{ "r1:freq", 600, 0, 150, 49, "", 5, "14000000", FIELD_NUMBER, FONT_LARGE_VALUE, "", 500000, 30000000, 100},
 
 	// Main RX
-	{"#r1", 70, 55 ,100, 50, "MAIN RX", 1, "MAIN RX", FIELD_STATIC, FONT_FIELD_VALUE, "ON/OFF", 0,0,0},
-	{"#rit", 235, 50 ,55, 50, "RIT", 1, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, "ON/OFF", 0,0,0},
-	{ "r1:volume", 70, 100, 55, 50, "VOLUME", 40, "60", FIELD_NUMBER, FONT_FIELD_VALUE, "", 0, 1024, 1},
-	{ "r1:mode", 125, 100, 55, 50, "MODE", 40, "USB", FIELD_SELECTION, FONT_FIELD_VALUE, "USB/LSB/CW/CWR/2TONE", 0,0, 0},
-	{ "r1:low", 180, 100, 55, 50, "LOW", 40, "300", FIELD_NUMBER, FONT_FIELD_VALUE, "", 300,4000, 50},
-	{ "r1:high", 235, 100, 55, 50, "HIGH", 40, "3000", FIELD_NUMBER, FONT_FIELD_VALUE, "", 300, 4000, 50},
+	{ "r1:volume", 750, 0, 50, 50, "AUDIO", 40, "60", FIELD_NUMBER, FONT_FIELD_VALUE, "", 0, 1024, 1},
+	{ "r1:mode", 550, 280, 50, 50, "MODE", 40, "USB", FIELD_SELECTION, FONT_FIELD_VALUE, "USB/LSB/CW/CWR/2TONE", 0,0, 0},
+	{ "r1:low", 600, 280, 50, 50, "LOW", 40, "300", FIELD_NUMBER, FONT_FIELD_VALUE, "", 300,4000, 50},
+	{ "r1:high", 650, 280, 50, 50, "HIGH", 40, "3000", FIELD_NUMBER, FONT_FIELD_VALUE, "", 300, 4000, 50},
 
-	{ "r1:agc", 70, 150, 55, 50, "AGC", 40, "SLOW", FIELD_SELECTION, FONT_FIELD_VALUE, "OFF/SLOW/FAST", 0, 1024, 1},
-	{ "r1:gain", 125, 150, 55, 50, "IF GAIN", 40, "60", FIELD_NUMBER, FONT_FIELD_VALUE, "", 0, 100, 1},
-	//{  "#band", 180, 150, 55, 50, "Band", 40, "80M", FIELD_SELECTION, FONT_FIELD_VALUE, "160M/80M/60M/40M/30M/20M/17M/15M/10M", 0,0, 0},
-	{  "#band", 180, 150, 55, 50, "Band", 40, "80M", FIELD_SELECTION, FONT_FIELD_VALUE, "10M/15M/17M/20M/30M/40M/60M/80M", 0,0, 0},
-	{"r1:mute", 235, 150 ,55, 50, "MUTE", 1, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, "ON/OFF", 0,0,0},
-
-	// Sub RX
-	{"#r2", 70, 205 ,100, 50, "SUB RX", 1, "MAIN RX", FIELD_STATIC, FONT_FIELD_VALUE, "ON/OFF", 0,0,0},
-	{ "r2:volume", 70, 250, 55, 50, "VOLUME", 40, "60", FIELD_NUMBER, FONT_FIELD_VALUE, "", 0, 1024, 1},
-	{ "r2:mode", 125, 250, 55, 50, "MODE", 40, "USB", FIELD_SELECTION, FONT_FIELD_VALUE, "USB/LSB/CW/CWR/2TONE", 0,0, 0},
-	{ "r2:low", 180, 250, 55, 50, "LOW", 40, "300", FIELD_NUMBER, FONT_FIELD_VALUE, "", 300,4000, 50},
-	{ "r2:high", 235, 250, 55, 50, "HIGH", 40, "3000", FIELD_NUMBER, FONT_FIELD_VALUE, "", 300, 4000, 50},
-
-	{ "r2:agc", 70, 300, 55, 50, "AGC", 40, "SLOW", FIELD_SELECTION, FONT_FIELD_VALUE, "SLOW/FAST", 0, 1024, 1},
-	{ "r2:gain", 125, 300, 55, 50, "IF GAIN", 40, "60", FIELD_NUMBER, FONT_FIELD_VALUE, "", 0, 100, 1},
-	{"r2:send", 180, 300 ,55, 50, "SEND", 1, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, "ON/OFF", 0,0,0},
-	{"r2:mute", 235, 300 ,55, 50, "MUTE", 1, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, "ON/OFF", 0,0,0},
+	{ "r1:agc", 700, 280, 50, 50, "AGC", 40, "SLOW", FIELD_SELECTION, FONT_FIELD_VALUE, "OFF/SLOW/FAST", 0, 1024, 1},
+	{ "r1:gain", 750, 280, 50, 50, "IF", 40, "60", FIELD_NUMBER, FONT_FIELD_VALUE, "", 0, 100, 1},
+	//{  "#band", 0, 240, 50, 50, "Band", 40, "80M", FIELD_SELECTION, FONT_FIELD_VALUE, "160M/80M/60M/40M/30M/20M/17M/15M/10M", 0,0, 0},
 
 	//tx 
-	{ "tx_gain", 70, 370, 55, 50, "MIC", 40, "50", FIELD_NUMBER, FONT_FIELD_VALUE, "", 0, 100, 1},
-	{ "tx_power", 125, 370, 55, 50, "DRIVE", 40, "40", FIELD_NUMBER, FONT_FIELD_VALUE, "", 0, 100, 1},
-	{ "tx_comp", 180, 370, 55, 50, "COMP", 40, "0", FIELD_NUMBER, FONT_FIELD_VALUE, "", 0, 10, 1},
-	{ "mod", 235, 370, 55, 50, "MOD", 40, "MIC", FIELD_SELECTION, FONT_FIELD_VALUE, "MIC/LINE", 0,0, 0},
+	{ "tx_power", 550, 330, 50, 50, "WATTS", 40, "40", FIELD_NUMBER, FONT_FIELD_VALUE, "", 0, 100, 1},
+	{ "tx_gain", 600, 330, 50, 50, "MIC", 40, "50", FIELD_NUMBER, FONT_FIELD_VALUE, "", 0, 100, 1},
+	{ "mod", 650, 330, 55, 50, "INPUT", 40, "MIC", FIELD_SELECTION, FONT_FIELD_VALUE, "MIC/LINE", 0,0, 0},
 
-	{ "#tx_wpm", 70, 420, 55, 50, "WPM", 40, "12", FIELD_NUMBER, FONT_FIELD_VALUE, "", 1, 50, 1},
-	{ "#tx_key", 125, 420, 55, 50, "KEY", 40, "HARD", FIELD_SELECTION, FONT_FIELD_VALUE, "SOFT/HARD", 0, 0, 0},
-	{ "tx_vox", 180, 420, 55, 50, "VOX", 40, "ON", FIELD_TOGGLE, FONT_FIELD_VALUE, "ON/OFF", 0, 0, 0},
-	{ "tx_record", 235, 420, 55, 50, "RECORD", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, "ON/OFF", 0,0, 0},
+	{ "#split", 700, 330, 50, 50, "SPLIT", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, "ON/OFF", 0,0,0},
+	{ "tx_compress", 750, 330, 50, 50, "COMP", 40, "0", FIELD_NUMBER, FONT_FIELD_VALUE, "ON/OFF", 0,100,1},
+	{"#rit", 550, 0, 50, 50, "X/RIT", 1, "OFF", FIELD_SELECTION, FONT_FIELD_VALUE, "OFF/RIT/XIT", 0,0,0},
+	{ "#tx_wpm", 550, 380, 50, 50, "WPM", 40, "12", FIELD_NUMBER, FONT_FIELD_VALUE, "", 1, 50, 1},
+	{ "#tx_key", 600, 380, 50, 50, "KEY", 40, "HARD", FIELD_SELECTION, FONT_FIELD_VALUE, "SOFT/HARD", 0, 0, 0},
+	{ "tx_record", 650, 380, 50, 50, "RECORD", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, "ON/OFF", 0,0, 0},
+	{  "#band", 700, 380, 50, 50, "Band", 40, "80M", FIELD_SELECTION, FONT_FIELD_VALUE, "10M/15M/17M/20M/30M/40M/60M/80M", 0,0, 0},
 	
 	// top row
-	{ "#split", 340, 0, 55, 50, "SPLIT", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, "ON/OFF", 0,0,0},
-	{"#step", 390, 0 ,50, 50, "STEP", 1, "50Hz", FIELD_SELECTION, FONT_FIELD_VALUE, "10KHz/1KHz/200Hz/50Hz", 0,0,0},
-	{"#step", 440, 0 ,50, 50, "VFO", 1, "A", FIELD_SELECTION, FONT_FIELD_VALUE, "A/B", 0,0,0},
-	{"#span", 690, 0 ,50, 50, "SPAN", 1, "25KHz", FIELD_SELECTION, FONT_FIELD_VALUE, "25KHz/10KHz/3KHz", 0,0,0},
+	{"#step", 400, 0 ,50, 50, "STEP", 1, "50Hz", FIELD_SELECTION, FONT_FIELD_VALUE, "100KHz/10KHz/1KHz/100Hz/10Hz", 0,0,0},
+	{"#vfo", 450, 0 ,50, 50, "VFO", 1, "A", FIELD_SELECTION, FONT_FIELD_VALUE, "A/B", 0,0,0},
+	{"#span", 500, 0 ,50, 50, "SPAN", 1, "25KHz", FIELD_SELECTION, FONT_FIELD_VALUE, "25KHz/10KHz/3KHz", 0,0,0},
 
 	/* beyond MAX_MAIN_CONROLS are the static text display */
-	{"spectrum", 340, 50, 400, 200, "Spectrum ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, "", 0,0,0},   
-	{"waterfall", 340, 270 , 400, 210, "Waterfall ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, "", 0,0,0},
-	{"#close", 750, 0 ,50, 50, "CLOSE", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
+	{"spectrum", 400, 50, 400, 100, "Spectrum ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, "", 0,0,0},   
+	{"waterfall", 400, 150 , 400, 130, "Waterfall ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, "", 0,0,0},
+	{"#close", 700, 430 ,50, 50, "CLOSE", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
 	{"#off", 750, 430 ,50, 50, "OFF", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
 
 	/* band stack registers */
-	{"#10m", 0, 1 ,50, 50, "10 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
-	{"#13m", 0, 50 ,50, 50, "13 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
-	{"#15m", 0, 100 ,50, 50, "15 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
-	{"#17m", 0, 150 ,50, 50, "17 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
-	{"#20m", 0, 200 ,50, 50, "20 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
-	{"#30m", 0, 250 ,50, 50, "30 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
-	{"#40m", 0, 300 ,50, 50, "40 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
-	{"#80m", 0, 350 ,50, 50, "60 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
+	{"#10m", 400, 280, 50, 50, "10 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
+	{"#13m", 450, 280, 50, 50, "13 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
+	{"#15m", 500, 280, 50, 50, "15 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
+	{"#17m", 400, 330, 50, 50, "17 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
+	{"#20m", 450, 330, 50, 50, "20 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
+	{"#30m", 500, 330, 50, 50, "30 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
+	{"#40m", 400, 380, 50, 50, "40 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
+	{"#80m", 450, 380, 50, 50, "80 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
 
 	//the last control has empty cmd field 
 	{"", 0, 0 ,0, 0, "", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
 };
 
 
+#define MAX_LOG_LINES 1000
+char *log[MAX_LOG_LINES];
+int last_log = 0;
 
 void set_field(char *id, char *value);
 
@@ -291,7 +316,6 @@ void write_gui_ini(){
   fclose(pf);
 }
 
-
 static void save_user_settings(){
 	static int last_save_at = 0;
 	char file_path[200];	//dangerous, find the MAX_PATH and replace 200 with it
@@ -313,10 +337,61 @@ static void save_user_settings(){
 	}
 	for (int i= 0; i < active_layout[i].cmd[0] > 0; i++)
 		fprintf(f, "%s=%s\n", active_layout[i].cmd, active_layout[i].value);
+
+	//now save the band stack
+	for (int i = 0; i < sizeof(band_stack)/sizeof(struct band); i++){
+		fprintf(f, "\n[%s]\n", band_stack[i].name);
+		fprintf(f, "power=%d\n", band_stack[i].power);
+		for (int j = 0; j < STACK_DEPTH; j++)
+			fprintf(f, "freq%d=%d\nmode%d=%d\n", j, band_stack[i].freq[j], j, band_stack[i].mode[j]);
+	}
 	fclose(f);
 	printf("settings are saved\n");
 	settings_updated = 0;
 }
+
+/*
+static int bands_handler(void* user, const char* section, 
+            const char* name, const char* value)
+{
+    char cmd[1000];
+    char new_value[200];
+		int	band = -1;
+
+		printf("[%s] setting %s = %s\n", section, name, value);
+
+		if (!strcmp(section, "80m"))
+			band = 0;
+		else if (!strcmp(section, "40m"))
+			band = 1;
+		else if (!strcmp(section, "30m"))
+			band = 2;
+		else if (!strcmp(section, "20m"))
+			band = 3;
+		else if (!strcmp(section, "17m"))
+			band = 4;
+		else if (!strcmp(section, "15m"))
+			band = 5;
+		else if (!strcmp(section, "13m"))	
+			band = 6;
+		else if (!strcmp(section, "10m"))
+			band = 7;	
+		if (band == -1)
+			return 1;
+
+		if (!strcmp(name, "max"))
+			band_stack[band].max = atoi(value);
+		else if (!strcmp(name, "power"))
+			band_stack[band].power = atoi(value);
+		else if (!strcmp(name, "drive"))
+			band_stack[band].drive = atoi(value);
+  	else if (!strcmp(name, "start"))
+			band_stack[band].start = atoi(value);
+		else if (!strcmp(name, "stop"))
+			band_stack[band].stop = atoi(value); 
+	return 1; 
+}
+*/
 
 static int user_settings_handler(void* user, const char* section, 
             const char* name, const char* value)
@@ -324,7 +399,7 @@ static int user_settings_handler(void* user, const char* section,
     char cmd[1000];
     char new_value[200];
 
-		printf("%s.ini [%s] setting %s = %s\n", user, section, name, value);
+		printf("[%s] setting %s = %s\n", section, name, value);
     strcpy(new_value, value);
     if (!strcmp(section, "r1")){
       sprintf(cmd, "%s:%s", section, name);
@@ -340,6 +415,44 @@ static int user_settings_handler(void* user, const char* section,
       sprintf(cmd, "%s", name);
       set_field(cmd, new_value); 
     }
+
+		int band = -1;
+		if (!strcmp(section, "80m"))
+			band = 0;
+		else if (!strcmp(section, "40m"))
+			band = 1;
+		else if (!strcmp(section, "30m"))
+			band = 2;
+		else if (!strcmp(section, "20m"))
+			band = 3;
+		else if (!strcmp(section, "17m"))
+			band = 4;
+		else if (!strcmp(section, "15m"))
+			band = 5;
+		else if (!strcmp(section, "13m"))	
+			band = 6;
+		else if (!strcmp(section, "10m"))
+			band = 7;	
+
+		if (band >= 0 && !strcmp(name, "power"))
+			band_stack[band].power = atoi(value);
+		else if (band >= 0  && !strcmp(name, "freq0"))
+			band_stack[band].freq[0] = atoi(value);
+		else if (band >= 0  && !strcmp(name, "freq1"))
+			band_stack[band].freq[1] = atoi(value);
+		else if (band >= 0  && !strcmp(name, "freq2"))
+			band_stack[band].freq[2] = atoi(value);
+		else if (band >= 0  && !strcmp(name, "freq3"))
+			band_stack[band].freq[3] = atoi(value);
+		else if (band >= 0 && !strcmp(name, "mode0"))
+			band_stack[band].mode[0] = atoi(value);	
+		else if (band >= 0 && !strcmp(name, "mode1"))
+			band_stack[band].mode[1] = atoi(value);	
+		else if (band >= 0 && !strcmp(name, "mode2"))
+			band_stack[band].mode[2] = atoi(value);	
+		else if (band >= 0 && !strcmp(name, "mode3"))
+			band_stack[band].mode[3] = atoi(value);	
+
     return 1;
 }
 //static int field_in_focus = -1;
@@ -435,7 +548,8 @@ void draw_waterfall(GtkWidget *widget, cairo_t *gfx){
 	struct field *f;
 	f = get_field("waterfall");
 
-	memmove(waterfall_map + f->width * 3, waterfall_map, f->width * (f->height - 1) * 3);
+	memmove(waterfall_map + f->width * 3, waterfall_map, 
+		f->width * (f->height - 1) * 3);
 
 	int index = 0;
 	for (int i = 0; i < f->width; i++){
@@ -443,10 +557,15 @@ void draw_waterfall(GtkWidget *widget, cairo_t *gfx){
 			v *= 5;
 			if (v > 255)
 				v = 255;
-			if (v < 128){
+			if (v < 85){
 				waterfall_map[index++] = 0;
-				waterfall_map[index++] = v;
-				waterfall_map[index++] = 255-v; 
+				waterfall_map[index++] = 0;
+				waterfall_map[index++] = v; 
+			}
+			else if (v < 170){
+				waterfall_map[index++] = 0;
+				waterfall_map[index++] = v-170;
+				waterfall_map[index++] = 170-v; 
 			}else {
 				waterfall_map[index++] = v;
 				waterfall_map[index++] = 255-v;
@@ -460,19 +579,30 @@ void draw_waterfall(GtkWidget *widget, cairo_t *gfx){
 }
 
 void draw_spectrum(GtkWidget *widget, cairo_t *gfx){
-	int y, sub_division, i;
+	int y, sub_division, i, grid_height;
 	struct field *f;
+	long	freq, freq_div;
+	char	freq_text[20];
+
+
+	f = get_field("r1:freq");
+	freq = atol(f->value);
+	f = get_field("#span");
+	// the step is in khz, we multiply by 1000 and div 10(divisions) = 100 
+	freq_div = atol(f->value) * 100;  
 
 	f = get_field("spectrum");
 	sub_division = f->width / 10;
+	grid_height = f->height - 10;
 
 	// clear the spectrum	
 	fill_rect(gfx, f->x,f->y, f->width, f->height, SPECTRUM_BACKGROUND);
+	cairo_stroke(gfx);
 	cairo_set_line_width(gfx, 1);
 	cairo_set_source_rgb(gfx, palette[SPECTRUM_GRID][0], palette[SPECTRUM_GRID][1], palette[SPECTRUM_GRID][2]);
 
 	//draw the horizontal grid
-	for (i =  0; i <= f->height; i += f->height/10){
+	for (i =  0; i <= grid_height; i += grid_height/10){
 		cairo_move_to(gfx, f->x, f->y + i);
 		cairo_line_to(gfx, f->x + f->width, f->y + i); 
 	}
@@ -480,10 +610,20 @@ void draw_spectrum(GtkWidget *widget, cairo_t *gfx){
 	//draw the vertical grid
 	for (i = 0; i <= f->width; i += f->width/10){
 		cairo_move_to(gfx, f->x + i, f->y);
-		cairo_line_to(gfx, f->x + i, f->y + f->height); 
+		cairo_line_to(gfx, f->x + i, f->y + grid_height); 
 	}
 	cairo_stroke(gfx);
 
+	//draw the frequency readout at the bottom
+	cairo_set_source_rgb(gfx, palette[COLOR_TEXT_MUTED][0], 
+			palette[COLOR_TEXT_MUTED][1], palette[COLOR_TEXT_MUTED][2]);
+	long f_start = freq - (4 * freq_div); 
+	for (i = f->width/10; i < f->width; i += f->width/10){
+		sprintf(freq_text, "%ld", f_start/100);
+		int off = measure_text(gfx, freq_text, FONT_SMALL)/2;
+		draw_text(gfx, f->x + i - off , f->y+grid_height , freq_text, FONT_SMALL);
+		f_start += freq_div;
+	}
 	//we only plot the second half of the bins (on the lower sideband
 	int last_y = 100;
 
@@ -499,7 +639,7 @@ void draw_spectrum(GtkWidget *widget, cairo_t *gfx){
 	//start the plot
 	cairo_set_source_rgb(gfx, palette[SPECTRUM_PLOT][0], 
 		palette[SPECTRUM_PLOT][1], palette[SPECTRUM_PLOT][2]);
-	cairo_move_to(gfx, f->x + f->width, f->y + f->height);
+	cairo_move_to(gfx, f->x + f->width, f->y + grid_height);
 
 	float x = 0;
 	int j = 0;
@@ -510,19 +650,19 @@ void draw_spectrum(GtkWidget *widget, cairo_t *gfx){
 		// the bins are at lowest frequency (-ve frequency)
 		int offset = i;
 		offset = (offset - MAX_BINS/2);
-		//y axis is the power  in db of each bin, scaled to 100 db
-		y = ((power2dB(cnrmf(fft_bins[i])) + waterfall_offset) * f->height)/100; 
+		//y axis is the power  in db of each bin, scaled to 80 db
+		y = ((power2dB(cnrmf(fft_bins[i])) + waterfall_offset) * f->height)/80; 
 		// limit y inside the spectrum display box
 		if ( y <  0)
 			y = 0;
 		if (y > f->height)
 			y = f->height - 1;
 		//the plot should be increase upwards
-		cairo_line_to(gfx, f->x + f->width - (int)x, f->y + f->height - y);
+		cairo_line_to(gfx, f->x + f->width - (int)x, f->y + grid_height - y);
 
 		//fill the waterfall
 		for (int k = 0; k <= 1 + (int)x_step; k++)
-			wf[k + (int)x] = (y * 100)/f->height;
+			wf[k + f->width - (int)x] = (y * 100)/grid_height;
 		x += x_step;
 	}
 	cairo_stroke(gfx);
@@ -530,7 +670,7 @@ void draw_spectrum(GtkWidget *widget, cairo_t *gfx){
 	//draw the needle
 	for (struct rx *r = rx_list; r; r = r->next){
 		int needle_x  = (f->width*(MAX_BINS/2 - r->tuned_bin))/(MAX_BINS/2);
-		fill_rect(gfx, f->x + needle_x, f->y, 1, f->height,  SPECTRUM_NEEDLE);
+		fill_rect(gfx, f->x + needle_x, f->y, 1, grid_height,  SPECTRUM_NEEDLE);
 	}
 
 	draw_waterfall(widget, gfx);
@@ -574,7 +714,12 @@ void draw_field(GtkWidget *widget, cairo_t *gfx, struct field *f){
 		case FIELD_BUTTON:
 			width = measure_text(gfx, f->label, FONT_FIELD_LABEL);
 			offset = f->width/2 - width/2;
-			draw_text(gfx, f->x + offset, f->y+13 , f->label , FONT_FIELD_LABEL);
+			if (strlen(f->value) == 0)
+				draw_text(gfx, f->x + offset, f->y+13 , f->label , FONT_FIELD_LABEL);
+			else {
+				draw_text(gfx, f->x + offset, f->y+5 ,  f->label, FONT_FIELD_LABEL);
+				draw_text(gfx, f->x+offset , f->y+25 , f->value , f->font_index);
+			}	
 			break;
 		case FIELD_STATIC:
 			draw_text(gfx, f->x, f->y, f->label, FONT_FIELD_LABEL);
@@ -1289,6 +1434,12 @@ gboolean ui_tick(gpointer gook){
 	//straight key in CW
 	if (f && (!strcmp(f->value, "CW") || !strcmp(f->value, "CWR"))) 
 		do_keyer();	
+	else if (f && (!strcmp(f->value, "LSB") || !strcmp(f->value, "USB"))){
+		if (digitalRead(PTT) == LOW && in_tx == 0)
+			tx_on();
+		else if (digitalRead(PTT) == HIGH && in_tx == 1)
+			tx_off();
+	}
 
 	int scroll = enc_read(&enc_a);
 	if (scroll && f_focus){
@@ -1451,14 +1602,16 @@ void do_cmd(char *cmd){
 		exit(0);
 
 	//tuning step
+	else if (!strcmp(request, "#step=100KHz"))
+		tuning_step = 100000;
 	else if (!strcmp(request, "#step=10KHz"))
 		tuning_step = 10000;
 	else if (!strcmp(request, "#step=1KHz"))
 		tuning_step = 1000;
-	else if (!strcmp(request, "#step=200Hz"))
-		tuning_step = 200;
-	else if (!strcmp(request, "#step=50Hz"))
-		tuning_step = 50;
+	else if (!strcmp(request, "#step=100Hz"))
+		tuning_step = 100;
+	else if (!strcmp(request, "#step=10Hz"))
+		tuning_step = 10;
 
 	//spectrum bandwidth
 	else if (!strcmp(request, "#span=3KHz"))
@@ -1467,7 +1620,12 @@ void do_cmd(char *cmd){
 		spectrum_span = 10000;
 	else if (!strcmp(request, "#span=25KHz"))
 		spectrum_span = 25000;
-		
+	/*	
+	//handle the band stacking
+	else if (!strcmp(request, "#40m")){
+		ban
+	}
+	*/
 
 	//this needs to directly pass on to the sdr core
 	else if(request[0] != '#')
@@ -1502,7 +1660,7 @@ int main( int argc, char* argv[] ) {
 	set_volume(3000000);
 
 	enc_init(&enc_a, ENC_FAST, ENC1_B, ENC1_A);
-	enc_init(&enc_b, ENC_SLOW, ENC2_A, ENC2_B);
+	enc_init(&enc_b, ENC_FAST, ENC2_A, ENC2_B);
 
 	if (argc > 1 && !strcmp(argv[1], "calibrate"))
 		do_calibration();
@@ -1520,6 +1678,13 @@ int main( int argc, char* argv[] ) {
 
 	char directory[200];	//dangerous, find the MAX_PATH and replace 200 with it
 	char *path = getenv("HOME");
+/*
+	strcpy(directory, path);
+	strcat(directory, "/.sbitx/bands.ini");
+  if (ini_parse(directory, bands_handler, NULL)<0){
+    printf("Unable to load ~/.sbitx/bands.ini\n");
+  }
+*/
 	strcpy(directory, path);
 	strcat(directory, "/.sbitx/user_settings.ini");
   if (ini_parse(directory, user_settings_handler, NULL)<0){
