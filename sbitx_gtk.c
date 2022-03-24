@@ -186,6 +186,7 @@ guint key_modifier = 0;
 #define FIELD_SELECTION 3
 #define FIELD_TEXT 4
 #define FIELD_STATIC 5
+#define FIELD_LIST 6
 
 #define MAX_FIELD_LENGTH 128
 
@@ -194,6 +195,7 @@ guint key_modifier = 0;
 #define FONT_LARGE_FIELD 2
 #define FONT_LARGE_VALUE 3
 #define FONT_SMALL 4
+#define FONT_LOG 5
 
 struct font_style {
 	int index;
@@ -269,6 +271,7 @@ struct field main_controls[] = {
 	/* beyond MAX_MAIN_CONROLS are the static text display */
 	{"spectrum", 400, 50, 400, 100, "Spectrum ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, "", 0,0,0},   
 	{"waterfall", 400, 150 , 400, 130, "Waterfall ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, "", 0,0,0},
+	{"log", 0, 0 , 400, 480, "log", 70, "log box", FIELD_LIST, FONT_LOG, "nothing valuable", 0,0,0},
 	{"#close", 700, 430 ,50, 50, "CLOSE", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
 	{"#off", 750, 430 ,50, 50, "OFF", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
 
@@ -288,7 +291,7 @@ struct field main_controls[] = {
 
 
 #define MAX_LOG_LINES 1000
-char *log[MAX_LOG_LINES];
+char *log_lines[MAX_LOG_LINES];
 int last_log = 0;
 
 void set_field(char *id, char *value);
@@ -676,6 +679,20 @@ void draw_spectrum(GtkWidget *widget, cairo_t *gfx){
 	draw_waterfall(widget, gfx);
 }
 
+void draw_list(cairo_t *gfx, struct field *f){
+	//get the text height
+	int line_height = font_table[f->font_index].height; 	
+	int n_lines = f->height / line_height;
+	//estimate!
+	int char_width = measure_text(gfx, "01234567890123456789", f->font_index)/20;
+	int n_cols = f->width / char_width;
+	int y = f->y; 
+	for (int i = 0; i < n_lines; i++){
+		draw_text(gfx, f->x, y, "Heya!!", f->font_index);
+		y += line_height;
+	}
+}
+
 void draw_field(GtkWidget *widget, cairo_t *gfx, struct field *f){
 	struct font_style *s = font_table + 0;
 	if (!strcmp(f->cmd, "spectrum")){
@@ -723,6 +740,9 @@ void draw_field(GtkWidget *widget, cairo_t *gfx, struct field *f){
 			break;
 		case FIELD_STATIC:
 			draw_text(gfx, f->x, f->y, f->label, FONT_FIELD_LABEL);
+			break;
+		case FIELD_LIST:
+			draw_list(gfx, f);
 			break;
 	}
 }
