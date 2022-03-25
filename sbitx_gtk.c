@@ -24,6 +24,7 @@ The initial sync between the gui values, the core radio values, settings, et al 
 #include "sdr_ui.h"
 #include "ini.h"
 #include "hamlib.h"
+#include "wsjtx.h"
 
 /* Front Panel controls */
 char pins[15] = {0, 2, 3, 6, 7, 
@@ -251,7 +252,7 @@ struct field main_controls[] = {
 	//{  "#band", 0, 240, 50, 50, "Band", 40, "80M", FIELD_SELECTION, FONT_FIELD_VALUE, "160M/80M/60M/40M/30M/20M/17M/15M/10M", 0,0, 0},
 
 	//tx 
-	{ "tx_power", 550, 330, 50, 50, "WATTS", 40, "40", FIELD_NUMBER, FONT_FIELD_VALUE, "", 0, 100, 1},
+	{ "tx_power", 550, 330, 50, 50, "WATTS", 40, "40", FIELD_NUMBER, FONT_FIELD_VALUE, "", 1, 40, 1},
 	{ "tx_gain", 600, 330, 50, 50, "MIC", 40, "50", FIELD_NUMBER, FONT_FIELD_VALUE, "", 0, 100, 1},
 	{ "mod", 650, 330, 55, 50, "INPUT", 40, "MIC", FIELD_SELECTION, FONT_FIELD_VALUE, "MIC/LINE", 0,0, 0},
 
@@ -261,17 +262,15 @@ struct field main_controls[] = {
 	{ "#tx_wpm", 550, 380, 50, 50, "WPM", 40, "12", FIELD_NUMBER, FONT_FIELD_VALUE, "", 1, 50, 1},
 	{ "#tx_key", 600, 380, 50, 50, "KEY", 40, "HARD", FIELD_SELECTION, FONT_FIELD_VALUE, "SOFT/HARD", 0, 0, 0},
 	{ "tx_record", 650, 380, 50, 50, "RECORD", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, "ON/OFF", 0,0, 0},
-	{  "#band", 700, 380, 50, 50, "Band", 40, "80M", FIELD_SELECTION, FONT_FIELD_VALUE, "10M/15M/17M/20M/30M/40M/60M/80M", 0,0, 0},
 	
 	// top row
 	{"#step", 400, 0 ,50, 50, "STEP", 1, "50Hz", FIELD_SELECTION, FONT_FIELD_VALUE, "100KHz/10KHz/1KHz/100Hz/10Hz", 0,0,0},
 	{"#vfo", 450, 0 ,50, 50, "VFO", 1, "A", FIELD_SELECTION, FONT_FIELD_VALUE, "A/B", 0,0,0},
 	{"#span", 500, 0 ,50, 50, "SPAN", 1, "25KHz", FIELD_SELECTION, FONT_FIELD_VALUE, "25KHz/10KHz/3KHz", 0,0,0},
 
-	/* beyond MAX_MAIN_CONROLS are the static text display */
 	{"spectrum", 400, 50, 400, 100, "Spectrum ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, "", 0,0,0},   
 	{"waterfall", 400, 150 , 400, 130, "Waterfall ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, "", 0,0,0},
-	{"log", 0, 0 , 400, 480, "log", 70, "log box", FIELD_LIST, FONT_LOG, "nothing valuable", 0,0,0},
+	{"#log", 0, 0 , 400, 480, "log", 70, "log box", FIELD_LIST, FONT_LOG, "nothing valuable", 0,0,0},
 	{"#close", 700, 430 ,50, 50, "CLOSE", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
 	{"#off", 750, 430 ,50, 50, "OFF", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
 
@@ -284,11 +283,15 @@ struct field main_controls[] = {
 	{"#30m", 500, 330, 50, 50, "30 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
 	{"#40m", 400, 380, 50, 50, "40 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
 	{"#80m", 450, 380, 50, 50, "80 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
+	{  "#band", 500, 380, 50, 50, "Band", 40, "80M", FIELD_SELECTION, FONT_FIELD_VALUE, "10M/15M/17M/20M/30M/40M/60M/80M", 0,0, 0},
 
 	//the last control has empty cmd field 
 	{"", 0, 0 ,0, 0, "", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
 };
 
+
+struct field *get_field(char *cmd);
+void update_field(struct field *f);
 
 #define MAX_LOG_LINES 1000
 char *log_lines[MAX_LOG_LINES];
@@ -555,23 +558,35 @@ void draw_waterfall(GtkWidget *widget, cairo_t *gfx){
 		f->width * (f->height - 1) * 3);
 
 	int index = 0;
+
+	
 	for (int i = 0; i < f->width; i++){
-			int v = wf[i];
-			v *= 5;
-			if (v > 255)
-				v = 255;
-			if (v < 85){
+			int v = wf[i] * 2;
+			if (v > 100)		//we limit ourselves to 100 db range
+				v = 100;
+
+			if (v < 20){									// r = 0, g= 0, increase blue
 				waterfall_map[index++] = 0;
 				waterfall_map[index++] = 0;
-				waterfall_map[index++] = v; 
+				waterfall_map[index++] = v * 12; 
 			}
-			else if (v < 170){
+			else if (v < 40){							// r = 0, increase g, blue is max
 				waterfall_map[index++] = 0;
-				waterfall_map[index++] = v-170;
-				waterfall_map[index++] = 170-v; 
-			}else {
-				waterfall_map[index++] = v;
-				waterfall_map[index++] = 255-v;
+				waterfall_map[index++] = (v - 20) * 12;
+				waterfall_map[index++] = 255; 
+			}
+			else if (v < 60){							// r = 0, g= max, decrease b
+				waterfall_map[index++] = 0;
+				waterfall_map[index++] = 255; 
+				waterfall_map[index++] = (60-v)*12; 
+			}
+			else if (v < 80){						 	// increase r, g = max, b = 0
+				waterfall_map[index++] = (v-60) * 12;
+				waterfall_map[index++] = 255;
+				waterfall_map[index++] = 0; 
+			}else {												// r = max, decrease g, b = 0
+				waterfall_map[index++] = 255;
+				waterfall_map[index++] = (100-v) * 12;
 				waterfall_map[index++] = 0; 
 			}
 	}
@@ -686,11 +701,44 @@ void draw_list(cairo_t *gfx, struct field *f){
 	//estimate!
 	int char_width = measure_text(gfx, "01234567890123456789", f->font_index)/20;
 	int n_cols = f->width / char_width;
-	int y = f->y; 
+	int y = f->y +f->height - line_height; 
+
+	int line = last_log;
+	if (line == -1)
+		return;
+
 	for (int i = 0; i < n_lines; i++){
-		draw_text(gfx, f->x, y, "Heya!!", f->font_index);
-		y += line_height;
+		if (log_lines[line])
+			draw_text(gfx, f->x, y, log_lines[line], f->font_index);
+		y -= line_height;
+		line--;
+		//go back to the top
+		if (line < 0)
+			line = MAX_LOG_LINES - 1;
 	}
+}
+
+void append_log(char *line){
+	char * p = malloc(strlen(line) + 1);
+	if (!p)
+		return; //silently discard
+	strcpy(p, line);
+
+	//move the last_log forward
+	last_log++;
+	if (last_log >= MAX_LOG_LINES) //wrap the logger around to MAX_LOG_LINES
+		last_log = 0;
+	if (log_lines[last_log])
+		free(log_lines[last_log]);
+	log_lines[last_log] = p;
+
+	struct field *f = get_field("#log");
+	update_field(f);
+}
+
+void init_log(){
+	memset(log_lines, 0, sizeof(log_lines));
+	last_log = -1;
 }
 
 void draw_field(GtkWidget *widget, cairo_t *gfx, struct field *f){
@@ -712,6 +760,9 @@ void draw_field(GtkWidget *widget, cairo_t *gfx, struct field *f){
 		rect(gfx, f->x, f->y, f->width,f->height, COLOR_CONTROL_BOX, 1);
 
 	int width, offset;	
+
+	if (!strcmp(f->cmd, "#log"))
+		puts("yeah!");
 	
 	switch(f->value_type){
 		case FIELD_SELECTION:
@@ -784,7 +835,7 @@ static gboolean on_resize(GtkWidget *widget, GdkEventConfigure *event, gpointer 
 	screen_height = event->height;
 }
 
-static void update_field(struct field *f){
+void update_field(struct field *f){
 	GdkRectangle r;
 	r.x = f->x - 1;
 	r.y = f->y - 1;
@@ -873,8 +924,7 @@ static void edit_field(struct field *f, int action){
 	else if (f->value_type == FIELD_BUTTON){
 		NULL; // ah, do nothing!
 	}
-	else if (f->value_type = FIELD_TEXT){
-		puts("field text");
+	else if (f->value_type == FIELD_TEXT){
 		if (action >= ' ' && action <= 127 && strlen(f->value) < f->max){
 			puts("adding character");
 			int l = strlen(f->value);
@@ -967,7 +1017,7 @@ void set_field(char *id, char *value){
 	else if (f->value_type == FIELD_BUTTON){
 		NULL; // ah, do nothing!
 	}
-	else if (f->value_type = FIELD_TEXT){
+	else if (f->value_type == FIELD_TEXT){
 		if (strlen(value) > f->max || strlen(value) < f->min)
 			printf("*Error: field[%s] can't be set to [%s], improper size.\n", f->cmd, value);
 		else
@@ -1437,6 +1487,7 @@ gboolean ui_tick(gpointer gook){
 	}
 
   hamlib_slice();
+	wsjtx_slice();
 	save_user_settings();
 
 	// check the tuning knob
@@ -1474,6 +1525,7 @@ gboolean ui_tick(gpointer gook){
 void ui_init(int argc, char *argv[]){
   
   gtk_init( &argc, &argv );
+	init_log();
 
   window = gtk_window_new( GTK_WINDOW_TOPLEVEL );
   gtk_window_set_default_size( GTK_WINDOW(window), 800, 480 );
@@ -1692,7 +1744,7 @@ int main( int argc, char* argv[] ) {
 	set_field("r1:freq", "7000000");
 	set_field("r1:mode", "USB");
 	set_field("tx_gain", "24");
-	set_field("tx_power", "85");
+	set_field("tx_power", "40");
 	set_field("r1:gain", "41");
 	set_field("r1:volume", "85");
 
@@ -1711,9 +1763,17 @@ int main( int argc, char* argv[] ) {
     printf("Unable to load ~/.sbitx/user_settings.ini\n");
   }
 
+	//lets add some to the log
+	for (int i = 0; i < 100; i++){
+		char buff[100];
+		sprintf(buff, "Line %d", i);
+		append_log(buff);
+	}
+
 	// you don't want to save the recently loaded settings
 	settings_updated = 0;
   hamlib_start();
+	wsjtx_start();
   gtk_main();
   
   return 0;

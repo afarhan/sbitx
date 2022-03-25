@@ -2,7 +2,7 @@ F=$@
 echo "compiling $F"
 gcc -g -o $F \
 	 vfo.c si570.c sbitx_sound.c fft_filter.c  sbitx_gtk.c sbitx_utils.c \
-    i2cbb.c si5351v2.c ini.c hamlib.c queue.c $F.c \
+    i2cbb.c si5351v2.c ini.c hamlib.c queue.c wsjtx.c $F.c \
 	-lwiringPi -lasound -lm -lfftw3 -lfftw3f -pthread -lncurses \
 	`pkg-config --cflags gtk+-3.0` `pkg-config --libs gtk+-3.0`
 
