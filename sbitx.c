@@ -14,6 +14,7 @@
 #include "sdr_ui.h"
 #include "sound.h"
 #include "si5351.h"
+FILE *pf_tone = NULL;
 
 char audio_card[32];
 
@@ -577,6 +578,21 @@ void tx_2tone(
   }
 }
 
+
+/*
+//this is just to text the tx audio fed back into the speaker 
+void tx_process(
+	int32_t *input_rx, int32_t *input_mic, 
+	int32_t *output_speaker, int32_t *output_tx, 
+	int n_samples)
+{
+	printf("tx_process n_samples %d\n", n_samples);
+	for (int i = 0; i < n_samples; i++){
+		output_speaker[i] = input_mic[i];
+	}
+}
+*/
+
 void tx_process(
 	int32_t *input_rx, int32_t *input_mic, 
 	int32_t *output_speaker, int32_t *output_tx, 
@@ -616,7 +632,7 @@ void tx_process(
 		}
 	  else {
 	  	i_sample = (1.0 * input_mic[j]) / 2000000000.0;
-			output_speaker[j] = 0;
+			output_speaker[j] = input_mic[j];
     }
 	  q_sample = 0;
 
@@ -686,6 +702,7 @@ void tx_process(
 	}
 }
 
+
 /*
 	This is called each time there is a block of signal samples ready 
 	either from the mic or from the rx IF 
@@ -695,8 +712,11 @@ void sound_process(
 	int32_t *output_speaker, int32_t *output_tx, 
 	int n_samples)
 {
-	if (in_tx)
-			tx_process(input_rx, input_mic, output_speaker, output_tx, n_samples);
+	if (in_tx){
+		//fwrite(input_mic, n_samples,  sizeof(int32_t), pf_tone);
+		//printf("sound_process wrote %d\n", n_samples * sizeof(int32_t));
+		tx_process(input_rx, input_mic, output_speaker, output_tx, n_samples);
+	}
 	else
 		rx_process(input_rx, input_mic, output_speaker, output_tx, n_samples);
 }
@@ -791,6 +811,7 @@ void setup(){
 		}
 	}
 	delay(2000);	
+
 }
 
 void sdr_request(char *request, char *response){
@@ -897,6 +918,8 @@ void sdr_request(char *request, char *response){
 	else if (!strcmp(cmd, "tx")){
 		if (!strcmp(value, "on")){
 			in_tx = 1;
+			puts("Opening tone.raw");
+			//pf_tone = fopen("tone.raw", "w");
       fft_reset_m_bins();
 			digitalWrite(TX_LINE, HIGH);
       delay(50);
@@ -908,6 +931,8 @@ void sdr_request(char *request, char *response){
 		}
 		else {
 			in_tx = 0;
+			puts("Closing tone.raw");
+			//fclose(pf_tone);
       fft_reset_m_bins();
 			strcpy(response, "ok");
 			digitalWrite(TX_LINE, LOW);

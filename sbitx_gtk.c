@@ -243,7 +243,7 @@ struct field main_controls[] = {
 
 	// Main RX
 	{ "r1:volume", 750, 0, 50, 50, "AUDIO", 40, "60", FIELD_NUMBER, FONT_FIELD_VALUE, "", 0, 1024, 1},
-	{ "r1:mode", 550, 280, 50, 50, "MODE", 40, "USB", FIELD_SELECTION, FONT_FIELD_VALUE, "USB/LSB/CW/CWR/2TONE", 0,0, 0},
+	{ "r1:mode", 550, 280, 50, 50, "MODE", 40, "USB", FIELD_SELECTION, FONT_FIELD_VALUE, "USB/LSB/CW/CWR/DIGITAL/2TONE", 0,0, 0},
 	{ "r1:low", 600, 280, 50, 50, "LOW", 40, "300", FIELD_NUMBER, FONT_FIELD_VALUE, "", 300,4000, 50},
 	{ "r1:high", 650, 280, 50, 50, "HIGH", 40, "3000", FIELD_NUMBER, FONT_FIELD_VALUE, "", 300, 4000, 50},
 
@@ -252,7 +252,7 @@ struct field main_controls[] = {
 	//{  "#band", 0, 240, 50, 50, "Band", 40, "80M", FIELD_SELECTION, FONT_FIELD_VALUE, "160M/80M/60M/40M/30M/20M/17M/15M/10M", 0,0, 0},
 
 	//tx 
-	{ "tx_power", 550, 330, 50, 50, "WATTS", 40, "40", FIELD_NUMBER, FONT_FIELD_VALUE, "", 1, 40, 1},
+	{ "tx_power", 550, 330, 50, 50, "WATTS", 40, "40", FIELD_NUMBER, FONT_FIELD_VALUE, "", 1, 100, 1},
 	{ "tx_gain", 600, 330, 50, 50, "MIC", 40, "50", FIELD_NUMBER, FONT_FIELD_VALUE, "", 0, 100, 1},
 	{ "mod", 650, 330, 55, 50, "INPUT", 40, "MIC", FIELD_SELECTION, FONT_FIELD_VALUE, "MIC/LINE", 0,0, 0},
 
@@ -292,6 +292,8 @@ struct field main_controls[] = {
 
 struct field *get_field(char *cmd);
 void update_field(struct field *f);
+static void tx_on();
+static void tx_off();
 
 #define MAX_LOG_LINES 1000
 char *log_lines[MAX_LOG_LINES];
@@ -601,7 +603,6 @@ void draw_spectrum(GtkWidget *widget, cairo_t *gfx){
 	struct field *f;
 	long	freq, freq_div;
 	char	freq_text[20];
-
 
 	f = get_field("r1:freq");
 	freq = atol(f->value);
@@ -1287,11 +1288,15 @@ int enc_read(struct encoder *e) {
   return result;
 }
 
-void hamlib_tx(int tx_on){
-  if (tx_on)
-    sound_use_loop_input(1);
-  else
-    sound_use_loop_input(0);
+void hamlib_tx(int tx_input){
+  if (tx_input){
+    sound_input(1);
+		tx_on();
+	}
+  else {
+    sound_input(0);
+		tx_off();
+	}
 }
 
 /*
@@ -1505,7 +1510,8 @@ gboolean ui_tick(gpointer gook){
 	//straight key in CW
 	if (f && (!strcmp(f->value, "CW") || !strcmp(f->value, "CWR"))) 
 		do_keyer();	
-	else if (f && (!strcmp(f->value, "LSB") || !strcmp(f->value, "USB"))){
+	else if (f && (!strcmp(f->value, "2TONE") || !strcmp(f->value, "LSB") || 
+		!strcmp(f->value, "USB"))){
 		if (digitalRead(PTT) == LOW && in_tx == 0)
 			tx_on();
 		else if (digitalRead(PTT) == HIGH && in_tx == 1)

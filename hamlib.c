@@ -112,6 +112,7 @@ void set_freq(char *f){
 }
 
 void tx_control(int s){
+	//printf("tx_control(%d)\n", s);
   if (s == 1){
     in_tx = 1;
     hamlib_tx(in_tx);
@@ -129,7 +130,7 @@ void tx_control(int s){
 }
 
 void interpret_command(char *cmd){
-  printf("Cmd:[%s]\n", cmd);
+  //printf("Cmd:[%s]\n", cmd);
   if (check_cmd(cmd, "\\chk_vfo"))
     send_response("CHKVFO 1\n"); 
   else if (check_cmd(cmd, "\\dump_state"))
@@ -191,10 +192,8 @@ void hamlib_start(){
   bind(welcome_socket, (struct sockaddr *) &serverAddr, sizeof(serverAddr));
 
   /*---- Listen on the socket, with 5 max connection requests queued ----*/
-  if(listen(welcome_socket,5)==0)
-    printf("Listening\n");
-  else
-    printf("Error\n");
+  if(listen(welcome_socket,5)!=0)
+    printf("hamlib listen() Error\n");
   incoming_ptr = 0;
 }
 
