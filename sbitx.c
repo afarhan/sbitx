@@ -14,7 +14,6 @@
 #include "sdr_ui.h"
 #include "sound.h"
 #include "si5351.h"
-FILE *pf_tone = NULL;
 
 char audio_card[32];
 
@@ -632,7 +631,7 @@ void tx_process(
 		}
 	  else {
 	  	i_sample = (1.0 * input_mic[j]) / 2000000000.0;
-			output_speaker[j] = input_mic[j];
+			output_speaker[j] = 0;
     }
 	  q_sample = 0;
 
@@ -713,8 +712,6 @@ void sound_process(
 	int n_samples)
 {
 	if (in_tx){
-		//fwrite(input_mic, n_samples,  sizeof(int32_t), pf_tone);
-		//printf("sound_process wrote %d\n", n_samples * sizeof(int32_t));
 		tx_process(input_rx, input_mic, output_speaker, output_tx, n_samples);
 	}
 	else
@@ -919,7 +916,6 @@ void sdr_request(char *request, char *response){
 		if (!strcmp(value, "on")){
 			in_tx = 1;
 			puts("Opening tone.raw");
-			//pf_tone = fopen("tone.raw", "w");
       fft_reset_m_bins();
 			digitalWrite(TX_LINE, HIGH);
       delay(50);
@@ -932,7 +928,6 @@ void sdr_request(char *request, char *response){
 		else {
 			in_tx = 0;
 			puts("Closing tone.raw");
-			//fclose(pf_tone);
       fft_reset_m_bins();
 			strcpy(response, "ok");
 			digitalWrite(TX_LINE, LOW);

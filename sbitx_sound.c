@@ -55,9 +55,6 @@ examples of using sound_mixer function:
 
 */
 
-struct vfo tone_c; //these are audio tone generators
-static FILE	*pf = NULL;
-
 void sound_volume(char *card_name, char *element, int volume)
 {
     long min, max;
@@ -635,8 +632,7 @@ int sound_loop(){
 
    	if (use_virtual_cable){
 			sound_process(input_i, input_q, output_i, output_q, 1024);
-			printf("loop wrote %d\n", 1024 * sizeof(int32_t));
-			fwrite(input_q, 1024, sizeof(int32_t), pf);
+			//printf("loop wrote %d\n", 1024 * sizeof(int32_t));
 		}
     else 
 			sound_process(input_i, input_q, output_i, output_q, pcmreturn);
@@ -717,11 +713,8 @@ void sound_input(int loop){
   if (loop){
     use_virtual_cable = 1;
 		puts("**********opening the sound log");
-		pf = fopen("tone2.raw", "w");
 	}
   else{
-		if (pf)
-			fclose(pf);
     use_virtual_cable = 0;
 		puts("************closing the sound log");
 	}

@@ -121,6 +121,8 @@ static inline double const cnrm(const complex double x){
 
 #define power2dB(x) (10*log10f(x))
 
+#define MAX_MODES 8 
+
 #define MODE_USB 0
 #define MODE_LSB 1
 #define MODE_CW 2

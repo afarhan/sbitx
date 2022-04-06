@@ -66,6 +66,10 @@ struct encoder enc_a, enc_b;
 #define LPF_C 10
 #define LPF_D 11
 
+char*mode_name[MAX_MODES] = {
+	"USB", "LSB", "CW", "CWR", "AM", "NBFM", "DIGITAL", "2TONE" 
+};
+
 char output_pins[] = {
 	TX_LINE, BAND_SELECT	
 };
@@ -98,22 +102,22 @@ struct band {
 };
 
 struct band band_stack[] = {
-	{"80M", 3500000, 4000000, 30, 30, 82, 0, 
+	{"80m", 3500000, 4000000, 30, 30, 82, 0, 
 		{3500000,3574000,3600000,3700000},{MODE_CW, MODE_USB, MODE_CW,MODE_LSB}},
-	{"40M", 7000000,7300000, 30, 30, 84, 0,
+	{"40m", 7000000,7300000, 30, 30, 84, 0,
 		{7000000,7040000,7074000,7150000},{MODE_CW, MODE_CW, MODE_USB, MODE_LSB}},
-	{"30M", 10100000, 1015000, 25,25,85, 0,
+	{"30m", 10100000, 1015000, 25,25,85, 0,
 		{10100000, 10100000, 10136000, 10150000}, {MODE_CW, MODE_CW, MODE_USB, MODE_USB}},
-	{"20M", 14000000, 14400000, 25,25,92, 0,
+	{"20m", 14000000, 14400000, 25,25,92, 0,
 		{14010000, 14040000, 14074000, 14200000}, {MODE_CW, MODE_CW, MODE_USB, MODE_USB}},
-	{"17M", 18068000, 18168000, 25,25,94, 0,
+	{"17m", 18068000, 18168000, 25,25,94, 0,
 		{18068000, 18100000, 18110000, 18160000}, {MODE_CW, MODE_CW, MODE_USB, MODE_USB}},
-	{"15M", 21000000, 21500000, 20,20,96, 0,
+	{"15m", 21000000, 21500000, 20,20,96, 0,
 		{21010000, 21040000, 21074000, 21250000}, {MODE_CW, MODE_CW, MODE_USB, MODE_USB}},
-	{"12M", 24890000, 24990000, 10, 10, 96, 0,
+	{"12m", 24890000, 24990000, 10, 10, 96, 0,
 		{24890000, 24910000, 24950000, 24990000}, {MODE_CW, MODE_CW, MODE_USB, MODE_USB}},
-	{"10M", 28000000, 29700000, 6, 6, 96, 0,
-		{28000000, 28040000, 28074000, 28250000}, {MODE_CW, MODE_CW, MODE_USB, MODE_USB}}  
+	{"10m", 28000000, 29700000, 6, 6, 96, 0,
+		{28000000, 28040000, 28074000, 28250000}, {MODE_CW, MODE_CW, MODE_USB, MODE_USB}},
 };
 
 #define INC_OFF 0
@@ -121,10 +125,13 @@ struct band band_stack[] = {
 #define INC_XIT	2
 
 #define VFO_A 0 
-#define VFO_B 2 
+#define VFO_B 1 
+int	vfo_a_freq = 7000000;
+int	vfo_b_freq = 14000000;
+char vfo_a_mode[10];
+char vfo_b_mode[10];
 
-int selected_band = 21;
-int	selected_vfo = VFO_A;
+
 int select_incremental_tuning = INC_OFF;
 
 GtkWidget *display_area = NULL;
@@ -258,7 +265,7 @@ struct field main_controls[] = {
 
 	{ "#split", 700, 330, 50, 50, "SPLIT", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, "ON/OFF", 0,0,0},
 	{ "tx_compress", 750, 330, 50, 50, "COMP", 40, "0", FIELD_NUMBER, FONT_FIELD_VALUE, "ON/OFF", 0,100,1},
-	{"#rit", 550, 0, 50, 50, "X/RIT", 1, "OFF", FIELD_SELECTION, FONT_FIELD_VALUE, "OFF/RIT/XIT", 0,0,0},
+	{"#rit", 550, 0, 50, 50, "RIT", 1, "0", FIELD_NUMBER, FONT_FIELD_VALUE, "", -10000,10000,50},
 	{ "#tx_wpm", 550, 380, 50, 50, "WPM", 40, "12", FIELD_NUMBER, FONT_FIELD_VALUE, "", 1, 50, 1},
 	{ "#tx_key", 600, 380, 50, 50, "KEY", 40, "HARD", FIELD_SELECTION, FONT_FIELD_VALUE, "SOFT/HARD", 0, 0, 0},
 	{ "tx_record", 650, 380, 50, 50, "RECORD", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, "ON/OFF", 0,0, 0},
@@ -276,7 +283,7 @@ struct field main_controls[] = {
 
 	/* band stack registers */
 	{"#10m", 400, 280, 50, 50, "10 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
-	{"#13m", 450, 280, 50, 50, "13 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
+	{"#12m", 450, 280, 50, 50, "12 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
 	{"#15m", 500, 280, 50, 50, "15 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
 	{"#17m", 400, 330, 50, 50, "17 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
 	{"#20m", 450, 330, 50, 50, "20 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
@@ -334,6 +341,11 @@ static void save_user_settings(){
 	if (now < last_save_at + 30000 ||  !settings_updated)
 		return;
 
+
+	//copy the current freq settings to the currently selected vfo
+	struct field *f_freq = get_field("r1:freq");
+	struct field *f_vfo  = get_field("#vfo");
+
 	char *path = getenv("HOME");
 	strcpy(file_path, path);
 	strcat(file_path, "/.sbitx/user_settings.ini");
@@ -353,53 +365,15 @@ static void save_user_settings(){
 		for (int j = 0; j < STACK_DEPTH; j++)
 			fprintf(f, "freq%d=%d\nmode%d=%d\n", j, band_stack[i].freq[j], j, band_stack[i].mode[j]);
 	}
+
+	//save other stuff
+	fprintf(f, "vfo_a_freq=%d\n", vfo_a_freq);
+	fprintf(f, "vfo_b_freq=%d\n", vfo_b_freq);
+
 	fclose(f);
 	printf("settings are saved\n");
 	settings_updated = 0;
 }
-
-/*
-static int bands_handler(void* user, const char* section, 
-            const char* name, const char* value)
-{
-    char cmd[1000];
-    char new_value[200];
-		int	band = -1;
-
-		printf("[%s] setting %s = %s\n", section, name, value);
-
-		if (!strcmp(section, "80m"))
-			band = 0;
-		else if (!strcmp(section, "40m"))
-			band = 1;
-		else if (!strcmp(section, "30m"))
-			band = 2;
-		else if (!strcmp(section, "20m"))
-			band = 3;
-		else if (!strcmp(section, "17m"))
-			band = 4;
-		else if (!strcmp(section, "15m"))
-			band = 5;
-		else if (!strcmp(section, "13m"))	
-			band = 6;
-		else if (!strcmp(section, "10m"))
-			band = 7;	
-		if (band == -1)
-			return 1;
-
-		if (!strcmp(name, "max"))
-			band_stack[band].max = atoi(value);
-		else if (!strcmp(name, "power"))
-			band_stack[band].power = atoi(value);
-		else if (!strcmp(name, "drive"))
-			band_stack[band].drive = atoi(value);
-  	else if (!strcmp(name, "start"))
-			band_stack[band].start = atoi(value);
-		else if (!strcmp(name, "stop"))
-			band_stack[band].stop = atoi(value); 
-	return 1; 
-}
-*/
 
 static int user_settings_handler(void* user, const char* section, 
             const char* name, const char* value)
@@ -407,7 +381,7 @@ static int user_settings_handler(void* user, const char* section,
     char cmd[1000];
     char new_value[200];
 
-		printf("[%s] setting %s = %s\n", section, name, value);
+		//printf("[%s] setting %s = %s\n", section, name, value);
     strcpy(new_value, value);
     if (!strcmp(section, "r1")){
       sprintf(cmd, "%s:%s", section, name);
@@ -460,6 +434,15 @@ static int user_settings_handler(void* user, const char* section,
 			band_stack[band].mode[2] = atoi(value);	
 		else if (band >= 0 && !strcmp(name, "mode3"))
 			band_stack[band].mode[3] = atoi(value);	
+
+		else if (!strcmp(name, "vfo_a_freq"))
+			vfo_a_freq = atoi(value);
+		else if (!strcmp(name, "vfo_b_freq"))
+			vfo_b_freq = atoi(value);
+		else if (!strcmp(name, "vfo_a_mode"))
+			strcpy(vfo_a_mode, value);
+		else if (!strcmp(name, "vfo_b_mode"))
+			strcpy(vfo_b_mode, value);
 
     return 1;
 }
@@ -742,6 +725,36 @@ void init_log(){
 	last_log = -1;
 }
 
+void draw_dial(GtkWidget *widget, cairo_t *gfx, struct field *f){
+	struct font_style *s = font_table + 0;
+	struct field *rit = get_field("#rit");
+	struct field *split = get_field("#split");
+	struct field *vfo = get_field("#vfo");
+	char buff[20];
+
+	fill_rect(gfx, f->x, f->y, f->width,f->height, COLOR_BACKGROUND);
+
+	int width, offset;	
+	
+	width = measure_text(gfx, f->label, FONT_FIELD_LABEL);
+	offset = f->width/2 - width/2;
+	draw_text(gfx, f->x + offset, f->y+5 ,  f->label, FONT_FIELD_LABEL);
+	width = measure_text(gfx, f->value, f->font_index);
+	offset = f->width/2 - width/2;
+	if (!strcmp(vfo->value, "A")){
+		sprintf(buff, "[A:%s]", f->value);
+		draw_text(gfx, f->x+offset , f->y+6 , buff , f->font_index);
+		sprintf(buff, "B:%d", vfo_b_freq);
+		draw_text(gfx, f->x+offset , f->y+25 , buff , f->font_index);
+	}
+	else{ 
+		sprintf(buff, "A:%d", vfo_a_freq);
+		draw_text(gfx, f->x+offset , f->y+6 , buff , f->font_index);
+		sprintf(buff, "[B:%s]", f->value);
+		draw_text(gfx, f->x+offset , f->y+25 , buff , f->font_index);
+	} 
+}
+
 void draw_field(GtkWidget *widget, cairo_t *gfx, struct field *f){
 	struct font_style *s = font_table + 0;
 	if (!strcmp(f->cmd, "spectrum")){
@@ -752,6 +765,10 @@ void draw_field(GtkWidget *widget, cairo_t *gfx, struct field *f){
 		return;
 	}
 
+	if (!strcmp(f->cmd, "r1:freq")){
+		draw_dial(widget, gfx, f);
+		return;
+	}
 	fill_rect(gfx, f->x, f->y, f->width,f->height, COLOR_BACKGROUND);
 	if (f_focus == f)
 		rect(gfx, f->x, f->y, f->width-1,f->height, COLOR_SELECTED_BOX, 2);
@@ -761,9 +778,6 @@ void draw_field(GtkWidget *widget, cairo_t *gfx, struct field *f){
 		rect(gfx, f->x, f->y, f->width,f->height, COLOR_CONTROL_BOX, 1);
 
 	int width, offset;	
-
-	if (!strcmp(f->cmd, "#log"))
-		puts("yeah!");
 	
 	switch(f->value_type){
 		case FIELD_SELECTION:
@@ -863,17 +877,35 @@ static void hover_field(struct field *f){
 static void edit_field(struct field *f, int action){
 	int v;
 
+	printf("edit_field : %s -> %s\n", f->cmd, f->value);
 	if (f->value_type == FIELD_NUMBER){
 		int	v = atoi(f->value);
 		if (action == MIN_KEY_UP && v + f->step <= f->max){
-			if (!strcmp(f->cmd, "r1:freq") || !strcmp(f->cmd, "r2:freq"))
+			if (!strcmp(f->cmd, "r1:freq") || !strcmp(f->cmd, "r2:freq")){
 				v += tuning_step;
+				struct field *vfo = get_field("#vfo");
+				if (!strcmp(vfo->value, "A")){
+					vfo_a_freq = v;
+					printf("VFO A set to %d\n", v);
+				}
+				else{
+					vfo_b_freq = v;
+					printf("VFO B set to %d\n", v);
+				}
+			}
 			else
 				v += f->step;
+			
 		}
 		else if (action == MIN_KEY_DOWN && v - f->step >= f->min){
-			if (!strcmp(f->cmd, "r1:freq") || !strcmp(f->cmd, "r2:freq"))
+			if (!strcmp(f->cmd, "r1:freq") || !strcmp(f->cmd, "r2:freq")){
 				v -= tuning_step;
+				struct field *vfo = get_field("#vfo");
+				if (!strcmp(vfo->value, "A"))
+					vfo_a_freq = v;
+				else
+					vfo_b_freq = v;
+			}
 			else
 				v -= f->step;
 		}
@@ -1035,6 +1067,27 @@ void set_field(char *id, char *value){
 static int in_tx = 0;
 static int key_down = 0;
 static int tx_start_time = 0;
+
+static int mode_id(char *mode_str){
+	if (!strcmp(mode_str, "CW"))
+		return MODE_CW;
+	else if (!strcmp(mode_str, "CWR"))
+		return MODE_CWR;
+	else if (!strcmp(mode_str, "USB"))
+		return MODE_USB;
+	else if (!strcmp(mode_str,  "LSB"))
+		return MODE_LSB;
+	else if (!strcmp(mode_str, "NBFM"))
+		return MODE_NBFM;
+	else if (!strcmp(mode_str, "AM"))
+		return MODE_AM;
+	else if (!strcmp(mode_str, "2TONE"))
+		return MODE_2TONE;
+	else if (!strcmp(mode_str, "DIGITAL"))
+		return MODE_DIGITAL;
+	return -1;
+}
+
 static void tx_on(){
 	char response[100];
 
@@ -1572,6 +1625,59 @@ void set_rx_freq(int f){
 	set_lo(f - ((rx_list->tuned_bin * 96000)/MAX_BINS));
 }
 
+void change_band(char *request){
+	int i, old_band, new_band; 
+	int max_bands = sizeof(band_stack)/sizeof(struct band);
+	long new_freq, old_freq;
+	char buff[100];
+
+	//find the band that has just been selected, the first char is #, we skip it
+	for (new_band = 0; new_band < max_bands; new_band++)
+		if (!strcmp(request+1, band_stack[new_band].name))
+			break;
+
+	//continue if the band is legit
+	if (new_band == max_bands)
+		return;
+
+	// find out the tuned frequency
+	struct field *f = get_field("r1:freq");
+	old_freq = atol(f->value);
+	f = get_field("r1:mode");
+	int old_mode = mode_id(f->value);
+	if (old_mode == -1)
+		return;
+
+	//first, store this frequency in the appropriate bin
+	for (old_band = 0; old_band < max_bands; old_band++)
+		if (band_stack[old_band].start <= old_freq && old_freq <= band_stack[old_band].stop)
+				break;
+
+	int stack = band_stack[old_band].index;
+	if (stack < 0 || stack >= STACK_DEPTH)
+		stack = 0;
+	if (old_band < max_bands){
+		//update the old band setting 
+		if (stack >= 0 && stack < STACK_DEPTH){
+				band_stack[old_band].freq[stack] = old_freq;
+				band_stack[old_band].mode[stack] = old_mode;
+		}
+	}
+
+	//if we are still in the same band, move to the next position
+	if (new_band == old_band){
+		stack++;
+		//move the stack and wrap the band around
+		if (stack >= STACK_DEPTH)
+			stack = 0;
+		band_stack[new_band].index = stack;
+	}
+	sprintf(buff, "%d", band_stack[new_band].freq[stack]);
+	set_field("r1:freq", buff);	
+	set_field("r1:mode", mode_name[band_stack[new_band].mode[stack]]);	
+}
+
+/*
 void switch_band(){
 	struct field *f_freq, *f_band;
 	int old_freq, freq_khz, new_freq;
@@ -1616,7 +1722,9 @@ void switch_band(){
 	update_field(f_freq);
 	do_cmd(buff);
 }
+*/
 
+/*
 void do_calibration(){
 	int fxtal_new, bfo_new;
 	//check if the calibration has been invoked
@@ -1667,18 +1775,30 @@ void do_calibration(){
 
 	printf("\nBFO is at %ld\n", (long) bfo_freq);	
 }
+*/
 
 void do_cmd(char *cmd){	
-	char request[1000], response[1000];
+	char request[1000], response[1000], buff[100];
 	
 	strcpy(request, cmd);			//don't mangle the original, thank you
-	if(!strncmp(request, "#band", 4))
-		switch_band(request);
-	else if (!strcmp(request, "#close"))
+
+	printf("do_cmd: %s a %d, b %d\n", cmd, vfo_a_freq, vfo_b_freq);
+	if (!strcmp(request, "#close"))
 		gtk_window_iconify(GTK_WINDOW(window));
 	else if (!strcmp(request, "#off"))
 		exit(0);
 
+	// vfo a, b swapping (the current value is the old value, to be changed)
+	else if (!strcmp(request, "#vfo=A")){
+		sprintf(buff, "%d", vfo_b_freq);
+		set_field("r1:freq", buff);
+		settings_updated++;
+	}
+	else if (!strcmp(request, "#vfo=B")){
+		sprintf(buff, "%d", vfo_a_freq);
+		set_field("r1:freq", buff);
+		settings_updated++;
+	}
 	//tuning step
 	else if (!strcmp(request, "#step=100KHz"))
 		tuning_step = 100000;
@@ -1698,13 +1818,19 @@ void do_cmd(char *cmd){
 		spectrum_span = 10000;
 	else if (!strcmp(request, "#span=25KHz"))
 		spectrum_span = 25000;
-	/*	
+		
 	//handle the band stacking
-	else if (!strcmp(request, "#40m")){
-		ban
+	else if (!strcmp(request, "#80m") || 
+		!strcmp(request, "#40m") || 
+		!strcmp(request, "#30m") || 
+		!strcmp(request, "#20m") || 
+		!strcmp(request, "#17m") || 
+		!strcmp(request, "#15m") || 
+		!strcmp(request, "#12m") || 
+		!strcmp(request, "#10m")){
+		change_band(request);		
 	}
-	*/
-
+	
 	//this needs to directly pass on to the sdr core
 	else if(request[0] != '#')
 		sdr_request(request, response);
@@ -1732,6 +1858,10 @@ int main( int argc, char* argv[] ) {
 	do_cmd("r1:mode=LSB");	
 	do_cmd("#step=1000");	
   do_cmd("#span=25KHZ");
+	strcpy(vfo_a_mode, "USB");
+	strcpy(vfo_b_mode, "LSB");
+	vfo_a_freq = 14000000;
+	vfo_b_freq = 7000000;
 	
 	f = get_field("spectrum");
 	update_field(f);
@@ -1740,8 +1870,10 @@ int main( int argc, char* argv[] ) {
 	enc_init(&enc_a, ENC_FAST, ENC1_B, ENC1_A);
 	enc_init(&enc_b, ENC_FAST, ENC2_A, ENC2_B);
 
+/*
 	if (argc > 1 && !strcmp(argv[1], "calibrate"))
 		do_calibration();
+*/
 
 	int e = g_timeout_add(10, ui_tick, NULL);
 	printf("g_timeout_add() = %d\n", e);
@@ -1756,25 +1888,19 @@ int main( int argc, char* argv[] ) {
 
 	char directory[200];	//dangerous, find the MAX_PATH and replace 200 with it
 	char *path = getenv("HOME");
-/*
-	strcpy(directory, path);
-	strcat(directory, "/.sbitx/bands.ini");
-  if (ini_parse(directory, bands_handler, NULL)<0){
-    printf("Unable to load ~/.sbitx/bands.ini\n");
-  }
-*/
 	strcpy(directory, path);
 	strcat(directory, "/.sbitx/user_settings.ini");
   if (ini_parse(directory, user_settings_handler, NULL)<0){
     printf("Unable to load ~/.sbitx/user_settings.ini\n");
   }
 
-	//lets add some to the log
-	for (int i = 0; i < 100; i++){
-		char buff[100];
-		sprintf(buff, "Line %d", i);
-		append_log(buff);
-	}
+	char new_value[15];
+
+	//now set the frequency of operation and more to vfo_a
+  sprintf(new_value, "%d", vfo_a_freq);
+  set_field("r1:freq", new_value);
+
+	append_log("sBITX v0.01, Ready");
 
 	// you don't want to save the recently loaded settings
 	settings_updated = 0;
