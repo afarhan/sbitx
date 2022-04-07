@@ -270,7 +270,7 @@ struct field main_controls[] = {
 
 	{ "#split", 700, 330, 50, 50, "SPLIT", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, "ON/OFF", 0,0,0},
 	{ "tx_compress", 750, 330, 50, 50, "COMP", 40, "0", FIELD_NUMBER, FONT_FIELD_VALUE, "ON/OFF", 0,100,1},
-	{"#rit", 550, 0, 50, 50, "RIT", 1, "0", FIELD_NUMBER, FONT_FIELD_VALUE, "", -10000,10000,50},
+	{"#rit", 550, 0, 50, 50, "RIT", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, "ON/OFF", 0,0,0},
 	{ "#tx_wpm", 550, 380, 50, 50, "WPM", 40, "12", FIELD_NUMBER, FONT_FIELD_VALUE, "", 1, 50, 1},
 	{ "#tx_key", 600, 380, 50, 50, "KEY", 40, "HARD", FIELD_SELECTION, FONT_FIELD_VALUE, "SOFT/HARD", 0, 0, 0},
 	{ "tx_record", 650, 380, 50, 50, "RECORD", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, "ON/OFF", 0,0, 0},
@@ -747,9 +747,12 @@ void draw_dial(GtkWidget *widget, cairo_t *gfx, struct field *f){
 	width = measure_text(gfx, f->value, f->font_index);
 	offset = f->width/2 - width/2;
 	if (!strcmp(rit->value, "ON")){
-		
+		sprintf(buff, "TX:%s", f->value);
+		draw_text(gfx, f->x+15 , f->y+6 , buff , FONT_LARGE_FIELD);
+		sprintf(buff, "RX:%d", atoi(f->value) + rit_delta);
+		draw_text(gfx, f->x+15 , f->y+25 , buff , FONT_LARGE_VALUE);
 	}
-	if (!strcmp(vfo->value, "A")){
+	else if (!strcmp(vfo->value, "A")){
 		sprintf(buff, "B:%d", vfo_b_freq);
 		draw_text(gfx, f->x+15 , f->y+6 , buff , FONT_LARGE_FIELD);
 		sprintf(buff, "A:%s", f->value);
@@ -889,15 +892,30 @@ static void edit_field(struct field *f, int action){
 	if (f->value_type == FIELD_NUMBER){
 		int	v = atoi(f->value);
 		if (action == MIN_KEY_UP && v + f->step <= f->max){
-			if (!strcmp(f->cmd, "r1:freq") || !strcmp(f->cmd, "r2:freq"))
-				v += tuning_step;
+			//this is tuning the radio
+			if (!strcmp(f->cmd, "r1:freq") || !strcmp(f->cmd, "r2:freq")){
+				if (!strcmp(get_field("#rit")->value, "ON"))
+					if(rit_delta < MAX_RIT)
+						rit_delta += tuning_step;
+					else
+						return;
+				else
+					v += tuning_step;
+			}
 			else
 				v += f->step;
 			
 		}
 		else if (action == MIN_KEY_DOWN && v - f->step >= f->min){
-			if (!strcmp(f->cmd, "r1:freq") || !strcmp(f->cmd, "r2:freq"))
-				v -= tuning_step;
+			if (!strcmp(f->cmd, "r1:freq") || !strcmp(f->cmd, "r2:freq")){
+				if (!strcmp(get_field("#rit")->value, "ON"))
+					if (rit_delta > -MAX_RIT)
+						rit_delta -= tuning_step;
+					else
+						return;
+				else
+					v -= tuning_step;
+			}
 			else
 				v -= f->step;
 		}
@@ -1772,12 +1790,13 @@ void do_cmd(char *cmd){
 	
 	strcpy(request, cmd);			//don't mangle the original, thank you
 
-	printf("do_cmd: %s a %d, b %d\n", cmd, vfo_a_freq, vfo_b_freq);
 	if (!strcmp(request, "#close"))
 		gtk_window_iconify(GTK_WINDOW(window));
 	else if (!strcmp(request, "#off"))
 		exit(0);
 
+	else if (!strcmp(request, "#rit")){
+	}
 	// vfo a, b swapping (the current value is the old value, to be changed)
 	else if (!strcmp(request, "#vfo=B")){
 		struct field *f = get_field("r1:freq");
