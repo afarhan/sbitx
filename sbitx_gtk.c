@@ -66,6 +66,11 @@ struct encoder enc_a, enc_b;
 #define LPF_C 10
 #define LPF_D 11
 
+//variables to power up and down the tx
+static int in_tx = 0;
+static int key_down = 0;
+static int tx_start_time = 0;
+
 char*mode_name[MAX_MODES] = {
 	"USB", "LSB", "CW", "CWR", "AM", "NBFM", "DIGITAL", "2TONE" 
 };
@@ -747,22 +752,58 @@ void draw_dial(GtkWidget *widget, cairo_t *gfx, struct field *f){
 	width = measure_text(gfx, f->value, f->font_index);
 	offset = f->width/2 - width/2;
 	if (!strcmp(rit->value, "ON")){
-		sprintf(buff, "TX:%s", f->value);
-		draw_text(gfx, f->x+15 , f->y+6 , buff , FONT_LARGE_FIELD);
-		sprintf(buff, "RX:%d", atoi(f->value) + rit_delta);
-		draw_text(gfx, f->x+15 , f->y+25 , buff , FONT_LARGE_VALUE);
+		if (!in_tx){
+			sprintf(buff, "TX:%s", f->value);
+			draw_text(gfx, f->x+15 , f->y+6 , buff , FONT_LARGE_FIELD);
+			sprintf(buff, "RX:%d", atoi(f->value) + rit_delta);
+			draw_text(gfx, f->x+15 , f->y+25 , buff , FONT_LARGE_VALUE);
+		}
+		else {
+			sprintf(buff, "TX:%s", f->value);
+			draw_text(gfx, f->x+15 , f->y+25 , buff , FONT_LARGE_VALUE);
+			sprintf(buff, "RX:%d", atoi(f->value) + rit_delta);
+			draw_text(gfx, f->x+15 , f->y+6 , buff , FONT_LARGE_FIELD);
+		}	
+	}
+	else if (!strcmp(split->value, "ON")){
+		if (!in_tx){
+			sprintf(buff, "TX:%d", vfo_b_freq);
+			draw_text(gfx, f->x+15 , f->y+6 , buff , FONT_LARGE_FIELD);
+			sprintf(buff, "RX:%d", atoi(f->value));
+			draw_text(gfx, f->x+15 , f->y+25 , buff , FONT_LARGE_VALUE);
+		}
+		else {
+			sprintf(buff, "TX:%d", vfo_b_freq);
+			draw_text(gfx, f->x+15 , f->y+25 , buff , FONT_LARGE_VALUE);
+			sprintf(buff, "RX:%d", atoi(f->value) + rit_delta);
+			draw_text(gfx, f->x+15 , f->y+6 , buff , FONT_LARGE_FIELD);
+		}	
 	}
 	else if (!strcmp(vfo->value, "A")){
-		sprintf(buff, "B:%d", vfo_b_freq);
-		draw_text(gfx, f->x+15 , f->y+6 , buff , FONT_LARGE_FIELD);
-		sprintf(buff, "A:%s", f->value);
-		draw_text(gfx, f->x+15 , f->y+25 , buff , FONT_LARGE_VALUE);
+		if (!in_tx){
+			sprintf(buff, "B:%d", vfo_b_freq);
+			draw_text(gfx, f->x+15 , f->y+6 , buff , FONT_LARGE_FIELD);
+			sprintf(buff, "A:%s", f->value);
+			draw_text(gfx, f->x+15 , f->y+25 , buff , FONT_LARGE_VALUE);
+		} else {
+			sprintf(buff, "B:%d", vfo_b_freq);
+			draw_text(gfx, f->x+15 , f->y+6 , buff , FONT_LARGE_FIELD);
+			sprintf(buff, "TX:%s", f->value);
+			draw_text(gfx, f->x+15 , f->y+25 , buff , FONT_LARGE_VALUE);
+		}	
 	}
 	else{ 
-		sprintf(buff, "A:%d", vfo_a_freq);
-		draw_text(gfx, f->x+15 , f->y+6 , buff , FONT_LARGE_FIELD);
-		sprintf(buff, "B:%s", f->value);
-		draw_text(gfx, f->x+15 , f->y+25 , buff , FONT_LARGE_VALUE);
+		if (!in_tx){
+			sprintf(buff, "A:%d", vfo_a_freq);
+			draw_text(gfx, f->x+15 , f->y+6 , buff , FONT_LARGE_FIELD);
+			sprintf(buff, "B:%s", f->value);
+			draw_text(gfx, f->x+15 , f->y+25 , buff , FONT_LARGE_VALUE);
+		}else {
+			sprintf(buff, "A:%d", vfo_a_freq);
+			draw_text(gfx, f->x+15 , f->y+6 , buff , FONT_LARGE_FIELD);
+			sprintf(buff, "TX:%s", f->value);
+			draw_text(gfx, f->x+15 , f->y+25 , buff , FONT_LARGE_VALUE);
+		}
 	} 
 }
 
@@ -885,6 +926,7 @@ static void hover_field(struct field *f){
 	update_field(f);
 }
 
+// respond to a UI request to change the field value
 static void edit_field(struct field *f, int action){
 	int v;
 
@@ -1015,6 +1057,29 @@ static void focus_field(struct field *f){
 		do_cmd(f->cmd);
 }
 
+void set_operating_freq(int dial_freq, char *response){
+	struct field *rit = get_field("#rit");
+	struct field *split = get_field("#split");
+	char freq_request[12];
+ 
+	if (!strcmp(rit->value, "ON")){
+		if (!in_tx)
+			sprintf(freq_request, "r1:freq=%d", dial_freq + rit_delta); 		
+		else
+			sprintf(freq_request, "r1:freq=%d", dial_freq); 		
+	}
+	else if (!strcmp(split->value, "ON")){
+		if (!in_tx)
+			sprintf(freq_request, "r1:freq=%d", vfo_b_freq);
+		else
+			sprintf(freq_request, "r1:freq=%d", dial_freq);
+	}
+	else
+			sprintf(freq_request, "r1:freq=%d", dial_freq);
+	sdr_request(freq_request, response);
+}
+
+//set the field directly to a particuarl value, programmatically
 void set_field(char *id, char *value){
 	struct field *f = get_field(id);
 	int v;
@@ -1072,9 +1137,6 @@ void set_field(char *id, char *value){
 	update_field(f);
 }
 
-static int in_tx = 0;
-static int key_down = 0;
-static int tx_start_time = 0;
 
 static int mode_id(char *mode_str){
 	if (!strcmp(mode_str, "CW"))
@@ -1123,7 +1185,12 @@ static void tx_on(){
 		digitalWrite(TX_LINE, HIGH);
 		sdr_request("tx=on", response);	
 		in_tx = 1;
+		char response[20];
+		struct field *freq = get_field("r1:freq");
+		set_operating_freq(atoi(freq->value), response);
+		update_field(get_field("r1:freq"));
 	}
+
 	tx_start_time = millis();
 }
 
@@ -1135,6 +1202,10 @@ static void tx_off(){
 		sdr_request("tx=off", response);	
 		in_tx = 0;
 		sdr_request("key=up", response);
+		char response[20];
+		struct field *freq = get_field("r1:freq");
+		set_operating_freq(atoi(freq->value), response);
+		update_field(get_field("r1:freq"));
 	}
 }
 
@@ -1149,7 +1220,6 @@ static void cw_key(int state){
 		cw_keydown = 1;
 	}
 	else if (state == 0 && cw_keydown == 1){
-		sdr_request("key=up", response);
 		cw_keydown = 0;
 	}
 	//printf("cw key = %d\n", cw_keydown);
@@ -1794,10 +1864,13 @@ void do_cmd(char *cmd){
 		gtk_window_iconify(GTK_WINDOW(window));
 	else if (!strcmp(request, "#off"))
 		exit(0);
-
-	else if (!strcmp(request, "#rit")){
+	else if (!strncmp(request, "#rit", 4))
+		update_field(get_field("r1:freq"));
+	else if (!strncmp(request, "#split", 5)){
+		update_field(get_field("r1:freq"));	
+		if (!strcmp(get_field("#vfo")->value, "B"))
+			set_field("#vfo", "A");
 	}
-	// vfo a, b swapping (the current value is the old value, to be changed)
 	else if (!strcmp(request, "#vfo=B")){
 		struct field *f = get_field("r1:freq");
 		struct field *vfo = get_field("#vfo");
@@ -1851,10 +1924,14 @@ void do_cmd(char *cmd){
 		!strcmp(request, "#10m")){
 		change_band(request);		
 	}
-	
 	//this needs to directly pass on to the sdr core
-	else if(request[0] != '#')
-		sdr_request(request, response);
+	else if(request[0] != '#'){
+		//translate the frequency of operating depending upon rit, split, etc.
+		if (!strncmp(request, "r1:freq", 7))
+			set_operating_freq(atoi(request+8), response);
+		else
+			sdr_request(request, response);
+	}
 }
 
 
