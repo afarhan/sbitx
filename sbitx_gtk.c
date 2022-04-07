@@ -131,6 +131,10 @@ int	vfo_b_freq = 14000000;
 char vfo_a_mode[10];
 char vfo_b_mode[10];
 
+#define MAX_RIT 25000
+//how much to shift on rit
+int	rit_delta = 0;
+
 
 int select_incremental_tuning = INC_OFF;
 
@@ -227,6 +231,7 @@ struct font_style font_table[] = {
 	each selection by the '/' should be unique. otherwise, the simple logic will
 	get confused 
 */
+
 
 struct field {
 	char	*cmd;
@@ -741,6 +746,9 @@ void draw_dial(GtkWidget *widget, cairo_t *gfx, struct field *f){
 	draw_text(gfx, f->x + offset, f->y+5 ,  f->label, FONT_FIELD_LABEL);
 	width = measure_text(gfx, f->value, f->font_index);
 	offset = f->width/2 - width/2;
+	if (!strcmp(rit->value, "ON")){
+		
+	}
 	if (!strcmp(vfo->value, "A")){
 		sprintf(buff, "B:%d", vfo_b_freq);
 		draw_text(gfx, f->x+15 , f->y+6 , buff , FONT_LARGE_FIELD);
