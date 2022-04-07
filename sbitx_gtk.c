@@ -371,7 +371,7 @@ static void save_user_settings(){
 	fprintf(f, "vfo_b_freq=%d\n", vfo_b_freq);
 
 	fclose(f);
-	printf("settings are saved\n");
+//	printf("settings are saved\n");
 	settings_updated = 0;
 }
 
@@ -732,7 +732,7 @@ void draw_dial(GtkWidget *widget, cairo_t *gfx, struct field *f){
 	struct field *vfo = get_field("#vfo");
 	char buff[20];
 
-	fill_rect(gfx, f->x, f->y, f->width,f->height, COLOR_BACKGROUND);
+	fill_rect(gfx, f->x+1, f->y+1, f->width-2,f->height-2, COLOR_BACKGROUND);
 
 	int width, offset;	
 	
@@ -742,16 +742,16 @@ void draw_dial(GtkWidget *widget, cairo_t *gfx, struct field *f){
 	width = measure_text(gfx, f->value, f->font_index);
 	offset = f->width/2 - width/2;
 	if (!strcmp(vfo->value, "A")){
-		sprintf(buff, "[A:%s]", f->value);
-		draw_text(gfx, f->x+offset , f->y+6 , buff , f->font_index);
 		sprintf(buff, "B:%d", vfo_b_freq);
-		draw_text(gfx, f->x+offset , f->y+25 , buff , f->font_index);
+		draw_text(gfx, f->x+15 , f->y+6 , buff , FONT_LARGE_FIELD);
+		sprintf(buff, "A:%s", f->value);
+		draw_text(gfx, f->x+15 , f->y+25 , buff , FONT_LARGE_VALUE);
 	}
 	else{ 
 		sprintf(buff, "A:%d", vfo_a_freq);
-		draw_text(gfx, f->x+offset , f->y+6 , buff , f->font_index);
-		sprintf(buff, "[B:%s]", f->value);
-		draw_text(gfx, f->x+offset , f->y+25 , buff , f->font_index);
+		draw_text(gfx, f->x+15 , f->y+6 , buff , FONT_LARGE_FIELD);
+		sprintf(buff, "B:%s", f->value);
+		draw_text(gfx, f->x+15 , f->y+25 , buff , FONT_LARGE_VALUE);
 	} 
 }
 
@@ -881,31 +881,15 @@ static void edit_field(struct field *f, int action){
 	if (f->value_type == FIELD_NUMBER){
 		int	v = atoi(f->value);
 		if (action == MIN_KEY_UP && v + f->step <= f->max){
-			if (!strcmp(f->cmd, "r1:freq") || !strcmp(f->cmd, "r2:freq")){
+			if (!strcmp(f->cmd, "r1:freq") || !strcmp(f->cmd, "r2:freq"))
 				v += tuning_step;
-				struct field *vfo = get_field("#vfo");
-				if (!strcmp(vfo->value, "A")){
-					vfo_a_freq = v;
-					printf("VFO A set to %d\n", v);
-				}
-				else{
-					vfo_b_freq = v;
-					printf("VFO B set to %d\n", v);
-				}
-			}
 			else
 				v += f->step;
 			
 		}
 		else if (action == MIN_KEY_DOWN && v - f->step >= f->min){
-			if (!strcmp(f->cmd, "r1:freq") || !strcmp(f->cmd, "r2:freq")){
+			if (!strcmp(f->cmd, "r1:freq") || !strcmp(f->cmd, "r2:freq"))
 				v -= tuning_step;
-				struct field *vfo = get_field("#vfo");
-				if (!strcmp(vfo->value, "A"))
-					vfo_a_freq = v;
-				else
-					vfo_b_freq = v;
-			}
 			else
 				v -= f->step;
 		}
@@ -935,10 +919,14 @@ static void edit_field(struct field *f, int action){
 			if (p)
 				strcpy(f->value, p);
 			else
-				strcpy(f->value, prev); 
+				return;
+				//strcpy(f->value, prev); 
 		}
-		else if (action == MIN_KEY_UP && prev){
-			strcpy(f->value, prev);
+		else if (action == MIN_KEY_UP){
+			if (prev)
+				strcpy(f->value, prev);
+			else
+				return;
 		}
 	}
 	else if (f->value_type == FIELD_TOGGLE){
@@ -990,12 +978,6 @@ static void focus_field(struct field *f){
 	if (f){
 		f_focus = f_hover = f;
 	}
-  /*
-	if (f_focus)
-		printf("focus is on %d\n", f_focus->cmd);
-	else
-		printf("focus lost\n");
-  */
 	update_field(f_hover);
 
 	//is it a toggle field?
@@ -1152,7 +1134,7 @@ static gboolean on_key_release (GtkWidget *widget, GdkEventKey *event, gpointer 
 
 	if (event->keyval == MIN_KEY_TAB){
 		tx_off();
-    puts("Transmit off");
+    puts("on_key_release(TAB): Transmit off");
   }
 
 }
@@ -1789,15 +1771,27 @@ void do_cmd(char *cmd){
 		exit(0);
 
 	// vfo a, b swapping (the current value is the old value, to be changed)
-	else if (!strcmp(request, "#vfo=A")){
-		sprintf(buff, "%d", vfo_b_freq);
-		set_field("r1:freq", buff);
-		settings_updated++;
-	}
 	else if (!strcmp(request, "#vfo=B")){
-		sprintf(buff, "%d", vfo_a_freq);
-		set_field("r1:freq", buff);
-		settings_updated++;
+		struct field *f = get_field("r1:freq");
+		struct field *vfo = get_field("#vfo");
+		printf("vfo old %s, new %s\n", vfo->value, request);
+		if (!strcmp(vfo->value, "B")){
+			vfo_a_freq = atoi(f->value);
+			sprintf(buff, "%d", vfo_b_freq);
+			set_field("r1:freq", buff);
+			settings_updated++;
+		}
+	}
+	else if (!strcmp(request, "#vfo=A")){
+		struct field *f = get_field("r1:freq");
+		struct field *vfo = get_field("#vfo");
+		printf("vfo old %s, new %s\n", vfo->value, request);
+		if (!strcmp(vfo->value, "A")){
+			vfo_b_freq = atoi(f->value);
+			sprintf(buff, "%d", vfo_a_freq);
+			set_field("r1:freq", buff);
+			settings_updated++;
+		}
 	}
 	//tuning step
 	else if (!strcmp(request, "#step=100KHz"))

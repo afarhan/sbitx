@@ -814,7 +814,7 @@ void setup(){
 void sdr_request(char *request, char *response){
 	char cmd[100], value[1000];
 
-	printf("[%s]\n", request);
+//	printf("[%s]\n", request);
 
 	char *p = strchr(request, '=');
 	int n = p - request;
