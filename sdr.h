@@ -60,8 +60,25 @@ have continuos waveform.
 
 */
 
-#define MAX_BINS 2048
+struct Queue
+{
+  int id;
+  int head;
+  int tail;
+  int  stall;
+	int *data;
+	unsigned int underflow;
+	unsigned int overflow;
+	unsigned int max_q;
+};
 
+void q_init(struct Queue *p, int32_t length);
+int q_length(struct Queue *p);
+int32_t q_read(struct Queue *p);
+int q_write(struct Queue *p, int w);
+void q_empty(struct Queue *p);
+
+#define MAX_BINS 2048
 
 /*
 All the incoming samples are converted to frequency domain in sound_process(). 
@@ -121,16 +138,19 @@ static inline double const cnrm(const complex double x){
 
 #define power2dB(x) (10*log10f(x))
 
-#define MAX_MODES 8 
+#define MAX_MODES 11 
 
 #define MODE_USB 0
 #define MODE_LSB 1
 #define MODE_CW 2
 #define MODE_CWR 3
-#define MODE_AM 4 
-#define MODE_NBFM 5
-#define MODE_DIGITAL 6 
-#define MODE_2TONE 7
+#define MODE_NBFM 4 
+#define MODE_AM 5 
+#define MODE_FT8 6  
+#define MODE_PSK31 7 
+#define MODE_RTTY 8 
+#define MODE_DIGITAL 9 
+#define MODE_2TONE 10 
 
 struct rx {
 	long tuned_bin;					//tuned bin (this should translate to freq) 
@@ -162,36 +182,16 @@ struct rx {
 	struct rx* next;
 };
 
-#define BAND_160M 0
-#define BAND_80M 1
-#define BAND_60M 2
-#define BAND_40M 3
-#define BAND_30M 4
-#define BAND_20M 6
-#define BAND_17M 7
-#define BAND_15M 8
-#define BAND_XVTR 9
-void set_band(int i);
 extern struct rx *rx_list;
-extern int bfo_freq;
 extern int freq_hdr;
 
 void set_lo(int frequency);
-void set_r1(int frequency);
 void set_volume(double v);
-void set_spectrum_speed(int speed);
-
-void si570_freq(unsigned long f);
-void si570_init();
-extern int fxtal;
 void sdr_request(char *request, char *response);
 
+void sdr_modulation_update(int32_t *samples, int count);
 
-/* utilities */
 
-void config_update(char *key, char *value);
-void config_update_int(char *key, int v);
-int config_get(char *key, char *d);
-int config_get_int(char *key, int *d);
-void config_load();
-void config_save();
+/* from modems.c */
+void modem_rx(int mode, int32_t *samples, int count);
+void modem_init();

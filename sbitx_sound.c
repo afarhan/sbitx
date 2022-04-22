@@ -4,7 +4,6 @@
 #include <complex.h>
 #include <fftw3.h>
 #include <time.h>
-#include "queue.h"
 #include "sound.h"
 #include "sdr.h"
 
@@ -464,9 +463,9 @@ int sound_start_loopback_play(char *device){
 	}
 	if (rate != exact_rate)
 		fprintf(stderr, "*The loopback playback rate %d changed to %d Hz\n", rate, exact_rate);
-/*	else
-		fprintf(stderr, "Playback sampling rate is set to %d\n", exact_rate);
-*/
+	else
+		fprintf(stderr, "Loopback Playback sampling rate is set to %d\n", exact_rate);
+
 
 	/* Set number of channels */
 	if ((e = snd_pcm_hw_params_set_channels(loopback_play_handle, hwparams, 2)) < 0) {
@@ -486,12 +485,16 @@ int sound_start_loopback_play(char *device){
 
 	// the buffer size is each periodsize x n_periods
 	snd_pcm_uframes_t  n_frames= (buff_size  * n_periods_per_buffer)/8;
-	printf("trying for buffer size of %ld\n", n_frames);
+	//lets pump it up to see if we can reduce the dropped frames
+	n_frames *= 4;
+	printf("trying for loopback buffer size of %ld\n", n_frames);
 	e = snd_pcm_hw_params_set_buffer_size_near(loopback_play_handle, hwparams, &n_frames);
 	if (e < 0) {
 		    fprintf(stderr, "*Error setting loopback playback buffersize.\n");
 		    return(-1);
 	}
+
+	printf("loopback playback buffer size is set to %d\n", n_frames);
 
 	if (snd_pcm_hw_params(loopback_play_handle, hwparams) < 0) {
 		fprintf(stderr, "*Error setting loopback playback HW params.\n");
@@ -531,11 +534,9 @@ static int nframes = 0;
 int32_t	resample_in[10000];
 int32_t	resample_out[10000];
 
-
-
-
 int last_second = 0;
 int nsamples = 0;
+int	played_samples = 0;
 int sound_loop(){
 	int32_t		*line_in, *data_in, *data_out, *input_i, *output_i, *input_q, *output_q;
   int pcmreturn, i, j, loopreturn;
@@ -621,9 +622,10 @@ int sound_loop(){
 		}
 		clock_gettime(CLOCK_MONOTONIC, &gettime_now);
 		if (gettime_now.tv_sec != last_sec){
-			//printf("############## %d\n", nsamples);
+			//printf("sampling rate %d/%d\n", played_samples, nsamples);
 			last_sec = gettime_now.tv_sec;
 			nsamples = 0;
+			played_samples = 0;
 			count = 0;
 		}
 		if (pcmreturn > 0)
@@ -647,19 +649,21 @@ int sound_loop(){
 			data_out, frames)) < 0) {
        snd_pcm_prepare(pcm_play_handle);
     }
-    if((pcmreturn = snd_pcm_writei(loopback_play_handle, 
+
+    while((pcmreturn = snd_pcm_writei(loopback_play_handle, 
 			data_out, frames)) < 0){
-        if (pcmreturn == -EPIPE){
-         // printf(" lptx ");
-       		snd_pcm_prepare(loopback_play_handle);
-				}
+        if (pcmreturn == -EPIPE)
+          printf(" lptx ");
         else  if (pcmreturn == -EBADFD)
           printf(" rx EBADFD ");
         else if (pcmreturn == -ESTRPIPE)
           printf(" rx ESTRPIPE ");
+				else
+					printf("Unknown err on writing to loopback %d\n", pcmreturn);
        snd_pcm_prepare(loopback_play_handle);
 			//puts("preparing loopback");
     }
+		played_samples += pcmreturn;
   }
   printf("********Ending sound thread\n");
 }

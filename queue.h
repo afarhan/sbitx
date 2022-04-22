@@ -13,4 +13,5 @@ struct Queue
 void q_init(struct Queue *p, int32_t length);
 int q_length(struct Queue *p);
 int32_t q_read(struct Queue *p);
-void q_write(struct Queue *p, int w);
+int q_write(struct Queue *p, int w);
+void q_empty(struct Queue *p);

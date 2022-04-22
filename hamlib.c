@@ -130,7 +130,7 @@ void tx_control(int s){
 }
 
 void interpret_command(char *cmd){
-  //printf("Cmd:[%s]\n", cmd);
+  printf("Cmd:[%s]\n", cmd);
   if (check_cmd(cmd, "\\chk_vfo"))
     send_response("CHKVFO 1\n"); 
   else if (check_cmd(cmd, "\\dump_state"))

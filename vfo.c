@@ -1,5 +1,9 @@
 #include <math.h>
+#include <pthread.h>
+#include <time.h>
 #include <stdio.h>
+#include <stdint.h>
+#include <linux/types.h>
 #include <complex.h>
 #include <fftw3.h>
 #include <unistd.h>

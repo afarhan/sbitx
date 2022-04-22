@@ -6,11 +6,14 @@ The initial sync between the gui values, the core radio values, settings, et al 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <linux/types.h>
 #include <math.h>
 #include <fcntl.h>
 #include <complex.h>
 #include <fftw3.h>
 #include <linux/fb.h>
+#include <sys/types.h>
+#include <stdint.h>
 #include <sys/mman.h>
 #include <sys/ioctl.h>
 #include <ncurses.h>
@@ -71,8 +74,13 @@ static int in_tx = 0;
 static int key_down = 0;
 static int tx_start_time = 0;
 
+static int *tx_mod_buff = NULL;
+static int tx_mod_index = 0;
+static int tx_mod_max = 0;
+
 char*mode_name[MAX_MODES] = {
-	"USB", "LSB", "CW", "CWR", "AM", "NBFM", "DIGITAL", "2TONE" 
+	"USB", "LSB", "CW", "CWR", "NBFM", "AM", "FT8", "PSK31", "RTTY", 
+	"DIGITAL", "2TONE" 
 };
 
 char output_pins[] = {
@@ -256,54 +264,120 @@ char settings_updated = 0;
 
 // the cmd fields that have '#' are not to be sent to the sdr
 struct field main_controls[] = {
-	{ "r1:freq", 600, 0, 150, 49, "", 5, "14000000", FIELD_NUMBER, FONT_LARGE_VALUE, "", 500000, 30000000, 100},
+	{ "r1:freq", 600, 0, 150, 49, "", 5, "14000000", FIELD_NUMBER, FONT_LARGE_VALUE, 
+		"", 500000, 30000000, 100},
 
 	// Main RX
-	{ "r1:volume", 750, 0, 50, 50, "AUDIO", 40, "60", FIELD_NUMBER, FONT_FIELD_VALUE, "", 0, 1024, 1},
-	{ "r1:mode", 550, 280, 50, 50, "MODE", 40, "USB", FIELD_SELECTION, FONT_FIELD_VALUE, "USB/LSB/CW/CWR/DIGITAL/2TONE", 0,0, 0},
-	{ "r1:low", 600, 280, 50, 50, "LOW", 40, "300", FIELD_NUMBER, FONT_FIELD_VALUE, "", 300,4000, 50},
-	{ "r1:high", 650, 280, 50, 50, "HIGH", 40, "3000", FIELD_NUMBER, FONT_FIELD_VALUE, "", 300, 4000, 50},
+	{ "r1:volume", 750, 0, 50, 50, "AUDIO", 40, "60", FIELD_NUMBER, FONT_FIELD_VALUE, 
+		"", 0, 1024, 1},
+	{ "r1:mode", 550, 280, 50, 50, "MODE", 40, "USB", FIELD_SELECTION, FONT_FIELD_VALUE, 
+		"USB/LSB/CW/CWR/FT8/PSK31/RTTY/DIGITAL/2TONE", 0,0, 0},
+	{ "r1:low", 600, 280, 50, 50, "LOW", 40, "300", FIELD_NUMBER, FONT_FIELD_VALUE, 
+		"", 300,4000, 50},
+	{ "r1:high", 650, 280, 50, 50, "HIGH", 40, "3000", FIELD_NUMBER, FONT_FIELD_VALUE, 
+		"", 300, 4000, 50},
 
-	{ "r1:agc", 700, 280, 50, 50, "AGC", 40, "SLOW", FIELD_SELECTION, FONT_FIELD_VALUE, "OFF/SLOW/FAST", 0, 1024, 1},
-	{ "r1:gain", 750, 280, 50, 50, "IF", 40, "60", FIELD_NUMBER, FONT_FIELD_VALUE, "", 0, 100, 1},
-	//{  "#band", 0, 240, 50, 50, "Band", 40, "80M", FIELD_SELECTION, FONT_FIELD_VALUE, "160M/80M/60M/40M/30M/20M/17M/15M/10M", 0,0, 0},
+	{ "r1:agc", 700, 280, 50, 50, "AGC", 40, "SLOW", FIELD_SELECTION, FONT_FIELD_VALUE, 
+		"OFF/SLOW/FAST", 0, 1024, 1},
+	{ "r1:gain", 750, 280, 50, 50, "IF", 40, "60", FIELD_NUMBER, FONT_FIELD_VALUE, 
+		"", 0, 100, 1},
 
 	//tx 
-	{ "tx_power", 550, 330, 50, 50, "WATTS", 40, "40", FIELD_NUMBER, FONT_FIELD_VALUE, "", 1, 100, 1},
-	{ "tx_gain", 600, 330, 50, 50, "MIC", 40, "50", FIELD_NUMBER, FONT_FIELD_VALUE, "", 0, 100, 1},
-	{ "mod", 650, 330, 55, 50, "INPUT", 40, "MIC", FIELD_SELECTION, FONT_FIELD_VALUE, "MIC/LINE", 0,0, 0},
+	{ "tx_power", 550, 330, 50, 50, "WATTS", 40, "40", FIELD_NUMBER, FONT_FIELD_VALUE, 
+		"", 1, 100, 1},
+	{ "tx_gain", 600, 330, 50, 50, "MIC", 40, "50", FIELD_NUMBER, FONT_FIELD_VALUE, 
+		"", 0, 100, 1},
 
-	{ "#split", 700, 330, 50, 50, "SPLIT", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, "ON/OFF", 0,0,0},
-	{ "tx_compress", 750, 330, 50, 50, "COMP", 40, "0", FIELD_NUMBER, FONT_FIELD_VALUE, "ON/OFF", 0,100,1},
-	{"#rit", 550, 0, 50, 50, "RIT", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, "ON/OFF", 0,0,0},
-	{ "#tx_wpm", 550, 380, 50, 50, "WPM", 40, "12", FIELD_NUMBER, FONT_FIELD_VALUE, "", 1, 50, 1},
-	{ "#tx_key", 600, 380, 50, 50, "KEY", 40, "HARD", FIELD_SELECTION, FONT_FIELD_VALUE, "SOFT/HARD", 0, 0, 0},
-	{ "tx_record", 650, 380, 50, 50, "RECORD", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, "ON/OFF", 0,0, 0},
+	{ "#split", 700, 330, 50, 50, "SPLIT", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, 
+		"ON/OFF", 0,0,0},
+	{ "tx_compress", 750, 330, 50, 50, "COMP", 40, "0", FIELD_NUMBER, FONT_FIELD_VALUE, 
+		"ON/OFF", 0,100,1},
+	{"#rit", 550, 0, 50, 50, "RIT", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, 
+		"ON/OFF", 0,0,0},
+	{ "#tx_wpm", 550, 380, 50, 50, "WPM", 40, "12", FIELD_NUMBER, FONT_FIELD_VALUE, 
+		"", 1, 50, 1},
+	{ "#tx_key", 600, 380, 50, 50, "KEY", 40, "HARD", FIELD_SELECTION, FONT_FIELD_VALUE, 
+		"SOFT/HARD", 0, 0, 0},
+	{ "tx_record", 650, 380, 50, 50, "RECORD", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, 
+		"ON/OFF", 0,0, 0},
 	
 	// top row
-	{"#step", 400, 0 ,50, 50, "STEP", 1, "50Hz", FIELD_SELECTION, FONT_FIELD_VALUE, "100KHz/10KHz/1KHz/100Hz/10Hz", 0,0,0},
-	{"#vfo", 450, 0 ,50, 50, "VFO", 1, "A", FIELD_SELECTION, FONT_FIELD_VALUE, "A/B", 0,0,0},
-	{"#span", 500, 0 ,50, 50, "SPAN", 1, "25KHz", FIELD_SELECTION, FONT_FIELD_VALUE, "25KHz/10KHz/3KHz", 0,0,0},
+	{"#step", 400, 0 ,50, 50, "STEP", 1, "50Hz", FIELD_SELECTION, FONT_FIELD_VALUE, 
+		"100KHz/10KHz/1KHz/100Hz/10Hz", 0,0,0},
+	{"#vfo", 450, 0 ,50, 50, "VFO", 1, "A", FIELD_SELECTION, FONT_FIELD_VALUE, 
+		"A/B", 0,0,0},
+	{"#span", 500, 0 ,50, 50, "SPAN", 1, "25KHz", FIELD_SELECTION, FONT_FIELD_VALUE, 
+		"25KHz/10KHz/3KHz", 0,0,0},
 
-	{"spectrum", 400, 50, 400, 100, "Spectrum ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, "", 0,0,0},   
-	{"waterfall", 400, 150 , 400, 130, "Waterfall ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, "", 0,0,0},
-	{"#log", 0, 0 , 400, 480, "log", 70, "log box", FIELD_LIST, FONT_LOG, "nothing valuable", 0,0,0},
-	{"#close", 700, 430 ,50, 50, "CLOSE", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
-	{"#off", 750, 430 ,50, 50, "OFF", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
+	{"spectrum", 400, 50, 400, 100, "Spectrum ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, 
+		"", 0,0,0},   
+	{"waterfall", 400, 150 , 400, 130, "Waterfall ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, 
+		"", 0,0,0},
+	{"#log", 0, 0 , 400, 360, "log", 70, "log box", FIELD_LIST, FONT_LOG, 
+		"nothing valuable", 0,0,0},
+	{"#close", 700, 430 ,50, 50, "CLOSE", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+		"", 0,0,0},
+	{"#off", 750, 430 ,50, 50, "OFF", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+		"", 0,0,0},
 
 	/* band stack registers */
-	{"#10m", 400, 280, 50, 50, "10 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
-	{"#12m", 450, 280, 50, 50, "12 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
-	{"#15m", 500, 280, 50, 50, "15 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
-	{"#17m", 400, 330, 50, 50, "17 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
-	{"#20m", 450, 330, 50, 50, "20 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
-	{"#30m", 500, 330, 50, 50, "30 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
-	{"#40m", 400, 380, 50, 50, "40 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
-	{"#80m", 450, 380, 50, 50, "80 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
-	{  "#band", 500, 380, 50, 50, "Band", 40, "80M", FIELD_SELECTION, FONT_FIELD_VALUE, "10M/15M/17M/20M/30M/40M/60M/80M", 0,0, 0},
+	{"#10m", 400, 280, 50, 50, "10 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+		"", 0,0,0},
+	{"#12m", 450, 280, 50, 50, "12 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+		"", 0,0,0},
+	{"#15m", 500, 280, 50, 50, "15 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+		"", 0,0,0},
+	{"#17m", 400, 330, 50, 50, "17 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+		"", 0,0,0},
+	{"#20m", 450, 330, 50, 50, "20 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+		"", 0,0,0},
+	{"#30m", 500, 330, 50, 50, "30 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+		"", 0,0,0},
+	{"#40m", 400, 380, 50, 50, "40 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+		"", 0,0,0},
+	{"#80m", 450, 380, 50, 50, "80 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+		"", 0,0,0},
 
+	//soft keyboard
+	{"#kbd_q", 0, 360 ,40, 30, "#", 1, "Q", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_w", 40, 360, 40, 30, "1", 1, "W", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_e", 80, 360, 80, 30, "2", 1, "E", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_r", 120, 360, 40, 30, "3", 1, "R", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_t", 160, 360, 40, 30, "(", 1, "T", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_y", 200, 360, 40, 30, ")", 1, "Y", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_u", 240, 360, 40, 30, "_", 1, "U", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_i", 280, 360, 40, 30, "-", 1, "I", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_o", 320, 360, 40, 30, "+", 1, "O", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_o", 360, 360, 40, 30, "@", 1, "P", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+
+	{"#kbd_a", 0, 390 ,40, 30, "*", 1, "A", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_s", 40, 390, 40, 30, "4", 1, "S", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_d", 80, 390, 80, 30, "5", 1, "D", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_f", 120, 390, 40, 30, "6", 1, "F", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_g", 160, 390, 40, 30, "/", 1, "G", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_h", 200, 390, 40, 30, ":", 1, "H", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_j", 240, 390, 40, 30, ";", 1, "J", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_k", 280, 390, 40, 30, "'", 1, "K", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_l", 320, 390, 40, 30, "\"", 1, "L", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_bs", 360, 390, 40, 30, "", 1, "BS", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0},
+ 
+	{"#kbd_alt", 0, 420 ,40, 30, "", 1, "alt", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_z", 40, 420, 40, 30, "7", 1, "Z", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_x", 80, 420, 80, 30, "8", 1, "X", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_c", 120, 420, 40, 30, "9", 1, "C", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_v", 160, 420, 40, 30, "?", 1, "V", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_b", 200, 420, 40, 30, "!", 1, "B", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_n", 240, 420, 40, 30, ",", 1, "N", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_m", 280, 420, 40, 30, ".", 1, "M", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_l", 320, 420, 40, 30, "\"", 1, "L", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_ret", 360, 420, 40, 30, "", 1, "RET", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+
+	{"#kbd_sym", 40, 450, 40, 30, "", 1, "sym", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_0", 80, 450, 80, 30, "", 1, "0", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_sp", 120, 450, 120, 30, "", 1, "space", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_n", 240, 450, 40, 30, "", 1, "sym", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
 	//the last control has empty cmd field 
-	{"", 0, 0 ,0, 0, "", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
+	{"", 0, 0 ,0, 0, "#", 1, "Q", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
 };
 
 
@@ -688,6 +762,96 @@ void draw_spectrum(GtkWidget *widget, cairo_t *gfx){
 	draw_waterfall(widget, gfx);
 }
 
+void sdr_modulation_update(int32_t *samples, int count){
+	int peak = 0;
+	for (int i = 0; i < count; i++){
+		if (peak < abs(*samples))
+			peak = abs(*samples);
+		samples++;
+	}
+}
+
+void draw_modulation(GtkWidget *widget, cairo_t *gfx){
+
+	int y, sub_division, i, grid_height;
+	struct field *f;
+	long	freq, freq_div;
+	char	freq_text[20];
+
+	f = get_field("spectrum");
+	sub_division = f->width / 10;
+	grid_height = f->height - 10;
+
+	// clear the spectrum	
+	fill_rect(gfx, f->x,f->y, f->width, f->height, SPECTRUM_BACKGROUND);
+	cairo_stroke(gfx);
+	cairo_set_line_width(gfx, 1);
+	cairo_set_source_rgb(gfx, palette[SPECTRUM_GRID][0], palette[SPECTRUM_GRID][1], palette[SPECTRUM_GRID][2]);
+
+	//draw the horizontal grid
+	for (i =  0; i <= grid_height; i += grid_height/10){
+		cairo_move_to(gfx, f->x, f->y + i);
+		cairo_line_to(gfx, f->x + f->width, f->y + i); 
+	}
+
+	//draw the vertical grid
+	for (i = 0; i <= f->width; i += f->width/10){
+		cairo_move_to(gfx, f->x + i, f->y);
+		cairo_line_to(gfx, f->x + i, f->y + grid_height); 
+	}
+	cairo_stroke(gfx);
+
+	//we only plot the second half of the bins (on the lower sideband
+	int last_y = 100;
+
+	int n_bins = (int)((1.0 * spectrum_span) / 46.875);
+	//the center frequency is at the center of the lower sideband,
+	//i.e, three-fourth way up the bins.
+	int starting_bin = (3 *MAX_BINS)/4 - n_bins/2;
+	int ending_bin = starting_bin + n_bins; 
+
+	float x_step = (1.0 * f->width )/n_bins;
+
+	//start the plot
+	cairo_set_source_rgb(gfx, palette[SPECTRUM_PLOT][0], 
+		palette[SPECTRUM_PLOT][1], palette[SPECTRUM_PLOT][2]);
+	cairo_move_to(gfx, f->x + f->width, f->y + grid_height);
+
+	float x = 0;
+	int j = 0;
+	for (i = starting_bin; i <= ending_bin; i++){
+		int y;
+
+		// the center fft bin is at zero, from MAX_BINS/2 onwards,
+		// the bins are at lowest frequency (-ve frequency)
+		int offset = i;
+		offset = (offset - MAX_BINS/2);
+		//y axis is the power  in db of each bin, scaled to 80 db
+		y = ((power2dB(cnrmf(fft_bins[i])) + waterfall_offset) * f->height)/80; 
+		// limit y inside the spectrum display box
+		if ( y <  0)
+			y = 0;
+		if (y > f->height)
+			y = f->height - 1;
+		//the plot should be increase upwards
+		cairo_line_to(gfx, f->x + f->width - (int)x, f->y + grid_height - y);
+
+		//fill the waterfall
+		for (int k = 0; k <= 1 + (int)x_step; k++)
+			wf[k + f->width - (int)x] = (y * 100)/grid_height;
+		x += x_step;
+	}
+	cairo_stroke(gfx);
+
+	//draw the needle
+	for (struct rx *r = rx_list; r; r = r->next){
+		int needle_x  = (f->width*(MAX_BINS/2 - r->tuned_bin))/(MAX_BINS/2);
+		fill_rect(gfx, f->x + needle_x, f->y, 1, grid_height,  SPECTRUM_NEEDLE);
+	}
+
+	draw_waterfall(widget, gfx);
+}
+
 void draw_list(cairo_t *gfx, struct field *f){
 	//get the text height
 	int line_height = font_table[f->font_index].height; 	
@@ -695,7 +859,7 @@ void draw_list(cairo_t *gfx, struct field *f){
 	//estimate!
 	int char_width = measure_text(gfx, "01234567890123456789", f->font_index)/20;
 	int n_cols = f->width / char_width;
-	int y = f->y +f->height - line_height; 
+	int y = f->y +f->height - line_height - 4; 
 
 	int line = last_log;
 	if (line == -1)
@@ -851,6 +1015,14 @@ void draw_field(GtkWidget *widget, cairo_t *gfx, struct field *f){
 			offset = f->width/2 - width/2;
 			if (strlen(f->value) == 0)
 				draw_text(gfx, f->x + offset, f->y+13 , f->label , FONT_FIELD_LABEL);
+			else if (f->height <= 30){
+				if (strlen(f->label)){
+					draw_text(gfx, f->x + 5, f->y ,  f->label, FONT_FIELD_LABEL);
+					draw_text(gfx, f->x+18 , f->y+8 , f->value , f->font_index);
+				}
+				else 
+					draw_text(gfx, f->x+10 , f->y+5 , f->value , f->font_index);
+			}
 			else {
 				draw_text(gfx, f->x + offset, f->y+5 ,  f->label, FONT_FIELD_LABEL);
 				draw_text(gfx, f->x+offset , f->y+25 , f->value , f->font_index);
@@ -930,7 +1102,6 @@ static void hover_field(struct field *f){
 static void edit_field(struct field *f, int action){
 	int v;
 
-	printf("edit_field : %s -> %s\n", f->cmd, f->value);
 	if (f->value_type == FIELD_NUMBER){
 		int	v = atoi(f->value);
 		if (action == MIN_KEY_UP && v + f->step <= f->max){
@@ -1147,6 +1318,12 @@ static int mode_id(char *mode_str){
 		return MODE_USB;
 	else if (!strcmp(mode_str,  "LSB"))
 		return MODE_LSB;
+	else if (!strcmp(mode_str,  "FT8"))
+		return MODE_FT8;
+	else if (!strcmp(mode_str,  "PSK31"))
+		return MODE_PSK31;
+	else if (!strcmp(mode_str,  "RTTY"))
+		return MODE_RTTY;
 	else if (!strcmp(mode_str, "NBFM"))
 		return MODE_NBFM;
 	else if (!strcmp(mode_str, "AM"))
@@ -1688,6 +1865,12 @@ void ui_init(int argc, char *argv[]){
                                      | GDK_BUTTON_PRESS_MASK
 																			| GDK_SCROLL_MASK
                                      | GDK_POINTER_MOTION_MASK);
+
+	//initialize the modulation display
+	tx_mod_max = get_field("spectrum")->width;
+	tx_mod_buff = malloc(sizeof(int32_t) * tx_mod_max);
+	memset(tx_mod_buff, 0, sizeof(int32_t) * tx_mod_max);
+	tx_mod_index = 0;
 
 	init_waterfall();
   gtk_widget_show_all( window );

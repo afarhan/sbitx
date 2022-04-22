@@ -1,20 +1,31 @@
 #include <stdlib.h>
+#include <math.h>
+#include <complex.h>
+#include <fftw3.h>
 #include <string.h>
-#include "queue.h"
+#include "sdr.h"
 /**
  * Audio sampling queues for playback and recording
  */
 
-
-void q_init(struct Queue *p, int length){
+void q_empty(struct Queue *p){
   p->head = 0;
   p->tail = 0;
   p->stall = 1;
 	p->underflow = 0;
 	p->overflow = 0;
+}
+
+void q_init(struct Queue *p, int length){
+  /* p->head = 0;
+  p->tail = 0;
+  p->stall = 1;
+	p->underflow = 0;
+	p->overflow = 0;*/
 	p->max_q = length;
 	p->data = malloc((length+1) * sizeof(int32_t));
 	memset(p->data, 0, p->max_q+1);
+	q_empty(p);
 }
 
 int q_length(struct Queue *p){
@@ -24,17 +35,18 @@ int q_length(struct Queue *p){
     return ((p->head + p->max_q) - p->tail);
 }
 
-void q_write(struct Queue *p, int32_t w){
+int q_write(struct Queue *p, int32_t w){
 
   if (p->head + 1 == p->tail || p->tail == 0 && p->head == p->max_q-1){
     p->overflow++;
-    return;
+    return -1;
   }
 
   p->data[p->head++] = w;
   if (p->head > p->max_q){
     p->head = 0;
   }
+	return 0;
 }
 
 int32_t q_read(struct Queue *p){

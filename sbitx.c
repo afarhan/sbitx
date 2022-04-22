@@ -10,14 +10,19 @@
 #include <wiringSerial.h>
 #include <linux/types.h>
 #include <stdint.h>
+#include <time.h>
 #include "sdr.h"
 #include "sdr_ui.h"
 #include "sound.h"
 #include "si5351.h"
 
 char audio_card[32];
-
 int tx_shift = 512;
+
+//this is for processing FT8 decodes 
+//FILE *pf_modem_rx = NULL;
+//unsigned int	wallclock = 0;
+
 #define TX_LINE 4
 #define BAND_SELECT 5
 #define LPF_A 5
@@ -282,6 +287,9 @@ struct rx *add_tx(int frequency, short mode, int bpf_low, int bpf_high){
 		r->agc_loop = 0;
 	}
 
+	//the modems drive the tx at 12000 Hz, this has to be upconverted
+	//to the radio's sampling rate
+
   r->next = tx_list;
   tx_list = r;
 }
@@ -321,9 +329,15 @@ struct rx *add_rx(int frequency, short mode, int bpf_low, int bpf_high){
     r->signal_avg = 0;
 	}
 
+	// the modems are driven by 12000 samples/sec
+	// the queue is for 20 seconds, 5 more than 15 sec needed for the FT8
+
 	r->next = rx_list;
 	rx_list = r;
+
 }
+
+
 
 int count = 0;
 
@@ -449,13 +463,13 @@ void rx_process(int32_t *input_rx,  int32_t *input_mic,
 	}
 
 	// STEP 5:zero out the other sideband
-	if (r->mode == MODE_USB || r->mode == MODE_CW || r->mode == MODE_2TONE) 
-		for (i = MAX_BINS/2; i < MAX_BINS; i++){
+	if (r->mode == MODE_LSB || r->mode == MODE_CWR)
+		for (i = 0; i < MAX_BINS/2; i++){
 			__real__ r->fft_freq[i] = 0;
 			__imag__ r->fft_freq[i] = 0;	
 		}
-	else 
-		for (i = 0; i < MAX_BINS/2; i++){
+	else  
+		for (i = MAX_BINS/2; i < MAX_BINS; i++){
 			__real__ r->fft_freq[i] = 0;
 			__imag__ r->fft_freq[i] = 0;	
 		}
@@ -474,14 +488,18 @@ void rx_process(int32_t *input_rx,  int32_t *input_mic,
 	  agc(r);
 	
 	//STEP 9: send the output back to where it needs to go
+	int is_digital = 0;
+
 	if (rx_list->output == 0)
 		for (i= 0; i < MAX_BINS/2; i++){
-			//output_speaker[i] = cimag(r->fft_time[i+(MAX_BINS/2)]) * gain;
-			 output_speaker[i] = cimag(r->fft_time[i+(MAX_BINS/2)]);
+			int32_t sample;
+			sample = cimag(r->fft_time[i+(MAX_BINS/2)]);
 			//keep transmit buffer empty
+			output_speaker[i] = sample;
 			output_tx[i] = 0;
 		}
-
+	//push the data to any potential modem 
+	modem_rx(rx_list->mode, output_speaker, MAX_BINS/2);
 }
 
 
@@ -534,13 +552,13 @@ void tx_2tone(
 		fft_out[i] *= tx_filter->fir_coeff[i];
 
 	// zero out the other sideband
-	if (r->mode == MODE_USB || r->mode == MODE_CW || r->mode == MODE_DIGITAL || r->mode == MODE_2TONE)
-		for (i = MAX_BINS/2; i < MAX_BINS; i++){
+	if (r->mode == MODE_LSB || r->mode == MODE_CWR)
+		for (i = 0; i < MAX_BINS/2; i++){
 			__real__ r->fft_freq[i] = 0;
 			__imag__ r->fft_freq[i] = 0;	
 		}
 	else 
-		for (i = 0; i < MAX_BINS/2; i++){
+		for (i = MAX_BINS/2; i < MAX_BINS; i++){
 			__real__ r->fft_freq[i] = 0;
 			__imag__ r->fft_freq[i] = 0;	
 		}
@@ -576,21 +594,6 @@ void tx_2tone(
 		output_speaker[i] = output_tx[i]; 
   }
 }
-
-
-/*
-//this is just to text the tx audio fed back into the speaker 
-void tx_process(
-	int32_t *input_rx, int32_t *input_mic, 
-	int32_t *output_speaker, int32_t *output_tx, 
-	int n_samples)
-{
-	printf("tx_process n_samples %d\n", n_samples);
-	for (int i = 0; i < n_samples; i++){
-		output_speaker[i] = input_mic[i];
-	}
-}
-*/
 
 void tx_process(
 	int32_t *input_rx, int32_t *input_mic, 
@@ -662,16 +665,15 @@ void tx_process(
 
 	// TBD: Something strange is going on, this should have been the otherway
 
-
-	if (r->mode == MODE_USB || r->mode == MODE_CW || r->mode == MODE_DIGITAL || r->mode == MODE_2TONE)
-		// zero out the USB
-		for (i = MAX_BINS/2; i < MAX_BINS; i++){
+	if (r->mode == MODE_LSB || r->mode == MODE_CWR)
+		// zero out the LSB
+		for (i = 0; i < MAX_BINS/2; i++){
 			__real__ fft_out[i] = 0;
 			__imag__ fft_out[i] = 0;	
 		}
-	else  
-		// zero out the LSB
-		for (i = 0; i < MAX_BINS/2; i++){
+	else
+		// zero out the USB
+		for (i = MAX_BINS/2; i < MAX_BINS; i++){
 			__real__ fft_out[i] = 0;
 			__imag__ fft_out[i] = 0;	
 		}
@@ -696,11 +698,32 @@ void tx_process(
 	for (i= 0; i < MAX_BINS/2; i++){
 		output_tx[i] = creal(r->fft_time[i+(MAX_BINS/2)]) * volume;
 		//the output_speaker has the modulating signal for non-voice modes
-		if (r->mode != MODE_CWR && r->mode != MODE_CW && r->mode != MODE_DIGITAL)
+		if (r->mode == MODE_USB || r->mode == MODE_LSB || r->mode == MODE_AM 
+			|| r->mode == MODE_NBFM)
 			output_speaker[i] = 0; 
+		sdr_modulation_update(output_tx, MAX_BINS/2);	
 	}
 }
 
+/*
+static void sdr_tick(int now){
+	//rewrite the samples every
+	 
+	if (!(now % 15)){
+		if (pf_modem_rx != NULL){
+			fclose(pf_modem_rx);
+			puts("freshmeat!");
+			pf_modem_rx = NULL;
+			q_empty(&modem_rx);
+		}
+		if (pf_modem_rx == NULL){
+			char fname[100];
+			sprintf(fname, "/tmp/rx_sample_%d.raw", now);
+			pf_modem_rx = fopen(fname, "w");
+		}
+	}
+}
+*/
 
 /*
 	This is called each time there is a block of signal samples ready 
@@ -711,6 +734,7 @@ void sound_process(
 	int32_t *output_speaker, int32_t *output_tx, 
 	int n_samples)
 {
+
 	if (in_tx){
 		tx_process(input_rx, input_mic, output_speaker, output_tx, n_samples);
 	}
@@ -720,16 +744,15 @@ void sound_process(
 
 
 void set_rx_filter(){
-	if (rx_list->mode == MODE_USB || rx_list->mode == MODE_CW || rx_list->mode == MODE_DIGITAL ||
-			rx_list->mode == MODE_2TONE) 
-    filter_tune(rx_list->filter, 
-      (1.0 * rx_list->low_hz)/96000.0, 
-      (1.0 * rx_list->high_hz)/96000.0 , 
-      5);
-  else
+	if(rx_list->mode == MODE_LSB || rx_list->mode == MODE_CWR)
     filter_tune(rx_list->filter, 
       (1.0 * -rx_list->high_hz)/96000.0, 
       (1.0 * -rx_list->low_hz)/96000.0 , 
+      5);
+	else
+    filter_tune(rx_list->filter, 
+      (1.0 * rx_list->low_hz)/96000.0, 
+      (1.0 * rx_list->high_hz)/96000.0 , 
       5);
 }
 
@@ -786,11 +809,14 @@ void setup(){
 	vfo_init_phase_table();
   setup_oscillators();
 
+	modem_init();
+
 	add_rx(7000000, MODE_LSB, -3000, -300);
 	add_tx(7000000, MODE_LSB, -3000, -300);
 	rx_list->tuned_bin = 512;
   tx_list->tuned_bin = 512;
 	tx_init(7000000, MODE_LSB, -3000, -300);
+
 
 	sound_thread_start("plughw:0,0");
 	setup_audio_codec();
@@ -847,9 +873,7 @@ void sdr_request(char *request, char *response){
 		strcpy(response, "ok");	
 	} 
 	else if (!strcmp(cmd, "r1:mode")){
-		if (!strcmp(value, "USB"))
-				rx_list->mode = MODE_USB;
-		else if (!strcmp(value, "LSB"))
+		if (!strcmp(value, "LSB"))
 				rx_list->mode = MODE_LSB;
 		else if (!strcmp(value, "CW"))
 			rx_list->mode = MODE_CW;
@@ -857,6 +881,14 @@ void sdr_request(char *request, char *response){
 			rx_list->mode = MODE_CWR;
 		else if (!strcmp(value, "2TONE"))
 			rx_list->mode = MODE_2TONE;
+		else if (!strcmp(value, "FT8"))
+			rx_list->mode = MODE_FT8;
+		else if (!strcmp(value, "PSK31"))
+			rx_list->mode = MODE_PSK31;
+		else if (!strcmp(value, "RTTY"))
+			rx_list->mode = MODE_RTTY;
+		else
+			rx_list->mode = MODE_USB;
 		
     //set the tx mode to that of the rx1
     tx_list->mode = rx_list->mode;
