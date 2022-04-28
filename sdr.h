@@ -194,4 +194,5 @@ void sdr_modulation_update(int32_t *samples, int count);
 
 /* from modems.c */
 void modem_rx(int mode, int32_t *samples, int count);
+int	modem_center_freq(int mode);
 void modem_init();

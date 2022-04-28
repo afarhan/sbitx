@@ -20,7 +20,6 @@ char audio_card[32];
 int tx_shift = 512;
 
 //this is for processing FT8 decodes 
-//FILE *pf_modem_rx = NULL;
 //unsigned int	wallclock = 0;
 
 #define TX_LINE 4
@@ -223,7 +222,7 @@ void set_lo(int frequency){
 void set_rx1(int frequency){
 	radio_tune_to(frequency);
 	freq_hdr = frequency;
-	printf("freq: %d\n", frequency);
+	//printf("freq: %d\n", frequency);
 	set_lpf_40mhz(frequency);
 }
 
@@ -705,25 +704,6 @@ void tx_process(
 	}
 }
 
-/*
-static void sdr_tick(int now){
-	//rewrite the samples every
-	 
-	if (!(now % 15)){
-		if (pf_modem_rx != NULL){
-			fclose(pf_modem_rx);
-			puts("freshmeat!");
-			pf_modem_rx = NULL;
-			q_empty(&modem_rx);
-		}
-		if (pf_modem_rx == NULL){
-			char fname[100];
-			sprintf(fname, "/tmp/rx_sample_%d.raw", now);
-			pf_modem_rx = fopen(fname, "w");
-		}
-	}
-}
-*/
 
 /*
 	This is called each time there is a block of signal samples ready 
@@ -923,7 +903,6 @@ void sdr_request(char *request, char *response){
 				(1.0 * 300)/96000.0, 
 				(1.0 * 3000)/96000.0 , 
 				5);
-			puts("\n\n\ntx filter ");
 			filter_tune(tx_list->filter, 
 				(1.0 * 300)/96000.0, 
 				(1.0 * 3000)/96000.0 , 

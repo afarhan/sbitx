@@ -276,32 +276,32 @@ int sound_start_loopback_capture(char *device){
   /* Set sample format */
 	e = snd_pcm_hw_params_set_format(loopback_capture_handle, hwparams, SND_PCM_FORMAT_S32_LE);
 	if (e < 0) {
-		fprintf(stderr, "*Error setting capture format.\n");
+		fprintf(stderr, "*Error setting loopback capture format.\n");
 		return(-1);
 	}
 
 	/* Set sample rate. If the exact rate is not supported */
 	/* by the hardware, use nearest possible rate.         */ 
-	exact_rate = rate;
+	exact_rate = 48000;
 	printf("Setting loopback capture rate to %d\n", exact_rate);
 	e = snd_pcm_hw_params_set_rate_near(loopback_capture_handle, hwparams, &exact_rate, 0);
 	if ( e< 0) {
-		fprintf(stderr, "*Error setting capture rate.\n");
+		fprintf(stderr, "*Error setting loopback capture rate.\n");
 		return(-1);
 	}
 
 	if (rate != exact_rate)
-		fprintf(stderr, "#The capture rate %d changed to %d Hz\n", rate, exact_rate);
+		fprintf(stderr, "#The loopback capture rate set to %d Hz\n", exact_rate);
 
 	/* Set number of channels */
 	if ((e = snd_pcm_hw_params_set_channels(loopback_capture_handle, hwparams, 2)) < 0) {
-		fprintf(stderr, "*Error setting capture channels.\n");
+		fprintf(stderr, "*Error setting loopback capture channels.\n");
 		return(-1);
 	}
 
 	/* Set number of periods. Periods used to be called fragments. */ 
 	if ((e = snd_pcm_hw_params_set_periods(loopback_capture_handle, hwparams, n_periods_per_buffer, 0)) < 0) {
-		fprintf(stderr, "*Error setting capture periods.\n");
+		fprintf(stderr, "*Error setting loopback capture periods.\n");
 		return(-1);
 	}
 
@@ -310,7 +310,7 @@ int sound_start_loopback_capture(char *device){
 	//printf("trying for buffer size of %ld\n", n_frames);
 	e = snd_pcm_hw_params_set_buffer_size_near(loopback_capture_handle, hwparams, &n_frames);
 	if (e < 0) {
-		    fprintf(stderr, "*Error setting capture buffersize.\n");
+		    fprintf(stderr, "*Error setting loopback capture buffersize.\n");
 		    return(-1);
 	}
 
@@ -322,17 +322,17 @@ int sound_start_loopback_capture(char *device){
 	/* set some parameters in the driver to handle the latencies */
 	snd_pcm_sw_params_malloc(&swparams);
 	if((e = snd_pcm_sw_params_current(loopback_capture_handle, swparams)) < 0){
-		fprintf(stderr, "Error getting current sw params : %s\n", snd_strerror(e));
+		fprintf(stderr, "Error getting current loopback capture sw params : %s\n", snd_strerror(e));
 		return (-1);
 	}
 	
 	if ((e = snd_pcm_sw_params_set_start_threshold(loopback_capture_handle, swparams, 15)) < 0){
-		fprintf(stderr, "Unable to set threshold mode for capture\n");
+		fprintf(stderr, "Unable to set threshold mode for loopback capture\n");
 	} 
 	
 	if ((e = snd_pcm_sw_params_set_stop_threshold(loopback_capture_handle, swparams, 1)) < 0){
 
-		fprintf(stderr, "Unable to set stop threshold for capture\n");
+		fprintf(stderr, "Unable to set stop threshold for loopback  capture\n");
 	}
 	return 0;
 }
@@ -455,7 +455,7 @@ int sound_start_loopback_play(char *device){
 
 	/* Set sample rate. If the exact rate is not supported */
 	/* by the hardware, use nearest possible rate.         */ 
-	exact_rate = rate;
+	exact_rate = 48000;
 	e = snd_pcm_hw_params_set_rate_near(loopback_play_handle, hwparams, &exact_rate, 0);
 	if ( e< 0) {
 		fprintf(stderr, "Error setting playback rate.\n");
@@ -538,7 +538,8 @@ int last_second = 0;
 int nsamples = 0;
 int	played_samples = 0;
 int sound_loop(){
-	int32_t		*line_in, *data_in, *data_out, *input_i, *output_i, *input_q, *output_q;
+	int32_t		*line_in, *line_out, *data_in, *data_out, 
+						*input_i, *output_i, *input_q, *output_q;
   int pcmreturn, i, j, loopreturn;
   short s1, s2;
   int frames;
@@ -546,6 +547,7 @@ int sound_loop(){
 	//we allocate enough for two channels of in32_t sized samples	
   data_in = (int32_t *)malloc(buff_size * 2);
   line_in = (int32_t *)malloc(buff_size * 2);
+  line_out = (int32_t *)malloc(buff_size * 2);
   data_out = (int32_t *)malloc(buff_size * 2);
   input_i = (int32_t *)malloc(buff_size * 2);
   output_i = (int32_t *)malloc(buff_size * 2);
@@ -571,13 +573,15 @@ int sound_loop(){
 
 		last_time = gettime_now.tv_nsec/1000;
 
+
 		while ((pcmreturn = snd_pcm_readi(pcm_capture_handle, data_in, frames)) < 0)
 			snd_pcm_prepare(pcm_capture_handle);
 		i = 0; 
 		j = 0;
     if (use_virtual_cable){
 			//this will loop until at least one block is received
-  	  while((pcmreturn = snd_pcm_readi(loopback_capture_handle, data_in, frames)) < 0){ 
+			//we are reading at 48000 instead of 96000, so we need to read only half the frames
+  	  while((pcmreturn = snd_pcm_readi(loopback_capture_handle, data_in, frames/2)) < 0){ 
         if (pcmreturn == -EBADFD)
           printf("EBADFD ");
         else if (pcmreturn == -EPIPE)
@@ -589,7 +593,9 @@ int sound_loop(){
       }
 			//we have some data in here.
 			j = 0; //make it 1 for the right channel, as 1,3,5.. are left and 2,4,6.. are right 
+			// we have to push two samples to double up the sampling rate from 48K to 96K
 			for (i = 0; i < pcmreturn; i++){
+					q_write(&qloop, data_in[j]);
 					q_write(&qloop, data_in[j]);
 					j += 2;	
 			}
@@ -650,16 +656,19 @@ int sound_loop(){
        snd_pcm_prepare(pcm_play_handle);
     }
 
+		//decimate the line out to half, ie from 96000 to 48000
+		//play the recevied data (from left channel) to both of line out
+		int jj = 0;
+		int ii = 0;
+		while (ii < pcmreturn){
+			line_out[jj++] = output_i[ii];
+			line_out[jj++] = output_i[ii];
+			ii += 2;
+		}
+
     while((pcmreturn = snd_pcm_writei(loopback_play_handle, 
-			data_out, frames)) < 0){
-        if (pcmreturn == -EPIPE)
-          printf(" lptx ");
-        else  if (pcmreturn == -EBADFD)
-          printf(" rx EBADFD ");
-        else if (pcmreturn == -ESTRPIPE)
-          printf(" rx ESTRPIPE ");
-				else
-					printf("Unknown err on writing to loopback %d\n", pcmreturn);
+			 line_out, jj)) < 0){
+			 //printf("loopback rx error: %s\n", snd_strerror(pcmreturn));
        snd_pcm_prepare(loopback_play_handle);
 			//puts("preparing loopback");
     }

@@ -237,7 +237,7 @@ struct font_style font_table[] = {
 	{FONT_LARGE_FIELD, 0, 1, 1, "Mono", 14, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
 	{FONT_LARGE_VALUE, 1, 1, 1, "Arial", 24, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
 	{FONT_SMALL, 0, 1, 1, "Mono", 10, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
-	{FONT_LOG, 0, 1, 0, "Mono", 14, CAIRO_FONT_WEIGHT_BOLD, CAIRO_FONT_SLANT_NORMAL},
+	{FONT_LOG, 0, 1, 0, "Mono", 14, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
 };
 /*
 	Warning: The field selection is used for TOGGLE and SELECTION fields
@@ -391,6 +391,32 @@ char *log_lines[MAX_LOG_LINES];
 int last_log = 0;
 
 void set_field(char *id, char *value);
+
+static int mode_id(char *mode_str){
+	if (!strcmp(mode_str, "CW"))
+		return MODE_CW;
+	else if (!strcmp(mode_str, "CWR"))
+		return MODE_CWR;
+	else if (!strcmp(mode_str, "USB"))
+		return MODE_USB;
+	else if (!strcmp(mode_str,  "LSB"))
+		return MODE_LSB;
+	else if (!strcmp(mode_str,  "FT8"))
+		return MODE_FT8;
+	else if (!strcmp(mode_str,  "PSK31"))
+		return MODE_PSK31;
+	else if (!strcmp(mode_str,  "RTTY"))
+		return MODE_RTTY;
+	else if (!strcmp(mode_str, "NBFM"))
+		return MODE_NBFM;
+	else if (!strcmp(mode_str, "AM"))
+		return MODE_AM;
+	else if (!strcmp(mode_str, "2TONE"))
+		return MODE_2TONE;
+	else if (!strcmp(mode_str, "DIGITAL"))
+		return MODE_DIGITAL;
+	return -1;
+}
 
 void write_gui_ini(){
   FILE *pf = fopen("gui_main.ini", "w");
@@ -666,7 +692,7 @@ void draw_waterfall(GtkWidget *widget, cairo_t *gfx){
 }
 
 void draw_spectrum(GtkWidget *widget, cairo_t *gfx){
-	int y, sub_division, i, grid_height;
+	int y, sub_division, i, grid_height, span;
 	struct field *f;
 	long	freq, freq_div;
 	char	freq_text[20];
@@ -674,6 +700,7 @@ void draw_spectrum(GtkWidget *widget, cairo_t *gfx){
 	f = get_field("r1:freq");
 	freq = atol(f->value);
 	f = get_field("#span");
+	span = atoi(f->value);
 	// the step is in khz, we multiply by 1000 and div 10(divisions) = 100 
 	freq_div = atol(f->value) * 100;  
 
@@ -710,9 +737,21 @@ void draw_spectrum(GtkWidget *widget, cairo_t *gfx){
 		draw_text(gfx, f->x + i - off , f->y+grid_height , freq_text, FONT_SMALL);
 		f_start += freq_div;
 	}
+
+	//we find out the mode and plot the marker line
+	
+	struct field *mode_f = get_field("r1:mode");
+
+	/*	
+	int marker_offset = (modem_center_freq(mode_id(mode_f->value)) * f->width)/(span * 1000);
+	//int marker_offset = 0;
+	cairo_move_to(gfx, f->x + f->width/2 + marker_offset, f->y);
+	cairo_line_to(gfx, f->x + f->width/2 + marker_offset, f->y + f->height); 
+	cairo_stroke(gfx);
+	*/
+
 	//we only plot the second half of the bins (on the lower sideband
 	int last_y = 100;
-
 
 	int n_bins = (int)((1.0 * spectrum_span) / 46.875);
 	//the center frequency is at the center of the lower sideband,
@@ -852,14 +891,17 @@ void draw_modulation(GtkWidget *widget, cairo_t *gfx){
 	draw_waterfall(widget, gfx);
 }
 
+static int log_cols = 50;
 void draw_list(cairo_t *gfx, struct field *f){
 	//get the text height
 	int line_height = font_table[f->font_index].height; 	
 	int n_lines = f->height / line_height;
 	//estimate!
 	int char_width = measure_text(gfx, "01234567890123456789", f->font_index)/20;
-	int n_cols = f->width / char_width;
+	log_cols = f->width / char_width;
 	int y = f->y +f->height - line_height - 4; 
+
+	printf("log_cols = %d\n", log_cols);
 
 	int line = last_log;
 	if (line == -1)
@@ -875,6 +917,56 @@ void draw_list(cairo_t *gfx, struct field *f){
 			line = MAX_LOG_LINES - 1;
 	}
 }
+
+void write_log(char *text){
+	char *p;
+
+	return;
+	printf("{logging [%s]\n", text);
+
+	while(*text){
+
+		printf("printing [%c]\n", *text);
+		if (!log_lines[last_log]){
+			puts("allocating new line");
+			p = malloc(log_cols);
+			*p = 0;
+			log_lines[last_log] = p;
+		}
+	
+		int len = strlen(log_lines[last_log]);
+		printf("write_log: last_log %d, len %d\n", last_log, len);
+
+		if (len < log_cols-1 && *text != '\n'){
+			p = log_lines[last_log];
+			printf("Adding to line %d showing [%s]\n", last_log, p);
+			//move to the end of the line
+			p += strlen(p);
+			if (*text < ' ')
+				*text = '*';
+			*p++ = *text++;
+			*p = 0;
+		}	
+		else { 
+			puts("Moving to new line");
+			//move to the next line
+			if (*text == '\n')
+				*text++;
+			last_log++;
+			if (last_log >= MAX_LOG_LINES) //wrap the logger around to MAX_LOG_LINES
+				last_log = 0;
+			p = log_lines[last_log];
+			//clear the line if it has old content
+			if (p)
+				*p = 0;
+			//allow the next iteration to do the insertion
+		}	
+	}	
+	printf("}\n");
+	struct field *f = get_field("#log");
+	update_field(f);
+}
+
 
 void append_log(char *line){
 	char * p = malloc(strlen(line) + 1);
@@ -894,9 +986,10 @@ void append_log(char *line){
 	update_field(f);
 }
 
+
 void init_log(){
 	memset(log_lines, 0, sizeof(log_lines));
-	last_log = -1;
+	last_log = 0;
 }
 
 void draw_dial(GtkWidget *widget, cairo_t *gfx, struct field *f){
@@ -1309,31 +1402,6 @@ void set_field(char *id, char *value){
 }
 
 
-static int mode_id(char *mode_str){
-	if (!strcmp(mode_str, "CW"))
-		return MODE_CW;
-	else if (!strcmp(mode_str, "CWR"))
-		return MODE_CWR;
-	else if (!strcmp(mode_str, "USB"))
-		return MODE_USB;
-	else if (!strcmp(mode_str,  "LSB"))
-		return MODE_LSB;
-	else if (!strcmp(mode_str,  "FT8"))
-		return MODE_FT8;
-	else if (!strcmp(mode_str,  "PSK31"))
-		return MODE_PSK31;
-	else if (!strcmp(mode_str,  "RTTY"))
-		return MODE_RTTY;
-	else if (!strcmp(mode_str, "NBFM"))
-		return MODE_NBFM;
-	else if (!strcmp(mode_str, "AM"))
-		return MODE_AM;
-	else if (!strcmp(mode_str, "2TONE"))
-		return MODE_2TONE;
-	else if (!strcmp(mode_str, "DIGITAL"))
-		return MODE_DIGITAL;
-	return -1;
-}
 
 static void tx_on(){
 	char response[100];
@@ -2181,7 +2249,9 @@ int main( int argc, char* argv[] ) {
   sprintf(new_value, "%d", vfo_a_freq);
   set_field("r1:freq", new_value);
 
-	append_log("sBITX v0.01, Ready");
+	write_log("sBITX v0.01, Ready\nFor Help, visit wwww.vu2ese/sbitx\n");
+	write_log("01234567890-11121314151617181920212223242526272829303132333435637383940");
+	//append_log("For help, visit www.vu2ese.com/sbitx");
 
 	// you don't want to save the recently loaded settings
 	settings_updated = 0;

@@ -139,7 +139,7 @@ void interpret_command(char *cmd){
     send_response("VFOA\n");
   else if (check_cmd(cmd, "v"))
     send_response("VFOA\n");
-  else if (check_cmd(cmd, "m"))
+  else if (!strcmp(cmd, "m") || !strcmp(cmd, "m VFOA"))
     send_response("USB 3000\n");
   else if (check_cmd(cmd, "f"))
     send_freq("7074000\n");
@@ -159,6 +159,8 @@ void interpret_command(char *cmd){
     close(data_socket);
     data_socket = -1;
   }
+	else 
+		printf("Unrecognized command [%s] '%c'\n", cmd, cmd[0]);
 }
 
 void hamlib_handler(char *data, int len){
