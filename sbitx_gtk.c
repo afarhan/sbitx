@@ -891,11 +891,76 @@ void draw_modulation(GtkWidget *widget, cairo_t *gfx){
 	draw_waterfall(widget, gfx);
 }
 
-static int log_cols = 50;
+#define MAX_LOG_BUFFER 2000
+static int 	log_cols = 50;
+static char	log_buffer[MAX_LOG_BUFFER];
+static int 	log_next_char = 0;
+
+void log_init(){
+	log_cols = 50;
+	memset(log_buffer, ' ', sizeof(log_buffer));
+
+	//fill up with some stuff
+	for (int i = 0; i < sizeof(log_buffer); i += log_cols){
+		sprintf(log_buffer + i, "%d", i);
+	}
+	log_next_char = 0;	
+}
+
+void log_write(char *new_text){
+	int max_text = sizeof(log_buffer);
+	while (*new_text){
+		if (*new_text == '\n'){
+			//pad up the remaining line with spaces
+			while (log_next_char % log_cols != 0){
+				log_buffer[log_next_char++] = ' ';
+				if (log_next_char == sizeof(log_buffer))
+					log_next_char = 0;
+			}
+		}
+		else {
+			log_buffer[log_next_char++] = *new_text;
+			if (log_next_char == sizeof(log_buffer))
+				log_next_char = 0;
+		}
+		new_text++;
+	}
+	struct field *f = get_field("#log");
+	update_field(f);
+}
+
+void draw_list(cairo_t *gfx, struct field *f){
+
+	int line_height = font_table[f->font_index].height; 	
+	int lines = f->height / line_height;
+
+	//estimate!
+	int char_width = measure_text(gfx, "01234567890123456789", f->font_index)/20;
+	log_cols = f->width / char_width;
+	int y = f->y + f->height -line_height - 2; 
+
+	int line_start = ((log_next_char) / log_cols) * log_cols;
+	
+	//printf("log_cols = %d\n", log_cols);
+
+	for (int i = 0; i < lines; i++){
+		char this_line[200];
+
+		strncpy(this_line, log_buffer + line_start, log_cols);
+		this_line[log_cols] = 0;
+		draw_text(gfx, f->x, y, this_line, f->font_index);
+		y -= line_height;
+	
+		line_start -= log_cols;
+		if (line_start < 0)
+			line_start = sizeof(log_buffer) -  log_cols;
+	}
+}
+/*
 void draw_list(cairo_t *gfx, struct field *f){
 	//get the text height
 	int line_height = font_table[f->font_index].height; 	
-	int n_lines = f->height / line_height;
+	int lines = f->height / line_height;
 	//estimate!
 	int char_width = measure_text(gfx, "01234567890123456789", f->font_index)/20;
 	log_cols = f->width / char_width;
@@ -907,7 +972,7 @@ void draw_list(cairo_t *gfx, struct field *f){
 	if (line == -1)
 		return;
 
-	for (int i = 0; i < n_lines; i++){
+	for (int i = 0; i < lines; i++){
 		if (log_lines[line])
 			draw_text(gfx, f->x, y, log_lines[line], f->font_index);
 		y -= line_height;
@@ -917,6 +982,7 @@ void draw_list(cairo_t *gfx, struct field *f){
 			line = MAX_LOG_LINES - 1;
 	}
 }
+*/
 
 void write_log(char *text){
 	char *p;
@@ -1907,7 +1973,8 @@ gboolean ui_tick(gpointer gook){
 void ui_init(int argc, char *argv[]){
   
   gtk_init( &argc, &argv );
-	init_log();
+	//init_log();
+	log_init();
 
   window = gtk_window_new( GTK_WINDOW_TOPLEVEL );
   gtk_window_set_default_size( GTK_WINDOW(window), 800, 480 );
@@ -2249,10 +2316,16 @@ int main( int argc, char* argv[] ) {
   sprintf(new_value, "%d", vfo_a_freq);
   set_field("r1:freq", new_value);
 
-	write_log("sBITX v0.01, Ready\nFor Help, visit wwww.vu2ese/sbitx\n");
-	write_log("01234567890-11121314151617181920212223242526272829303132333435637383940");
-	//append_log("For help, visit www.vu2ese.com/sbitx");
+	log_write("sBITX v0.01, Ready\nFor Help, visit wwww.vu2ese/sbitx\n");
+//	log_write("01234567890-11121314151617181920212223242526272829303132333435637383940");
 
+/*
+	for (int i = 0; i < 100; i++){
+		char buff[100];
+		sprintf(buff, "This is line %d %d\n", i, log_next_char);
+		log_write(buff);	
+	}
+*/
 	// you don't want to save the recently loaded settings
 	settings_updated = 0;
   hamlib_start();

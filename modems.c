@@ -67,7 +67,7 @@ void *ft8_thread_function(void *ptr){
 		//now launch the decoder
 		pf = popen("/home/pi/ft8_lib/decode_ft8 /tmp/ftrx.raw", "r");
 		while(fgets(buff, sizeof(buff), pf)) {
-			write_log(buff);
+			log_write(buff);
 			printf("FT8 decode : %s\n", buff);
 		}
 		puts("FT decoding ended");	
@@ -1172,7 +1172,7 @@ void Rtty_Demodulator_ProcessSample(float32_t sample)
 				char output[2];
 				output[0] = charResult;
 				output[1] = 0;
-				write_log(output);
+				log_write(output);
 				printf(output);
 				break;
 			}
@@ -1864,10 +1864,16 @@ float_t psk31_process_sample(struct psk31_decoder *p, int32_t sample){
 			if (p->varicode || p->varicode < 255){
 				// the varicode already has one zero from the boundary, chop it off
 				p->varicode = p->varicode >> 1;
+
 				//search for a matching varicode and emit its ascii
+				char ascii[2];
+				ascii[1] = 0;
 				for (int i = 0; i < 256; i++)
-					if (p->varicode == psk_varicode[i])
+					if (p->varicode == psk_varicode[i]){
+						ascii[0] = i;
+						log_write(ascii);
 						printf("%c\n", i);
+					}
 			}
 			//putchar('\n');
 			//reset the varicdoe
