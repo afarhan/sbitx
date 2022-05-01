@@ -901,7 +901,7 @@ void draw_list(cairo_t *gfx, struct field *f){
 	log_cols = f->width / char_width;
 	int y = f->y +f->height - line_height - 4; 
 
-	printf("log_cols = %d\n", log_cols);
+	//printf("log_cols = %d\n", log_cols);
 
 	int line = last_log;
 	if (line == -1)
