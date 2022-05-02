@@ -10,7 +10,6 @@
 #include "sdr.h"
 
 //we define one more than needed to cover the boundary of quadrature
-#define MAX_PHASE_COUNT (16385)
 static int	phase_table[MAX_PHASE_COUNT];
 int sampling_freq = 96000; 
 

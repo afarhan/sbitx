@@ -313,8 +313,13 @@ struct field main_controls[] = {
 		"", 0,0,0},   
 	{"waterfall", 400, 150 , 400, 130, "Waterfall ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, 
 		"", 0,0,0},
-	{"#log", 0, 0 , 400, 360, "log", 70, "log box", FIELD_LIST, FONT_LOG, 
+	{"#log", 0, 0 , 400, 330, "log", 70, "log box", FIELD_LIST, FONT_LOG, 
 		"nothing valuable", 0,0,0},
+
+	{"#text_in", 0, 330, 400, 30, "text", 70, "text box", FIELD_TEXT, FONT_LOG, 
+		"nothing valuable", 0,128,0},
+
+
 	{"#close", 700, 430 ,50, 50, "CLOSE", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
 		"", 0,0,0},
 	{"#off", 750, 430 ,50, 50, "OFF", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
@@ -341,7 +346,7 @@ struct field main_controls[] = {
 	//soft keyboard
 	{"#kbd_q", 0, 360 ,40, 30, "#", 1, "Q", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
 	{"#kbd_w", 40, 360, 40, 30, "1", 1, "W", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_e", 80, 360, 80, 30, "2", 1, "E", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_e", 80, 360, 40, 30, "2", 1, "E", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
 	{"#kbd_r", 120, 360, 40, 30, "3", 1, "R", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
 	{"#kbd_t", 160, 360, 40, 30, "(", 1, "T", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
 	{"#kbd_y", 200, 360, 40, 30, ")", 1, "Y", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
@@ -352,7 +357,7 @@ struct field main_controls[] = {
 
 	{"#kbd_a", 0, 390 ,40, 30, "*", 1, "A", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
 	{"#kbd_s", 40, 390, 40, 30, "4", 1, "S", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_d", 80, 390, 80, 30, "5", 1, "D", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_d", 80, 390, 40, 30, "5", 1, "D", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
 	{"#kbd_f", 120, 390, 40, 30, "6", 1, "F", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
 	{"#kbd_g", 160, 390, 40, 30, "/", 1, "G", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
 	{"#kbd_h", 200, 390, 40, 30, ":", 1, "H", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
@@ -363,7 +368,7 @@ struct field main_controls[] = {
  
 	{"#kbd_alt", 0, 420 ,40, 30, "", 1, "alt", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
 	{"#kbd_z", 40, 420, 40, 30, "7", 1, "Z", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_x", 80, 420, 80, 30, "8", 1, "X", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_x", 80, 420, 40, 30, "8", 1, "X", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
 	{"#kbd_c", 120, 420, 40, 30, "9", 1, "C", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
 	{"#kbd_v", 160, 420, 40, 30, "?", 1, "V", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
 	{"#kbd_b", 200, 420, 40, 30, "!", 1, "B", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
@@ -373,7 +378,7 @@ struct field main_controls[] = {
 	{"#kbd_ret", 360, 420, 40, 30, "", 1, "RET", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
 
 	{"#kbd_sym", 40, 450, 40, 30, "", 1, "sym", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_0", 80, 450, 80, 30, "", 1, "0", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_0", 80, 450, 40, 30, "", 1, "0", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
 	{"#kbd_sp", 120, 450, 120, 30, "", 1, "space", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
 	{"#kbd_n", 240, 450, 40, 30, "", 1, "sym", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
 	//the last control has empty cmd field 
@@ -1152,13 +1157,30 @@ void draw_field(GtkWidget *widget, cairo_t *gfx, struct field *f){
 	else if (f->value_type != FIELD_STATIC)
 		rect(gfx, f->x, f->y, f->width,f->height, COLOR_CONTROL_BOX, 1);
 
-	int width, offset;	
+	int width, offset, text_length, line_start, y;	
+	char this_line[MAX_FIELD_LENGTH];
 	
 	switch(f->value_type){
+		case FIELD_TEXT:
+			text_length = strlen(f->value);
+			line_start = 0;
+			y = f->y + 2;
+			while(text_length > 0){
+				if (text_length > log_cols){
+					strncpy(this_line, f->value + line_start, log_cols);
+					this_line[log_cols] = 0;
+				}
+				else
+					strcpy(this_line, f->value + line_start);		
+				draw_text(gfx, f->x + 2, y, this_line, f->font_index);
+				y += 14;
+				line_start += log_cols;
+				text_length -= log_cols;
+			}
+		break;
 		case FIELD_SELECTION:
 		case FIELD_NUMBER:
 		case FIELD_TOGGLE:
-		case FIELD_TEXT:
 			width = measure_text(gfx, f->label, FONT_FIELD_LABEL);
 			offset = f->width/2 - width/2;
 			draw_text(gfx, f->x + offset, f->y+5 ,  f->label, FONT_FIELD_LABEL);
@@ -1169,6 +1191,7 @@ void draw_field(GtkWidget *widget, cairo_t *gfx, struct field *f){
 			else
 				draw_text(gfx, f->x+offset , f->y+25 , f->value , f->font_index);
 			break;
+
 		case FIELD_BUTTON:
 			width = measure_text(gfx, f->label, FONT_FIELD_LABEL);
 			offset = f->width/2 - width/2;
@@ -1345,7 +1368,6 @@ static void edit_field(struct field *f, int action){
 	}
 	else if (f->value_type == FIELD_TEXT){
 		if (action >= ' ' && action <= 127 && strlen(f->value) < f->max){
-			puts("adding character");
 			int l = strlen(f->value);
 			f->value[l++] = action;
 			f->value[l] = 0;
@@ -1549,6 +1571,11 @@ static gboolean on_key_release (GtkWidget *widget, GdkEventKey *event, gpointer 
 static gboolean on_key_press (GtkWidget *widget, GdkEventKey *event, gpointer user_data) {
 	char request[1000], response[1000];
 
+	if (f_focus && f_focus->value_type == FIELD_TEXT){
+		edit_field(f_focus, event->keyval); 
+		return FALSE;
+	}
+	
 	//printf("keyPress %x %x\n", event->keyval, event->state);
 	//key_modifier = event->keyval;
 	switch(event->keyval){
@@ -1569,9 +1596,10 @@ static gboolean on_key_press (GtkWidget *widget, GdkEventKey *event, gpointer us
 				edit_field(f_focus, MIN_KEY_DOWN);
 			}
 			break;
-		case MIN_KEY_ESC:
+/*		case MIN_KEY_ESC:
 			focus_field(NULL);
 			break;
+*/
 		case MIN_KEY_ENTER:
 			if (f_focus == NULL )
 				focus_field(f_hover);
@@ -1583,24 +1611,6 @@ static gboolean on_key_press (GtkWidget *widget, GdkEventKey *event, gpointer us
 		case MIN_KEY_TAB:
 			tx_on();
       puts("Tx is ON!");
-			break;
-		case 't':
-			tx_on();
-			break;
-		case 'r':
-			tx_off();
-			break;
-		case 'u':
-			if (xit < 2048)
-				xit += 32;
-			sprintf(request, "xit=%d", xit);
-			sdr_request(request, response);
-			break;
-		case 'i':
-			if(xit > 32)
-				xit -= 32;
-			sprintf(request, "xit=%d", xit);
-			sdr_request(request, response);
 			break;
 		default:
 			if (f_focus)
@@ -1623,13 +1633,24 @@ static gboolean on_scroll (GtkWidget *widget, GdkEventScroll *event, gpointer da
 
 static gboolean on_mouse_press (GtkWidget *widget, GdkEventButton *event, gpointer data) {
 	struct field *f;
+
 	if (event->type == GDK_BUTTON_PRESS && event->button == GDK_BUTTON_PRIMARY){
+
 		//printf("mouse event at %d, %d\n", (int)(event->x), (int)(event->y));
 		for (int i = 0; active_layout[i].cmd[0] > 0; i++) {
 			f = active_layout + i;
 			if (f->x < event->x && event->x < f->x + f->width 
-					&& f->y < event->y && event->y < f->y + f->height)
+					&& f->y < event->y && event->y < f->y + f->height){
 				focus_field(f);
+				//send the keyboard button events to the text input
+				if (!strncmp(f->cmd,"#kbd_", 5)){
+					struct field *f_text = get_field("#text_in");
+					if (!strcmp(f->cmd, "#kbd_bs"))
+						edit_field(f_text, MIN_KEY_BACKSPACE);
+					else
+						edit_field(f_text, f->cmd[5]);
+				}
+			} 
 		}
 	}
   /* We've handled the event, stop processing */
@@ -2317,15 +2338,8 @@ int main( int argc, char* argv[] ) {
   set_field("r1:freq", new_value);
 
 	log_write("sBITX v0.01, Ready\nFor Help, visit wwww.vu2ese/sbitx\n");
-//	log_write("01234567890-11121314151617181920212223242526272829303132333435637383940");
+	set_field("#text_in", "Hello, world");
 
-/*
-	for (int i = 0; i < 100; i++){
-		char buff[100];
-		sprintf(buff, "This is line %d %d\n", i, log_next_char);
-		log_write(buff);	
-	}
-*/
 	// you don't want to save the recently loaded settings
 	settings_updated = 0;
   hamlib_start();

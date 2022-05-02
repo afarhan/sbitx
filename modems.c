@@ -1733,7 +1733,7 @@ static const uint16_t psk_varicode[] = {
     0b101101011011,     /* 255 -    */
 };
 
-struct psk31_decoder {
+struct psk31_modem {
 
 	// this is a trivial IIR low pass filter
 	// it calculates the lowpass response as 
@@ -1756,7 +1756,7 @@ struct psk31_decoder {
 	// the last symbol to compare it with the currently detected symbol 
 
 	int last_symbol;
-	int	varicode;
+	int	rx_varicode;
 
 	// these rates are usually fixed in an SDR
 	int sampling_rate;
@@ -1769,19 +1769,107 @@ struct psk31_decoder {
 	int delay_length;
 	float *delay_line;
 	int delay_index;
+
+	////////////////////////////////////////
+	/////////// Encoder variables  /////////
+	////////////////////////////////////////
+
+	uint16_t tx_varicode;
+	uint16_t tx_varicode_mask;
+	int	tx_sample_count; 
+	int	tx_samples_per_symbol;
+	int	tx_symbol;
+	struct vfo	vfo_carrier, vfo_envelope;
+	int	tx_envelope;
 };
 
+char psk31_tx_string[] = "cq cq cq de vu2ese, qth hyderabad and qrp 10w";
+char *tx_buffer_next;
 
-struct psk31_decoder psk_demodulator;
 
-void psk31_init(struct psk31_decoder *p, int sampling_rate){
+char get_next_ascii_to_tx(){
+	if (*tx_buffer_next)
+		return *tx_buffer_next++;
+	else
+		return 0;
+}
+
+int psk31_tx_get_sample(struct psk31_modem *t, int *sample){
+
+	if (t->tx_varicode_mask == 0 && t->tx_sample_count == 0){	
+		char ascii = get_next_ascii_to_tx();
+		if (ascii == 0)
+			return 0;
+		t->tx_varicode = psk_varicode[ascii];
+
+		//count the number of symbols in the varicode
+		t->tx_varicode_mask = 0x8000;
+		while(t->tx_varicode_mask > 1){
+			if (t->tx_varicode_mask & t->tx_varicode)
+				break;
+			else
+				t->tx_varicode_mask = t->tx_varicode_mask >> 1;
+		}
+
+		//now that we have the varicode, add two zeros to the begining 
+		t->tx_varicode_mask = t->tx_varicode_mask << 2;
+		printf("############# new varicode %x\n", t->tx_varicode);
+	}
+
+	//we get here when we have a varicode with the next symbol to send out	
+	if (t->tx_sample_count == 0){
+		t->tx_symbol = 0;
+		if (t->tx_varicode_mask > 0){
+			if (t->tx_varicode_mask & t->tx_varicode) //continue the same carrier wave
+				t->tx_symbol = 1;
+			else
+				t->tx_symbol = 0;	//start inverting the phase 
+		}
+		printf("\nSymbol %d, v:%x, m:%x\n", t->tx_symbol, 
+			t->tx_varicode, t->tx_varicode_mask);
+		t->tx_varicode_mask = t->tx_varicode_mask >> 1;
+	}
+	//else 
+		//printf("tx %d\n", tx_sample_count);
+
+	t->tx_sample_count++;
+	if (t->tx_sample_count >= t->tx_samples_per_symbol)
+		t->tx_sample_count= 0;
+
+	//advance the envelope to flip the phase
+	//do this on alternate samples to slow down to half ot 31.25 Hz
+	if (t->tx_symbol == 0 && t->tx_sample_count & 1) 
+			t->tx_envelope = vfo_read(&t->vfo_envelope); 
+	
+	*sample = (t->tx_envelope / 0x10000) * 
+			(vfo_read(&t->vfo_carrier)/0x10000);
+	return 1;
+}
+
+/*
+void psk31_tx_init(struct psk31_modem *t, int sampling_rate, int carrier_freq){
+
+	t->tx_varicode_mask = 0;
+	t->tx_sample_count = 0;
+	t->tx_samples_per_symbol = (32 * sampling_rate) / 1000;
+
+	//vfos are sampling at a fixed rate of 96000, thus we have
+	//to accordingly scale the frequency generated
+
+	vfo_start(&t->vfo_carrier, (500 * 96000)/sampling_rate, 16384);
+	vfo_start(&t->vfo_envelope, (3125 * 960)/sampling_rate, 16384);
+}
+*/
+
+struct psk31_modem psk_modem;
+
+void psk31_init(struct psk31_modem *p, int sampling_rate){
 
 	p->lpf_output = 0;
 	p->iir_k = 0.02;
 	p->bit_clk = 0;
 
 	p->last_symbol = 1;
-	p->varicode = 0;
 
 	// these rates are usually fixed in an SDR
 	p->sampling_rate = 12000;
@@ -1798,7 +1886,7 @@ void psk31_init(struct psk31_decoder *p, int sampling_rate){
 
 	p->bit_clk_max = p->delay_length;
 	p->last_symbol = 1;
-	p->varicode = 0;
+	p->rx_varicode = 0;
 	p->iir_k = 0.01;
 	//printf("delay length = %d\n", p->delay_length);
 	for (int i = 0; i < p->delay_length; i++)
@@ -1806,10 +1894,22 @@ void psk31_init(struct psk31_decoder *p, int sampling_rate){
 
 	//printf("bit clock max = %d\n", p->bit_clk_max);
 	p->delay_index = 0;
+
+
+	// init the transmit variables
+	p->tx_varicode_mask = 0;
+	p->tx_sample_count = 0;
+	p->tx_samples_per_symbol = (32 * sampling_rate) / 1000;
+
+	//vfos are sampling at a fixed rate of 96000, thus we have
+	//to accordingly scale the frequency generated
+
+	vfo_start(&p->vfo_carrier, (500 * 96000)/sampling_rate, 16384);
+	vfo_start(&p->vfo_envelope, (3125 * 960)/sampling_rate, 16384);
 }
 
 
-float_t psk31_process_sample(struct psk31_decoder *p, int32_t sample){
+float_t psk31_process_sample(struct psk31_modem *p, int32_t sample){
 
 	//scale the integer into float and multiply with a sample that came
 	//exactly 32 msec ago
@@ -1861,15 +1961,15 @@ float_t psk31_process_sample(struct psk31_decoder *p, int32_t sample){
 
 		// have we detected two consequetive zeros as the boundary of a varicode?
 		if (symbol == 0 && p->last_symbol == 0){
-			if (p->varicode || p->varicode < 255){
+			if (p->rx_varicode || p->rx_varicode < 255){
 				// the varicode already has one zero from the boundary, chop it off
-				p->varicode = p->varicode >> 1;
+				p->rx_varicode = p->rx_varicode >> 1;
 
 				//search for a matching varicode and emit its ascii
 				char ascii[2];
 				ascii[1] = 0;
 				for (int i = 0; i < 256; i++)
-					if (p->varicode == psk_varicode[i]){
+					if (p->rx_varicode == psk_varicode[i]){
 						ascii[0] = i;
 						log_write(ascii);
 						printf("%c\n", i);
@@ -1877,17 +1977,17 @@ float_t psk31_process_sample(struct psk31_decoder *p, int32_t sample){
 			}
 			//putchar('\n');
 			//reset the varicdoe
-			p->varicode = 0;
+			p->rx_varicode = 0;
 		}
 		else if (symbol == 0){
 			//shift a zero into the varicode
 			//putchar('0');
-			p->varicode = p->varicode << 1;
+			p->rx_varicode = p->rx_varicode << 1;
 		}
 		else {
 			//shift a 1 into the varicode
 			//putchar('1');
-			p->varicode = (p->varicode << 1) + 1;
+			p->rx_varicode = (p->rx_varicode << 1) + 1;
 		}
 		p->last_symbol = symbol;
 	}
@@ -1911,11 +2011,11 @@ void modem_rx(int mode, int32_t *samples, int count){
 	case MODE_PSK31:
 		//pf = fopen("psk31-sbitx.raw", "a");
 		//trivially decimate by a factor of 8,
-		//the modems from UHSDR need 12000 samples/sec, not 96K
+		//the modem needs 12000 samples/sec, not 96K
 		s = samples;
 		for (i = 0; i < count; i += 8){ 
 			int32_t sample = *s;
-			psk31_process_sample(&psk_demodulator, *s);
+			psk31_process_sample(&psk_modem, *s);
 			//fwrite(&sample, sizeof(int32_t), 1, pf);	
 			s += 8;
 		}
@@ -1939,7 +2039,7 @@ void modem_init(){
 	// init the ft8
 	ft8_rx_buff_index = 0;
 	pthread_create( &ft8_thread, NULL, ft8_thread_function, (void*)NULL);
-	psk31_init(&psk_demodulator, 12000);
+	psk31_init(&psk_modem, 12000);
 	Rtty_Modem_Init(96000);
 }
 

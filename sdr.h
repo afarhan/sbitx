@@ -102,6 +102,7 @@ extern struct filter *ssb;
 
 //vfo definitions
 
+#define MAX_PHASE_COUNT (16385)
 struct vfo {
 	int freq_hz;
 	int phase;
