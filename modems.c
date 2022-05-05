@@ -15,6 +15,7 @@
 #include <stdbool.h>
 #include <sys/types.h>
 #include <stdint.h>
+#include <errno.h>
 
 #include "sdr.h"
 #include "sdr_ui.h"
@@ -31,6 +32,8 @@ typedef float float32_t;
 
 	The PSK31 and RTTY are courtesy UHSDR code. 
 */
+
+static long modem_tx_timeout = 0;
 
 /*******************************************************
 **********                  FT8                  *******
@@ -1301,33 +1304,15 @@ int16_t Rtty_Modulator_GenSample()
 			// ESE: change this to read from the keyboard buffer
 			//while ( bitsFilled == false
 			//        &&  DigiModes_TxBufferHasDataFor(RTTY))
-			while ( bitsFilled == false && *tx_next)
+			while ( bitsFilled == false)
 			{
 
 			    uint8_t current_ascii;
-
-			    // as the character might have been removed from the buffer,
-			    // we do a final check when removing the character
-			    //if (DigiModes_TxBufferRemove( &current_ascii, RTTY ))
-					if (*tx_next)
-			    {
-							current_ascii = *tx_next++;
-			        if (current_ascii == 0x04 ) //EOT
-			        {
-									puts("TX off!!!\n");
-									fclose(pf);
-									//exit(0);
-			            //RadioManagement_Request_TxOff();
-			        }
-			        else
-			        {
-			            uint8_t current_baudot = Ascii2Baudot[current_ascii & 0x7f];
-			            if (current_baudot > 0)
-			            { // we have valid baudot code
-			                Rtty_Modulator_Code2Bits(current_baudot);
-			                bitsFilled = true;
-			            }
-			        }
+					get_tx_data_byte(&current_ascii);
+			    uint8_t current_baudot = Ascii2Baudot[current_ascii & 0x7f];
+			    if (current_baudot > 0) { // we have valid baudot code
+			       Rtty_Modulator_Code2Bits(current_baudot);
+			       bitsFilled = true;
 			    }
 			}
 
@@ -1783,21 +1768,12 @@ struct psk31_modem {
 	int	tx_envelope;
 };
 
-char psk31_tx_string[] = "cq cq cq de vu2ese, qth hyderabad and qrp 10w";
-char *tx_buffer_next;
 
-
-char get_next_ascii_to_tx(){
-	if (*tx_buffer_next)
-		return *tx_buffer_next++;
-	else
-		return 0;
-}
-
-int psk31_tx_get_sample(struct psk31_modem *t, int *sample){
+float psk31_tx_get_sample(struct psk31_modem *t, float *sample){
 
 	if (t->tx_varicode_mask == 0 && t->tx_sample_count == 0){	
-		char ascii = get_next_ascii_to_tx();
+		char ascii = ' '; 					//tx spaces if text buffer is empty
+		get_tx_data_byte(&ascii);
 		if (ascii == 0)
 			return 0;
 		t->tx_varicode = psk_varicode[ascii];
@@ -1841,25 +1817,11 @@ int psk31_tx_get_sample(struct psk31_modem *t, int *sample){
 	if (t->tx_symbol == 0 && t->tx_sample_count & 1) 
 			t->tx_envelope = vfo_read(&t->vfo_envelope); 
 	
-	*sample = (t->tx_envelope / 0x10000) * 
-			(vfo_read(&t->vfo_carrier)/0x10000);
-	return 1;
+	*sample = ((t->tx_envelope * 1.0)/ 1073741824.0) * 
+			((vfo_read(&t->vfo_carrier) * 1.0)/ 1073741824.0);
+	return *sample;
 }
 
-/*
-void psk31_tx_init(struct psk31_modem *t, int sampling_rate, int carrier_freq){
-
-	t->tx_varicode_mask = 0;
-	t->tx_sample_count = 0;
-	t->tx_samples_per_symbol = (32 * sampling_rate) / 1000;
-
-	//vfos are sampling at a fixed rate of 96000, thus we have
-	//to accordingly scale the frequency generated
-
-	vfo_start(&t->vfo_carrier, (500 * 96000)/sampling_rate, 16384);
-	vfo_start(&t->vfo_envelope, (3125 * 960)/sampling_rate, 16384);
-}
-*/
 
 struct psk31_modem psk_modem;
 
@@ -1969,10 +1931,11 @@ float_t psk31_process_sample(struct psk31_modem *p, int32_t sample){
 				char ascii[2];
 				ascii[1] = 0;
 				for (int i = 0; i < 256; i++)
-					if (p->rx_varicode == psk_varicode[i]){
+					if (p->rx_varicode == psk_varicode[i] && i >= 32 && i < 128){
 						ascii[0] = i;
-						log_write(ascii);
-						printf("%c\n", i);
+						ascii[1] = 0;
+						//log_write(ascii);
+						printf("psk char %d\n", i);
 					}
 			}
 			//putchar('\n');
@@ -2039,7 +2002,7 @@ void modem_init(){
 	// init the ft8
 	ft8_rx_buff_index = 0;
 	pthread_create( &ft8_thread, NULL, ft8_thread_function, (void*)NULL);
-	psk31_init(&psk_modem, 12000);
+	psk31_init(&psk_modem, 96000);
 	Rtty_Modem_Init(96000);
 }
 
@@ -2054,4 +2017,46 @@ int modem_center_freq(int mode){
 		default:
 			return 0;
 	}
+}
+
+//this called routinely to check if we should start/stop the transmitting
+//each mode has its peculiarities, like the ft8 will start only on 15th second boundary
+//psk31 will transmit a few spaces after the last character, etc.
+
+FILE *pf_raw = NULL;
+void modem_poll(int mode){
+	int bytes_available = get_tx_data_length();
+	int tx_is_on = is_in_tx();
+
+	switch(mode){
+	case MODE_RTTY:
+	case MODE_PSK31:
+		if (!tx_is_on && bytes_available > 2){
+			if (mode == MODE_RTTY)
+				Rtty_Modulator_StartTX();
+			tx_on();
+			modem_tx_timeout = millis() + 1000;
+		}
+		if (tx_is_on){
+			if (bytes_available > 0)
+				modem_tx_timeout = millis() + 1000;	
+			else if (modem_tx_timeout < millis()){
+				tx_off();
+			}
+		}
+	break;
+	}
+}
+
+float modem_next_sample(int mode){
+	float sample=0;
+
+	switch(mode){
+	case MODE_PSK31:
+		psk31_tx_get_sample(&psk_modem,  &sample);
+		break;
+	case MODE_RTTY:
+		sample = Rtty_Modulator_GenSample()/65000.0;
+	}
+	return sample;
 }

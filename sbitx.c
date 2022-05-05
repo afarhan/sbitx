@@ -502,98 +502,6 @@ void rx_process(int32_t *input_rx,  int32_t *input_mic,
 }
 
 
-/*
-	MAX_BINS is 2048,
-	the number of samples coming in each time is 1024 (half)
-	so, we overlap the last 1024 samples with these 1024 samples
-	to assemble the 2048 samples to be ffted
-*/
-void tx_2tone(
-	int32_t *input_rx, int32_t *input_mic, 
-	int32_t *output_speaker, int32_t *output_tx, 
-	int n_samples)
-{
-	int i, j, m;
-	double i_sample, q_sample;
-	struct rx *r = tx_list;
-
-	// these are the sample from previous block that are 
-	// use as a par of overlap-and discard filtering (read about it in dspguid,com
-	m = 0;
-	for (i = 0; i < MAX_BINS/2; i++)
-		fft_in[i]  = fft_m[i];
-
-	m = 0;
-	//gather the samples into a time domain array 
-	for (i= MAX_BINS/2; i < MAX_BINS; i++){
-
-	  i_sample = (1.0 * vfo_read(&tone_a)) / 2000000000.0;
-		//i_sample = (1.0 *  (vfo_read(&tone_b)  + vfo_read(&tone_a) )) / 20000000000.0;
-		q_sample = 0;
-
-		j++;
-
-		//these are stored for the overlap-and-dicard of the next block
-		__real__ fft_m[m] = i_sample;
-		__imag__ fft_m[m] = q_sample;
-
-		__real__ fft_in[i]  = i_sample;
-		__imag__ fft_in[i]  = q_sample;
-		m++;
-	}	
-
-
-	//convert to frequency
-	fftw_execute(plan_fwd);
-
-	//now we apply the tx filter
-	for (int i = 0; i < MAX_BINS; i++)
-		fft_out[i] *= tx_filter->fir_coeff[i];
-
-	// zero out the other sideband
-	if (r->mode == MODE_LSB || r->mode == MODE_CWR)
-		for (i = 0; i < MAX_BINS/2; i++){
-			__real__ r->fft_freq[i] = 0;
-			__imag__ r->fft_freq[i] = 0;	
-		}
-	else 
-		for (i = MAX_BINS/2; i < MAX_BINS; i++){
-			__real__ r->fft_freq[i] = 0;
-			__imag__ r->fft_freq[i] = 0;	
-		}
-
-	//now we rotate this 
-	for (i = 0; i < MAX_BINS; i++){
-		// we shift back because we are operating on the -ve
-		// frequencies from N/2 to N,
-		// the original signal was from N-1, down at the very edge
-		// so we have to shift it to the middle of the passband
-		// this effectively inverts the sideband 
-		int b = i - tx_shift;
-		if (b >= MAX_BINS)
-			b = b - MAX_BINS;
-		if (b < 0)
-			b = b + MAX_BINS;
-		r->fft_freq[b] = fft_out[i];
-	}
-
-	//show on the spectrum display
-	for (i = 0; i < MAX_BINS; i++)
-		fft_spectrum[i] = r->fft_freq[i];
-		
-	// the spectrum display is updated
-	spectrum_update();
-
-	//convert back to time domain	
-	fftw_execute(r->plan_rev);
-
-	//send the output back to where it needs to go
-	for (i= 0; i < MAX_BINS/2; i++){
-		output_tx[i] = creal(rx_list->fft_time[i+(MAX_BINS/2)]) * volume;
-		output_speaker[i] = output_tx[i]; 
-  }
-}
-
 void tx_process(
 	int32_t *input_rx, int32_t *input_mic, 
 	int32_t *output_speaker, int32_t *output_tx, 
@@ -614,7 +522,12 @@ void tx_process(
 	for (i= MAX_BINS/2; i < MAX_BINS; i++){
 
 		if (r->mode == MODE_2TONE)
-			i_sample = (1.0 * (vfo_read(&tone_a) + vfo_read(&tone_b))) / 20000000000.0;
+			i_sample = (1.0 * (vfo_read(&tone_a) 
+										+ vfo_read(&tone_b))) / 20000000000.0;
+		else if (r->mode > MODE_AM){
+			i_sample = modem_next_sample(r->mode) / 3;
+			output_speaker[j] = i_sample * 100000000.0;
+		}
     else if (r->mode == MODE_CW || r->mode == MODE_CWR){
 			//the cw shaping is done here by ramping the amplitude up and down at cw_shape rate
 			if (cw_keydown && cw_amplitude < 1000){
@@ -700,8 +613,8 @@ void tx_process(
 		if (r->mode == MODE_USB || r->mode == MODE_LSB || r->mode == MODE_AM 
 			|| r->mode == MODE_NBFM)
 			output_speaker[i] = 0; 
-		sdr_modulation_update(output_tx, MAX_BINS/2);	
 	}
+	sdr_modulation_update(output_tx, MAX_BINS/2);	
 }
 
 
@@ -830,22 +743,20 @@ void sdr_request(char *request, char *response){
 	cmd[n] = 0;
 	strcpy(value, request+n+1);
 
-	//at present, we handle only the requests to tune and adjust volume
-/*	if (!strcmp(cmd, "r1:gain")){
-		int d = atoi(value);
-		volume = d * 100;
-		set_volume(volume);
-		//printf("Volume set to %d\n", volume);
-		strcpy(response, "ok");	
+	if (!strcmp(cmd, "stat:tx")){
+		if (in_tx)
+			strcpy(response, "ok on");
+		else
+			strcpy(response, "ok off");
 	}
-	else*/ if (!strcmp(cmd, "xit")){
+	if (!strcmp(cmd, "xit")){
 		int d = atoi(value);
 		set_lo(d);
 		if (d > 0 && d < 2048)
 			tx_shift = -d;
 		//printf("xit set to %d\n", freq_hdr);
 		strcpy(response, "ok");	
-	} 
+	}
 	else if (!strcmp(cmd, "r1:freq")){
 		int d = atoi(value);
 		set_rx1(d);
@@ -926,7 +837,6 @@ void sdr_request(char *request, char *response){
 	else if (!strcmp(cmd, "tx")){
 		if (!strcmp(value, "on")){
 			in_tx = 1;
-			puts("Opening tone.raw");
       fft_reset_m_bins();
 			digitalWrite(TX_LINE, HIGH);
       delay(50);
@@ -938,7 +848,6 @@ void sdr_request(char *request, char *response){
 		}
 		else {
 			in_tx = 0;
-			puts("Closing tone.raw");
       fft_reset_m_bins();
 			strcpy(response, "ok");
 			digitalWrite(TX_LINE, LOW);
