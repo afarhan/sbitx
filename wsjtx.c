@@ -12,7 +12,7 @@
 
 static int udp_socket = -1;
 
-void append_log(char *line);
+void write_log(char *line);
 
 void wsjtx_send(char *response){
     send(udp_socket, response, strlen(response), 0);
@@ -105,7 +105,8 @@ void wsjtx_slice(){
 			//printf("msg: %s\n", message);
 			sprintf(log, "%02d:%02d:%02d %03d %4d %s %s", hours, minutes, seconds, 
 				snr, delta_freq, mode, message);
-			append_log(log);
+			//append_log(log);
+			write_log(log);
 			puts(log);
 			break;
 	}	

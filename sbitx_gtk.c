@@ -154,10 +154,12 @@ int	rit_delta = 0;
 int select_incremental_tuning = INC_OFF;
 
 GtkWidget *display_area = NULL;
+static int redraw_flag = 1; 
 int screen_width, screen_height;
 int spectrum_span = 48000;
 
 void do_cmd(char *cmd);
+void cmd_line(char *cmd);
 #define MIN_KEY_UP 0xFF52
 #define MIN_KEY_DOWN	0xFF54
 #define MIN_KEY_LEFT 0xFF51
@@ -382,7 +384,7 @@ struct field main_controls[] = {
 	{"#kbd_ ", 120, 450, 120, 30, "", 1, " SPACE ", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
 	{"#kbd_.", 240, 450, 40, 30, "\"", 1, ".", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
 	{"#kbd_?", 280, 450, 40, 30, "?", 1, "?", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_n", 320, 450, 80, 30, "", 1, "Enter", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_Enter", 320, 450, 80, 30, "", 1, "Enter", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
 	//the last control has empty cmd field 
 	{"", 0, 0 ,0, 0, "#", 1, "Q", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
 };
@@ -893,45 +895,106 @@ void draw_spectrum(GtkWidget *widget, cairo_t *gfx){
 }
 
 
-
-#define MAX_LOG_BUFFER 2000
+#define MAX_LOG_BUFFER 10000
 static int 	log_cols = 50;
 static char	log_buffer[MAX_LOG_BUFFER];
-static int 	log_next_char = 0;
+static int	next_log = 0;
 
 void log_init(){
-	log_cols = 50;
+	next_log = 0;
 	memset(log_buffer, ' ', sizeof(log_buffer));
-
-	//fill up with some stuff
-	for (int i = 0; i < sizeof(log_buffer); i += log_cols){
-		sprintf(log_buffer + i, "%d", i);
-	}
-	log_next_char = 0;	
 }
 
-void log_write(char *new_text){
-	int max_text = sizeof(log_buffer);
-	while (*new_text){
-		if (*new_text == '\n'){
-			//pad up the remaining line with spaces
-			while (log_next_char % log_cols != 0){
-				log_buffer[log_next_char++] = ' ';
-				if (log_next_char == sizeof(log_buffer))
-					log_next_char = 0;
-			}
-		}
-		else {
-			log_buffer[log_next_char++] = *new_text;
-			if (log_next_char == sizeof(log_buffer))
-				log_next_char = 0;
-		}
-		new_text++;
+void write_log(char *text){
+	while(*text){
+		log_buffer[next_log++] = *text++;
+		if (next_log >= MAX_LOG_BUFFER)
+			next_log = 0;
 	}
-	struct field *f = get_field("#log");
-	update_field(f);
+	redraw_flag++;
 }
 
+void log_back(){
+	next_log--;
+	if (next_log < 0)
+		next_log = MAX_LOG_BUFFER - 1;
+}
+/*
+	1. count the characters and break on cols count for lines
+	2. break earlier if newline is encountered
+*/
+
+int log_display_start(int rows, int cols){
+	int col_count = 0;
+
+	int i = next_log;	
+	while(rows >= 0){
+		if (log_buffer[i] == '\n'){
+			rows--;
+			col_count = 0;
+		}
+		else
+			col_count++;
+		if (col_count >= cols){
+			col_count = 0;
+			rows--;
+			if (!rows)
+				return i;
+		}
+		//wrap i around the log_buffer
+		if (--i < 0)
+			i = MAX_LOG_BUFFER - 1;
+	}
+	return i;
+}
+
+void draw_list(cairo_t *gfx, struct field *f){
+	char this_line[1000];
+	int line_height = font_table[f->font_index].height; 	
+	int n_lines = f->height / line_height;
+
+	//estimate!
+	int char_width = measure_text(gfx, "01234567890123456789", f->font_index)/20;
+	log_cols = f->width / char_width;
+	int y = f->y + 2; 
+
+	int i = log_display_start(n_lines, log_cols);
+	int col_count = 0;
+
+	int j = 0;
+
+	//printf("rows %d, col %d\n", n_lines, log_cols);
+	while(i != next_log){
+		//wrap i around the buffer
+		if (i == MAX_LOG_BUFFER)
+			i = 0;
+		//break the line on overflow or newline 
+		if (log_buffer[i] == '\n' || col_count == log_cols){
+			if (log_buffer[i] != '\n')
+				this_line[col_count++] = log_buffer[i];
+			this_line[col_count] = 0;
+			draw_text(gfx, f->x, y, this_line, f->font_index);
+			//printf("line %d/%d [%s]\n", j++, y, this_line);
+			y += line_height;
+			//draw the line
+			//printf("[%d]\n", i);
+			col_count = 0;
+			//rows--;
+		}
+		else{
+			this_line[col_count++] = log_buffer[i];
+			//putchar(log_buffer[i]);
+		}
+		i++;
+	}
+	if (col_count > 0){
+		this_line[col_count] = 0;
+		//printf("last line %d/%d [%s]\n", j++, y, this_line);
+		draw_text(gfx, f->x, y, this_line, f->font_index);
+	}
+}
+
+/*
 void draw_list(cairo_t *gfx, struct field *f){
 
 	int line_height = font_table[f->font_index].height; 	
@@ -959,8 +1022,10 @@ void draw_list(cairo_t *gfx, struct field *f){
 			line_start = sizeof(log_buffer) -  log_cols;
 	}
 }
+*/
+
 /*
-void draw_list(cairo_t *gfx, struct field *f){
+void draw_list_old(cairo_t *gfx, struct field *f){
 	//get the text height
 	int line_height = font_table[f->font_index].height; 	
 	int lines = f->height / line_height;
@@ -986,7 +1051,7 @@ void draw_list(cairo_t *gfx, struct field *f){
 	}
 }
 */
-
+/*
 void write_log(char *text){
 	char *p;
 
@@ -1035,8 +1100,8 @@ void write_log(char *text){
 	struct field *f = get_field("#log");
 	update_field(f);
 }
-
-
+*/
+/*
 void append_log(char *line){
 	char * p = malloc(strlen(line) + 1);
 	if (!p)
@@ -1060,7 +1125,7 @@ void init_log(){
 	memset(log_lines, 0, sizeof(log_lines));
 	last_log = 0;
 }
-
+*/
 void draw_dial(GtkWidget *widget, cairo_t *gfx, struct field *f){
 	struct font_style *s = font_table + 0;
 	struct field *rit = get_field("#rit");
@@ -1379,13 +1444,18 @@ static void edit_field(struct field *f, int action){
 	else if (f->value_type == FIELD_TEXT){
 		if (action >= ' ' && action <= 127 && strlen(f->value) < f->max-1){
 			int l = strlen(f->value);
-			printf("edit_field adding %d\n", action);
 			f->value[l++] = action;
 			f->value[l] = 0;
 		}
 		else if (action == MIN_KEY_BACKSPACE && strlen(f->value) > 0){
 			int l = strlen(f->value) - 1;
 			f->value[l] = 0;
+		}
+		
+		//if it is a command, then execute it and clear the field
+		if (f->value[0] == '\\' &&  strlen(f->value) > 1 && action == '\n' ){
+			cmd_line(f->value + 1);
+			f->value[0] = 0;
 		}
 	}
 
@@ -1615,11 +1685,6 @@ static gboolean on_key_press (GtkWidget *widget, GdkEventKey *event, gpointer us
 			focus_field(NULL);
 			break;
 */
-/*		case MIN_KEY_ENTER:
-			if (f_focus == NULL)
-				focus_field(f_hover);
-			break;
-*/
 		case 65507:
 			key_modifier |= event->keyval;
 			//printf("key_modifier set to %d\n", key_modifier);
@@ -1630,7 +1695,10 @@ static gboolean on_key_press (GtkWidget *widget, GdkEventKey *event, gpointer us
 			break;
 		default:
 			//by default, all text goes to the text_input control
-			edit_field(get_field("#text_in"), event->keyval);
+			if (event->keyval == MIN_KEY_ENTER)
+				edit_field(get_field("#text_in"), '\n');
+			else
+				edit_field(get_field("#text_in"), event->keyval);
 			//if (f_focus)
 			//	edit_field(f_focus, event->keyval); 
 			//printf("key = %d (%c)\n", event->keyval, (char)event->keyval); 	
@@ -1722,6 +1790,8 @@ static gboolean on_mouse_press (GtkWidget *widget, GdkEventButton *event, gpoint
 					struct field *f_text = get_field("#text_in");
 					if (!strcmp(f->cmd, "#kbd_bs"))
 						edit_field(f_text, MIN_KEY_BACKSPACE);
+					else if (!strcmp(f->cmd, "#kbd_Enter"))
+						edit_field(f_text, '\n');
 					else
 						edit_field(f_text, f->value[0]);
 					focus_since = millis();
@@ -1747,7 +1817,6 @@ that is read by a timer tick from the main UI thread and the window
 is posted a redraw signal that in turn triggers the redraw_all routine.
 Don't ask me, I only work around here.
 */
-static int redraw_flag = 1; 
 void redraw(){
 	redraw_flag++;
 }
@@ -2034,6 +2103,8 @@ gboolean ui_tick(gpointer gook){
 		redraw_flag = 0;
 		ticks = 0;
 
+		update_field(get_field("#log"));
+		
 		//now check if the focus has been on something other than audio for long
 		if (f_focus && millis() > focus_since + 5000 && strcmp(f_focus->cmd, "r1:volume")){
 			focus_field(get_field("r1:volume"));
@@ -2052,6 +2123,7 @@ gboolean ui_tick(gpointer gook){
 		}
 
 		modem_poll(mode_id(get_field("r1:mode")->value));
+		update_field(get_field("#text_in")); //modem might have extracted some text
 	}
 
   hamlib_slice();
@@ -2071,9 +2143,9 @@ gboolean ui_tick(gpointer gook){
  
 	f = get_field("r1:mode");
 	//straight key in CW
-	if (f && (!strcmp(f->value, "CW") || !strcmp(f->value, "CWR"))) 
+	/* if (f && (!strcmp(f->value, "CW") || !strcmp(f->value, "CWR"))) 
 		do_keyer();	
-	else if (f && (!strcmp(f->value, "2TONE") || !strcmp(f->value, "LSB") || 
+	else*/ if (f && (!strcmp(f->value, "2TONE") || !strcmp(f->value, "LSB") || 
 		!strcmp(f->value, "USB"))){
 		if (digitalRead(PTT) == LOW && in_tx == 0)
 			tx_on();
@@ -2094,7 +2166,6 @@ gboolean ui_tick(gpointer gook){
 void ui_init(int argc, char *argv[]){
   
   gtk_init( &argc, &argv );
-	//init_log();
 	log_init();
 
   window = gtk_window_new( GTK_WINDOW_TOPLEVEL );
@@ -2143,6 +2214,8 @@ int get_tx_data_byte(char *c){
 	struct field *f = get_field("#text_in");
 	int length = strlen(f->value);
 
+	if (f->value[0] == '\\' || !length)
+		return 0;
 	if (length){
 		*c = f->value[0];
 		//now shift the buffer down, hopefully, this copies the trailing null too
@@ -2154,7 +2227,15 @@ int get_tx_data_byte(char *c){
 }
 
 int get_tx_data_length(){
-	return strlen(get_field("#text_in")->value);
+	struct field *f = get_field("#text_in");
+
+	if (strlen(f->value) == 0)
+		return 0;
+
+	if (f->value[0] != '\\')
+		return strlen(get_field("#text_in")->value);
+	else
+		return 0;
 }
 
 int is_in_tx(){
@@ -2401,7 +2482,45 @@ void do_cmd(char *cmd){
 	}
 }
 
+void cmd_line(char *cmd){
+	int i, j;
+	int mode = mode_id(get_field("r1:mode")->value);
 
+	char args[MAX_FIELD_LENGTH];
+	char exec[20];
+
+	//copy the exec
+	for (i = 0; *cmd > ' ' && i < sizeof(exec) - 1; i++)
+		exec[i] = *cmd++;
+	exec[i] = 0; 
+
+	//skip the spaces
+	while(*cmd == ' ')
+		cmd++;
+
+	j = 0;
+	for (i = 0; *cmd && i < sizeof(args) - 1; i++){
+		if (*cmd > ' ')
+				j = i;
+		args[i] = *cmd++;
+	}
+	args[++j] = 0;
+
+	printf("exec [%s] for [%s]\n", exec, args);
+
+	char response[100];
+	if (!strcmp(exec, "callsign")){
+		strcpy(mycallsign,args); 
+		sprintf(response, "\n[Your callsign is set to %s]\n", mycallsign);
+		write_log(response);
+	}
+	else if (!strcmp(exec, "grid")){
+		strcpy(mygrid, args);
+		sprintf(response, "\n[Your grid is set to %s]\n", mygrid);
+		write_log(response);
+	}
+	save_user_settings();
+}
 
 int main( int argc, char* argv[] ) {
 
@@ -2458,13 +2577,19 @@ int main( int argc, char* argv[] ) {
     printf("Unable to load ~/.sbitx/user_settings.ini\n");
   }
 
-	char new_value[15];
+	char buff[MAX_FIELD_LENGTH];
 
 	//now set the frequency of operation and more to vfo_a
-  sprintf(new_value, "%d", vfo_a_freq);
-  set_field("r1:freq", new_value);
+  sprintf(buff, "%d", vfo_a_freq);
+  set_field("r1:freq", buff);
 
-	log_write("sBITX v0.01, Ready\nFor Help, visit wwww.vu2ese/sbitx\n");
+	write_log("\nsBITX v0.01 is Ready\n");
+
+	sprintf(buff, "\nWelcome %s your grid is %s\n", mycallsign, mygrid);
+	write_log(buff);
+	write_log("To change your callsign, or grid\nenter '\\callsign [yourcallsign]'\n"
+		" or '\\grid [yourgrid]'\n(without the brackets, starting with \\)\n"
+		"For help enter \\help\n");
 	set_field("#text_in", "");
 
 	// you don't want to save the recently loaded settings

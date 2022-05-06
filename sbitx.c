@@ -524,10 +524,11 @@ void tx_process(
 		if (r->mode == MODE_2TONE)
 			i_sample = (1.0 * (vfo_read(&tone_a) 
 										+ vfo_read(&tone_b))) / 20000000000.0;
-		else if (r->mode > MODE_AM){
+		else if (r->mode > MODE_AM || r->mode == MODE_CW || r->mode == MODE_CWR){
 			i_sample = modem_next_sample(r->mode) / 3;
 			output_speaker[j] = i_sample * 100000000.0;
 		}
+/*
     else if (r->mode == MODE_CW || r->mode == MODE_CWR){
 			//the cw shaping is done here by ramping the amplitude up and down at cw_shape rate
 			if (cw_keydown && cw_amplitude < 1000){
@@ -543,7 +544,7 @@ void tx_process(
 			output_speaker[j] = (vfo_read(&tone_a)/1000) * cw_amplitude ;
 			//i_sample = ((vfo_read(&tone_a) * ((1.0) *cw_amplitude)) / 1000.0) / 10000000000.0;
 			i_sample = (1.0 * output_speaker[j]) / 10000000000.0;
-		}
+		} */
 	  else {
 	  	i_sample = (1.0 * input_mic[j]) / 2000000000.0;
 			output_speaker[j] = 0;

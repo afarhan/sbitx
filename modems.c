@@ -16,6 +16,7 @@
 #include <sys/types.h>
 #include <stdint.h>
 #include <errno.h>
+#include <time.h>
 
 #include "sdr.h"
 #include "sdr_ui.h"
@@ -69,11 +70,19 @@ void *ft8_thread_function(void *ptr){
 		
 		//now launch the decoder
 		pf = popen("/home/pi/ft8_lib/decode_ft8 /tmp/ftrx.raw", "r");
+
+		//timestamp the packets
+		time_t	rawtime;
+		char time_str[20];
+		time(&rawtime);
+		struct tm *t = gmtime(&rawtime);
+		sprintf(time_str, "%02d%02d%02d", t->tm_hour, t->tm_min, t->tm_sec);
+
 		while(fgets(buff, sizeof(buff), pf)) {
-			log_write(buff);
-			printf("FT8 decode : %s\n", buff);
+			strncpy(buff, time_str, 6);
+			write_log("\\FT8 < ");
+			write_log(buff);
 		}
-		puts("FT decoding ended");	
 	}
 }
 
@@ -1175,8 +1184,8 @@ void Rtty_Demodulator_ProcessSample(float32_t sample)
 				char output[2];
 				output[0] = charResult;
 				output[1] = 0;
-				log_write(output);
-				printf(output);
+				write_log(output);
+				//printf(output);
 				break;
 			}
 			rttyDecoderData.state = RTTY_RUN_STATE_WAIT_START;
@@ -1309,6 +1318,12 @@ int16_t Rtty_Modulator_GenSample()
 
 			    uint8_t current_ascii;
 					get_tx_data_byte(&current_ascii);
+
+					char b[2];
+					b[0]= current_ascii;
+					b[1] = 0;
+					write_log(b);
+
 			    uint8_t current_baudot = Ascii2Baudot[current_ascii & 0x7f];
 			    if (current_baudot > 0) { // we have valid baudot code
 			       Rtty_Modulator_Code2Bits(current_baudot);
@@ -1776,6 +1791,12 @@ float psk31_tx_get_sample(struct psk31_modem *t, float *sample){
 		get_tx_data_byte(&ascii);
 		if (ascii == 0)
 			return 0;
+
+		char b[2];
+		b[0]= ascii;
+		b[1] = 0;
+		write_log(b);
+		
 		t->tx_varicode = psk_varicode[ascii];
 
 		//count the number of symbols in the varicode
@@ -1934,8 +1955,8 @@ float_t psk31_process_sample(struct psk31_modem *p, int32_t sample){
 					if (p->rx_varicode == psk_varicode[i] && i >= 32 && i < 128){
 						ascii[0] = i;
 						ascii[1] = 0;
-						//log_write(ascii);
-						printf("psk char %d\n", i);
+						write_log(ascii);
+						//printf("psk char %d\n", i);
 					}
 			}
 			//putchar('\n');
@@ -1956,6 +1977,165 @@ float_t psk31_process_sample(struct psk31_modem *p, int32_t sample){
 	}
 	return output;
 }
+/*******************************************************
+**********           CW routines                 *******
+********************************************************/
+
+struct morse {
+	char c;
+	char *code;
+};
+
+struct morse morse_table[] = {
+	{'~', ""}, //dummy, a null character
+	{' ', " "},
+	{'a', ".-"},
+	{'b', "-..."},
+	{'c', "-.-."},
+	{'d', "-.."},
+	{'e', "."},
+	{'f', "..-."},
+	{'g', "--."},
+	{'h', "...."},
+	{'i', ".."},
+	{'j', ".---"},
+	{'k', "-.-"},
+	{'l', ".-.."},
+	{'m', "--"},
+	{'n', "-."},
+	{'o', "---"},
+	{'p', ".--."},
+	{'q', "--.-"},
+	{'r', ".-."},
+	{'s', "..."},
+	{'t', "-"},
+	{'u', "..-"},
+	{'v', "...-"},
+	{'w', ".--"},
+	{'x', "-..-"},
+	{'y', "-.--"},
+	{'z', "--.."},
+	{'1', ".----"},
+	{'2', "..---"},
+	{'3', "...--"},
+	{'4', "....-"},
+	{'5', "....."},
+	{'6', "_...."},
+	{'7', "--..."},
+	{'8', "---.."},
+	{'9', "----."},
+	{'0', "-----"},
+	{'.', ".-.-.-"},
+	{',', "--..--"},
+	{'?', "..--.."},
+	{'/', "-..-."},
+	{' ', " "},
+	{'A', ".-.-."},
+	{'K', "-.--."}
+};
+
+
+#define FLOAT_SCALE (1073741824.0)
+
+//this operates in three modes
+//straight key, iambic, keyboard
+#define CW_STRAIGHT 0
+#define CW_IAMBIC	1
+#define CW_KBD 2
+
+int cw_keyer = CW_STRAIGHT;
+int cw_period;
+struct vfo cw_tone, cw_env;
+int keydown_count=0;			//counts down the pause afer a keydown is finished
+int keyup_count = 0;			//counts down to how long a key is held down
+float cw_envelope = 1;
+
+char cw_text[] = " cq cq dx de vu2ese A k";
+char *tx_next, *cw_next;
+char *symbol_next = NULL;
+
+//when symbol_next is NULL, it reads the next letter from the input
+char cw_get_next_symbol(){
+	char c;
+
+	if (!symbol_next){	
+		symbol_next = morse_table->code; // point to the first symbol, by default
+		get_tx_data_byte(&c);
+
+		char b[2];
+		b[0]= c;
+		b[1] = 0;
+		write_log(b);
+
+		for (int i = 0; i < sizeof(morse_table)/sizeof(struct morse); i++)
+			if (morse_table[i].c == c)
+				symbol_next = morse_table[i].code;
+	}
+
+	if (!*symbol_next){ 		//send the letter seperator
+		symbol_next = NULL;
+		return '/';
+	}
+	else
+		return *symbol_next++;
+}
+
+float cw_get_sample(){
+	float sample = 0;
+
+	//start new symbol, if any
+	if (!keydown_count && !keyup_count){
+		char c = cw_get_next_symbol();
+
+
+		switch(c){
+		case '.':
+			keydown_count = cw_period;
+			keyup_count = cw_period;
+			break;
+		case '-':
+			keydown_count = cw_period * 3;
+			keyup_count = cw_period;
+			break;
+		case '/':
+			keydown_count = 0;
+			keyup_count = cw_period * 2; // 1 (passed) + 2 
+			break;
+		case ' ':
+			keydown_count = 0;
+			keyup_count = cw_period * 2; //3 periods already passed 
+			break;
+		}
+	}
+	
+	if (keydown_count && cw_envelope < 0.999)
+		cw_envelope = ((vfo_read(&cw_env)/FLOAT_SCALE) + 1)/2; 
+	if (keydown_count == 0 && cw_envelope > 0.001)
+		cw_envelope = ((vfo_read(&cw_env)/FLOAT_SCALE) + 1)/2; 
+
+	if (keydown_count > 0)
+		keydown_count--;	
+
+	//start the keyup counter only after keydown is finished
+	if (keyup_count > 0 && keydown_count == 0)
+		keyup_count--;
+
+	sample = (vfo_read(&cw_tone)/FLOAT_SCALE) * cw_envelope;
+
+	return sample;
+}
+
+void cw_init(int freq, int wpm, int keyer){
+	vfo_start(&cw_env, 50, 49044); //start in the third quardrant, 270 degree
+	vfo_start(&cw_tone, freq, 0);
+	cw_period = (12 *9600)/ wpm; 		//as dot = 1.2/wpm
+	keydown_count = 0;
+	keyup_count = 0;
+	cw_envelope = 0;
+	tx_next = NULL;
+	cw_next = NULL;
+}
+
 
 /*******************************************************
 **********      Modem dispatch routines          *******
@@ -1985,15 +2165,12 @@ void modem_rx(int mode, int32_t *samples, int count){
 		//fclose(pf);
 		break;
 	case MODE_RTTY:
-		pf = fopen("rtty12k.raw", "a");
 		for (i = 0; i < count; i += 8) {
 			s += 8;
 			float fs = *s / 1000000000.0;
 			int32_t si = *s;
 			Rtty_Demodulator_ProcessSample(fs);
-			fwrite(&si, sizeof(int32_t), 1, pf);	
 		}
-		fclose(pf);
 		break;
 	}
 }
@@ -2004,6 +2181,7 @@ void modem_init(){
 	pthread_create( &ft8_thread, NULL, ft8_thread_function, (void*)NULL);
 	psk31_init(&psk_modem, 96000);
 	Rtty_Modem_Init(96000);
+	cw_init(700, 12, CW_KBD);
 }
 
 int modem_center_freq(int mode){
@@ -2023,15 +2201,31 @@ int modem_center_freq(int mode){
 //each mode has its peculiarities, like the ft8 will start only on 15th second boundary
 //psk31 will transmit a few spaces after the last character, etc.
 
-FILE *pf_raw = NULL;
 void modem_poll(int mode){
 	int bytes_available = get_tx_data_length();
 	int tx_is_on = is_in_tx();
 
 	switch(mode){
+	case MODE_CW:
+		if (!tx_is_on && bytes_available > 0){
+			write_log("\n<tx>\n");
+			tx_on();
+			cw_init(700, 12, CW_KBD); 
+			modem_tx_timeout = millis() + 500;
+		}
+		if (tx_is_on){
+			if (bytes_available > 0)
+				modem_tx_timeout = millis() + 300;
+			else if (modem_tx_timeout < millis()){
+				tx_off();
+				write_log("\n<rx>\n");
+			}
+		}
+	break;
 	case MODE_RTTY:
 	case MODE_PSK31:
-		if (!tx_is_on && bytes_available > 2){
+		if (!tx_is_on && bytes_available > 0){
+			write_log("\n<tx>\n");
 			if (mode == MODE_RTTY)
 				Rtty_Modulator_StartTX();
 			tx_on();
@@ -2041,6 +2235,7 @@ void modem_poll(int mode){
 			if (bytes_available > 0)
 				modem_tx_timeout = millis() + 1000;	
 			else if (modem_tx_timeout < millis()){
+				write_log("\n<rx>\n");	
 				tx_off();
 			}
 		}
@@ -2057,6 +2252,11 @@ float modem_next_sample(int mode){
 		break;
 	case MODE_RTTY:
 		sample = Rtty_Modulator_GenSample()/65000.0;
+		break;
+	case MODE_CW:
+	case MODE_CWR:
+		sample = cw_get_sample();
+		break;
 	}
 	return sample;
 }
