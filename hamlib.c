@@ -130,7 +130,7 @@ void tx_control(int s){
 }
 
 void interpret_command(char *cmd){
-  printf("Cmd:[%s]\n", cmd);
+ 
   if (check_cmd(cmd, "\\chk_vfo"))
     send_response("CHKVFO 1\n"); 
   else if (check_cmd(cmd, "\\dump_state"))
@@ -139,13 +139,15 @@ void interpret_command(char *cmd){
     send_response("VFOA\n");
   else if (check_cmd(cmd, "v"))
     send_response("VFOA\n");
-  else if (!strcmp(cmd, "m") || !strcmp(cmd, "m VFOA"))
+	else if (!strcmp(cmd, "m VFOA"))
+		send_response("USB 3000\n");
+  else if (!strncmp(cmd, "m VFOA", 6))
     send_response("USB 3000\n");
   else if (check_cmd(cmd, "f"))
     send_freq("7074000\n");
   else if (check_cmd(cmd, "F"))
     set_freq(cmd + 2);
-  if (cmd[0] == 'T'){
+  else if (cmd[0] == 'T'){
     if (!strcmp(cmd, "T 0") || !strcmp(cmd, "T VFOA 0"))
       tx_control(0);
     else if (!strcmp(cmd, "T 1") || !strcmp(cmd, "T VFOA 1"))
@@ -164,6 +166,8 @@ void interpret_command(char *cmd){
 }
 
 void hamlib_handler(char *data, int len){
+
+	printf("<<<hamlib cmd [%s]>>>\n", data);
   for (int i = 0; i < len; i++){
     if (data[i] == '\n'){
       incoming_data[incoming_ptr] = 0;
@@ -226,6 +230,7 @@ void hamlib_slice(){
       if (errno == EAGAIN || errno == EWOULDBLOCK)
         return;
       //for other errors, just close the socket
+			puts("Hamlib connection dropped. Restarting to listen ..."); 
       close(data_socket);
       data_socket = 0;      
     }

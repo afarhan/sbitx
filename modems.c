@@ -17,24 +17,70 @@
 #include <stdint.h>
 #include <errno.h>
 #include <time.h>
-
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #include "sdr.h"
 #include "sdr_ui.h"
 
 typedef float float32_t;
 /*
 	This file implements modems for :
-	1. PSK31
-	2. RTTY
-	3. FT8
+	1. PSK31 : written by Ashhar Farhan, from the origianl algorithm of Peter Martinez
+	The PSK31 encoder/decoder is a ground up implementation but it works
+	only on the fixed central frequency of 500 Hz. It also assumes that the
+	radio has effective filtering of 100 Hz.
 
-	FT8 is not really a modem, we use a slightly modified version of
-	the decode_ft8 program written by Karlis Goba at https://github.com/kgoba/ft8_lib.
+	2. RTTY : from the UHSDR code, can be simplified.
 
-	The PSK31 and RTTY are courtesy UHSDR code. 
+	3. FT8 : uses the command line FT8 encoder/decoders from Karlis Goba
+
+	4. CW : transmit only
+
+	General:
+
+	There are three functions called to implement almost all the digital modes
+	1. There is the modem_init() that is used to initialize all the different modems.
+	2. The modem_poll() is called about 10 times a second to check if any transmit/receiver
+		 changeover is needed, etc.
+	3. On receive, each time a block of samples is received, modem_rx() is called and 
+		 it despatches the block of samples to the currently selected modem. 
+		 The demodulators call write_log() to call the routines to display the decoded text.
+	4. During transmit, modem_next_sample() is repeatedly called by the sdr to accumulate
+		 samples. In turn the sample generation routines call get_tx_data_byte() to read the next
+		 text/ascii byte to encode.
+
+	The strangness of FT8:
+ 
+	1. FT8 is not really a modem, we use a slightly modified version of the command line
+	decode_ft8 and gen_ft8 programs written by Karlis Goba at https://github.com/kgoba/ft8_lib.
+
+	2. FT8 handles short blocks of data every 15 seconds. On the 0, 15th, 30th and 45th second of 
+	the minute. It assumes that the clock is synced to the GMT's second and minute ticks.
+
+	3. The ft8_rx() routine accumulates samples until it has enough samples and it is time to 
+	decode. decoding can stall the CPU for considerable time, hence, it does takes the kludgy route
+	of writing all the samples to a temporary file /tmp/ft8rx.raw and then turning on the 
+	ft8_do_decode flag. A separate thread, waiting for the flag runs the decoder that outputs each
+	decode into a separate line.
+
+	4. For transmit, the text block received by ft8_tx() is encoded quickly (as encoding is much
+	simpler and quicker code) into a temporary file at /tmp/ft8tx.raw. On the next 15th second
+	boundary, this file is read and returned as samples to the SDR. Once done, the temp file
+	is deleted.
+
+
 */
 
+//this operates in three modes
+//straight key, iambic, keyboard
+#define CW_STRAIGHT 0
+#define CW_IAMBIC	1
+#define CW_KBD 2
+
 static long modem_tx_timeout = 0;
+static int modem_input_method = CW_KBD;
 
 /*******************************************************
 **********                  FT8                  *******
@@ -44,29 +90,59 @@ static long modem_tx_timeout = 0;
 #define FT8_MAX_BUFF (12000 * 18) 
 unsigned int wallclock = 0;
 int32_t ft8_rx_buff[FT8_MAX_BUFF];
+float ft8_tx_buff[FT8_MAX_BUFF];
+char ft8_tx_text[128];
 int ft8_rx_buff_index = 0;
+int ft8_tx_buff_index = 0;
+int	ft8_tx_nsamples = 0;
 int ft8_do_decode = 0;
+int	ft8_do_tx = 0;
 pthread_t ft8_thread;
 
+void ft8_tx(char *message, int freq){
+	char cmd[200], buff[1000];
+	FILE	*pf;
+
+	//generate the ft8 samples into a temporary file
+
+	sprintf(cmd, "/home/pi/ft8_lib/gen_ft8 \"%s\" /tmp/ft_tx.wav %d", 
+		message, freq);
+	pf = popen(cmd, "r");
+	while(fgets(buff, sizeof(buff), pf)) 
+		puts(buff);
+	fclose(pf);
+
+	//read the samples into the tx buffer, set up the variables to trigger 
+	//tx on the next 15th second boundary
+
+	pf = fopen("/home/pi/sbitx/ft8tx_float.raw", "r");
+	ft8_tx_nsamples = fread(ft8_tx_buff, sizeof(float), 180000, pf);
+	fclose(pf);
+	ft8_tx_buff_index = 0;
+	sprintf(ft8_tx_text, ">%s\n", message);
+	printf("ft8 ready to transmit with %d samples\n", ft8_tx_nsamples);
+}
+
 void *ft8_thread_function(void *ptr){
-	char buff[200];
+	FILE *pf;
+	char buff[1000];
 
 	//wake up every 100 msec to see if there is anything to decode
 	while(1){
 		usleep(1000);
+
 		if (!ft8_do_decode)
 			continue;
 
 		puts("Decoding FT8 on cmd line");
 		//create a temporary file of the ft8 samples
-		FILE *pf = fopen("/tmp/ftrx.raw", "w");
+		pf = fopen("/tmp/ftrx.raw", "w");
 		fwrite(ft8_rx_buff, sizeof(ft8_rx_buff), 1, pf);
 		fclose(pf);
 
 		//let the next batch begin
 		ft8_do_decode = 0;
 		ft8_rx_buff_index = 0;
-
 		
 		//now launch the decoder
 		pf = popen("/home/pi/ft8_lib/decode_ft8 /tmp/ftrx.raw", "r");
@@ -80,9 +156,9 @@ void *ft8_thread_function(void *ptr){
 
 		while(fgets(buff, sizeof(buff), pf)) {
 			strncpy(buff, time_str, 6);
-			write_log("\\FT8 < ");
 			write_log(buff);
 		}
+		fclose(pf);
 	}
 }
 
@@ -773,9 +849,7 @@ typedef struct {
 
 rtty_decoder_data_t rttyDecoderData;
 
-
-
-
+/*
 #if 0 // 48Khz filters, not needed
 // this is for 48ksps sample rate
 // for filter designing, see http://www-users.cs.york.ac.uk/~fisher/mkfilter/
@@ -795,7 +869,7 @@ rtty_bpf_config_t rtty_bp_48khz_1085 =
 		.freq = 1085
 };
 #endif
-
+*/
 // order 2 Butterworth, freq: 50 Hz
 rtty_lpf_config_t rtty_lp_48khz_50 =
 {
@@ -895,6 +969,8 @@ void Rtty_Modem_Init(uint32_t output_sample_rate)
 	rttyDecoderData.bpfMarkConfig = &rtty_bp_12khz_915; // this is mark, or '1'
 	rttyDecoderData.lpfConfig = &rtty_lp_12khz_50;
 
+	printf("rtty shift is %d\n", rttyDecoderData.config_p->shift);
+
 	// now we handled the specifics
 	switch (rttyDecoderData.config_p->shift)
 	{
@@ -919,10 +995,15 @@ void Rtty_Modem_Init(uint32_t output_sample_rate)
 		rttyDecoderData.bpfSpaceConfig = &rtty_bp_12khz_1085; // this is space or '0'
 	}
 
-	// configure DDS for transmission
-	softdds_setFreqDDS(&rttyDecoderData.tx_dds[0], rttyDecoderData.bpfSpaceConfig->freq, output_sample_rate, 0);
-	softdds_setFreqDDS(&rttyDecoderData.tx_dds[1], rttyDecoderData.bpfMarkConfig->freq, output_sample_rate, 0);
 
+	printf("RTTY tx 0 freq %d, 1 freq %d\n", 
+		rttyDecoderData.bpfSpaceConfig->freq, rttyDecoderData.bpfMarkConfig->freq);
+	// configure DDS for transmission
+	//softdds_setFreqDDS(&rttyDecoderData.tx_dds[0], rttyDecoderData.bpfSpaceConfig->freq, output_sample_rate, 0);
+	//softdds_setFreqDDS(&rttyDecoderData.tx_dds[1], rttyDecoderData.bpfMarkConfig->freq, output_sample_rate, 0);
+
+	softdds_setFreqDDS(&rttyDecoderData.tx_dds[0], 750-85, output_sample_rate, 0);
+	softdds_setFreqDDS(&rttyDecoderData.tx_dds[1], 750+85, output_sample_rate, 0);
 }
 
 float32_t decayavg(float32_t average, float32_t input, int weight)
@@ -1185,7 +1266,7 @@ void Rtty_Demodulator_ProcessSample(float32_t sample)
 				output[0] = charResult;
 				output[1] = 0;
 				write_log(output);
-				//printf(output);
+				printf("rtty:%d %c\n", charResult, charResult);
 				break;
 			}
 			rttyDecoderData.state = RTTY_RUN_STATE_WAIT_START;
@@ -1322,7 +1403,8 @@ int16_t Rtty_Modulator_GenSample()
 					char b[2];
 					b[0]= current_ascii;
 					b[1] = 0;
-					write_log(b);
+					printf("Sending RTTY %s (%d)\n", b, current_ascii);
+					//write_log(b);
 
 			    uint8_t current_baudot = Ascii2Baudot[current_ascii & 0x7f];
 			    if (current_baudot > 0) { // we have valid baudot code
@@ -1867,6 +1949,8 @@ void psk31_init(struct psk31_modem *p, int sampling_rate){
 	p->delay_length = (p->symbol_period_ms * sampling_rate) / 1000;
 	p->delay_line = malloc(sizeof(float) * p->delay_length);
 
+	printf("psk delay line is %d long\n", p->delay_length);
+
 	p->bit_clk_max = p->delay_length;
 	p->last_symbol = 1;
 	p->rx_varicode = 0;
@@ -1887,10 +1971,12 @@ void psk31_init(struct psk31_modem *p, int sampling_rate){
 	//vfos are sampling at a fixed rate of 96000, thus we have
 	//to accordingly scale the frequency generated
 
-	vfo_start(&p->vfo_carrier, (500 * 96000)/sampling_rate, 16384);
+	vfo_start(&p->vfo_carrier, (1000 * 96000)/sampling_rate, 16384);
 	vfo_start(&p->vfo_envelope, (3125 * 960)/sampling_rate, 16384);
 }
 
+
+float mixer_line[384];
 
 float_t psk31_process_sample(struct psk31_modem *p, int32_t sample){
 
@@ -1905,6 +1991,7 @@ float_t psk31_process_sample(struct psk31_modem *p, int32_t sample){
 	//call to this function
 
 	p->delay_line[p->delay_index] = sample_f;
+	mixer_line[p->delay_index] = output;
 	p->delay_index++;
 	if (p->delay_index >= p->delay_length)
 		p->delay_index = 0;
@@ -1912,7 +1999,23 @@ float_t psk31_process_sample(struct psk31_modem *p, int32_t sample){
 	// low pass the output to remove the AC component and see the
 	// dc shift of the multiplier
 
-	float lpf_new =  (output * p->iir_k) + (p->lpf_output * (1-p->iir_k));
+//	float lpf_new =  (output * p->iir_k) + (p->lpf_output * (1-p->iir_k));
+
+	float lpf_new = 0;
+	int lpf_length = 164;
+	int l_start = p->delay_index - lpf_length;
+	if (l_start < 0)
+		l_start += p->delay_length;
+	int l_end = l_start + lpf_length;
+	if(l_end >= p->delay_length)
+		l_end -= p->delay_length;
+
+	while(l_start != l_end){
+		lpf_new += mixer_line[l_start++];
+		if(l_start == p->delay_length)
+			l_start = 0;
+	}	
+	lpf_new /= lpf_length;
 
 	//advance the bit clock
 	p->bit_clk++;
@@ -1938,10 +2041,11 @@ float_t psk31_process_sample(struct psk31_modem *p, int32_t sample){
 
 	if (p->bit_clk == p->bit_clk_max/2){
 		if ( p->lpf_output > 0)
+		//if(lpf_output < 0)
 			symbol = 0;
 		else
 			symbol = 1;
-
+		printf("%d", symbol);
 		// have we detected two consequetive zeros as the boundary of a varicode?
 		if (symbol == 0 && p->last_symbol == 0){
 			if (p->rx_varicode || p->rx_varicode < 255){
@@ -1956,7 +2060,7 @@ float_t psk31_process_sample(struct psk31_modem *p, int32_t sample){
 						ascii[0] = i;
 						ascii[1] = 0;
 						write_log(ascii);
-						//printf("psk char %d\n", i);
+						printf("psk char %c\n", i);
 					}
 			}
 			//putchar('\n');
@@ -2037,13 +2141,7 @@ struct morse morse_table[] = {
 
 #define FLOAT_SCALE (1073741824.0)
 
-//this operates in three modes
-//straight key, iambic, keyboard
-#define CW_STRAIGHT 0
-#define CW_IAMBIC	1
-#define CW_KBD 2
 
-int cw_keyer = CW_STRAIGHT;
 int cw_period;
 struct vfo cw_tone, cw_env;
 int keydown_count=0;			//counts down the pause afer a keydown is finished
@@ -2085,26 +2183,40 @@ float cw_get_sample(){
 
 	//start new symbol, if any
 	if (!keydown_count && !keyup_count){
-		char c = cw_get_next_symbol();
 
+		if (modem_input_method == CW_KBD){
 
-		switch(c){
-		case '.':
-			keydown_count = cw_period;
-			keyup_count = cw_period;
-			break;
-		case '-':
-			keydown_count = cw_period * 3;
-			keyup_count = cw_period;
-			break;
-		case '/':
-			keydown_count = 0;
-			keyup_count = cw_period * 2; // 1 (passed) + 2 
-			break;
-		case ' ':
-			keydown_count = 0;
-			keyup_count = cw_period * 2; //3 periods already passed 
-			break;
+			char c = cw_get_next_symbol();
+
+			switch(c){
+			case '.':
+				keydown_count = cw_period;
+				keyup_count = cw_period;
+				break;
+			case '-':
+				keydown_count = cw_period * 3;
+				keyup_count = cw_period;
+				break;
+			case '/':
+				keydown_count = 0;
+				keyup_count = cw_period * 2; // 1 (passed) + 2 
+				break;
+			case ' ':
+				keydown_count = 0;
+				keyup_count = cw_period * 2; //3 periods already passed 
+				break;
+			}
+		}
+
+		if (modem_input_method == CW_STRAIGHT){
+			if (key_poll()){
+				keydown_count = 50; //add a few samples, to debounce 
+				keyup_count = 0;
+			}
+			else {
+				keydown_count = 0;
+				keyup_count = 0;
+			}
 		}
 	}
 	
@@ -2137,40 +2249,231 @@ void cw_init(int freq, int wpm, int keyer){
 }
 
 
+/* ---- Base64 Encoding/Decoding Table --- */
+char b64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+/* decodeblock - decode 4 '6-bit' characters into 3 8-bit binary bytes */
+void decodeblock(unsigned char in[], char *clrstr) {
+  unsigned char out[4];
+  out[0] = in[0] << 2 | in[1] >> 4;
+  out[1] = in[1] << 4 | in[2] >> 2;
+  out[2] = in[2] << 6 | in[3] >> 0;
+  out[3] = '\0';
+  strncat(clrstr, out, sizeof(out));
+}
+
+void b64_decode(char *b64src, char *clrdst) {
+  int c, phase, i;
+  unsigned char in[4];
+  char *p;
+
+  clrdst[0] = '\0';
+  phase = 0; i=0;
+  while(b64src[i]) {
+    c = (int) b64src[i];
+    if(c == '=') {
+      decodeblock(in, clrdst); 
+      break;
+    }
+    p = strchr(b64, c);
+    if(p) {
+      in[phase] = p - b64;
+      phase = (phase + 1) % 4;
+      if(phase == 0) {
+        decodeblock(in, clrdst);
+        in[0]=in[1]=in[2]=in[3]=0;
+      }
+    }
+    i++;
+  }
+}
+
+/* encodeblock - encode 3 8-bit binary bytes as 4 '6-bit' characters */
+void encodeblock( unsigned char in[], char b64str[], int len ) {
+    unsigned char out[5];
+    out[0] = b64[ in[0] >> 2 ];
+    out[1] = b64[ ((in[0] & 0x03) << 4) | ((in[1] & 0xf0) >> 4) ];
+    out[2] = (unsigned char) (len > 1 ? b64[ ((in[1] & 0x0f) << 2) |
+             ((in[2] & 0xc0) >> 6) ] : '=');
+    out[3] = (unsigned char) (len > 2 ? b64[ in[2] & 0x3f ] : '=');
+    out[4] = '\0';
+    strncat(b64str, out, sizeof(out));
+}
+
+/* encode - base64 encode a stream, adding padding if needed */
+void b64_encode(char *clrstr, char *b64dst) {
+  unsigned char in[3];
+  int i, len = 0;
+  int j = 0;
+
+  b64dst[0] = '\0';
+  while(clrstr[j]) {
+    len = 0;
+    for(i=0; i<3; i++) {
+     in[i] = (unsigned char) clrstr[j];
+     if(clrstr[j]) {
+        len++; j++;
+      }
+      else in[i] = 0;
+    }
+    if( len ) {
+      encodeblock( in, b64dst, len );
+    }
+  }
+}
+
+/*******************************************************
+**********           FLDIGI xml                  *******
+********************************************************/
+/*
+An almost trivial xml, just enough to work fldigi
+*/
+
+char fldigi_mode[100];
+long fldigi_retry_at = 0;
+/*
+An almost trivial xml, just enough to work fldigi
+*/
+
+int fldigi_call(char *action, char *param, char *result){
+
+  char buffer[10000], q[10000], xml[1000];
+  struct sockaddr_in serverAddr;
+  struct sockaddr_storage serverStorage;
+  socklen_t addr_size;
+
+  serverAddr.sin_family = AF_INET;
+  serverAddr.sin_port = htons(7362);
+  serverAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
+  memset(serverAddr.sin_zero, '\0', sizeof serverAddr.sin_zero);  
+	
+	int fldigi_socket = socket(AF_INET, SOCK_STREAM, 0);
+  if (connect(fldigi_socket, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0) {
+		//puts("unable to connect to the flidigi\n");        
+		close(fldigi_socket);
+		return -1;
+   }
+
+	sprintf(xml, 
+"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+"<methodCall><methodName>%s</methodName>\n"
+"<params>\n<param><value><string>%s</string></value></param> </params></methodCall>\n",
+		action, param);
+
+	sprintf(q, 
+		"POST / HTTP/1.1\n"
+		"Host: 127.0.0.1:7362\n"
+		"User-Agent: sbitx/v0.01\n" 
+		"Accept:\n" 
+		"Content-Length: %d\n"
+		"Content-Type: application/x-www-form-urlencoded\n\n"
+		"%s\n",
+		(int)strlen(xml), xml);
+ 
+  if (send(fldigi_socket, q, strlen(q), 0) < 0) {
+		puts("Unable to request fldigi");
+		close(fldigi_socket);
+		return -1;
+  } 
+	char buff[10000]; //large, large
+	int e = recv(fldigi_socket, buff, sizeof(buff), 0);
+	if(e < 0) {
+		puts("Unable to recv from fldigi");
+		close(fldigi_socket);
+		return -1;
+  }
+	buff[e] = 0;
+	result[0] = 0;
+
+	//now check if we got the data in base64
+	char *p = strstr(buff, "<base64>");
+	if (p){
+		p += strlen("<base64"); //skip past the tag
+		char *r =  strchr(p, '<'); //find the end
+		if (r){
+			*r = 0; //terminate the base64 at the end tag
+			int len =  (strlen(p) * 6)/8;
+			b64_decode(p, result);
+			result[len] = 0;
+		}
+	}
+  close(fldigi_socket);
+
+	return 0;
+}
+
+
 /*******************************************************
 **********      Modem dispatch routines          *******
 ********************************************************/
 
+void modem_select_input(int key){
+	modem_input_method = key;
+}
+
+static int rx_poll_count = 0;
+static int sps, deci, s_timer ;
+
 void modem_rx(int mode, int32_t *samples, int count){
-	int i;
+	int i, j, k, l;
 	int32_t *s;
 	FILE *pf;
+	char buffer[1000];
 
 	s = samples;
 	switch(mode){
 	case MODE_FT8:
 		ft8_rx(samples, count);
 		break;
+
 	case MODE_PSK31:
-		//pf = fopen("psk31-sbitx.raw", "a");
+		//don't try all the time
+		if (fldigi_retry_at < millis()){
+
+			if (strcmp(fldigi_mode, "BPSK31")){
+				if(fldigi_call("modem.set_by_name", "BPSK31", buffer) == 0){
+					fldigi_retry_at = millis() + 2000;
+					strcpy(fldigi_mode, "BPSK31");
+				}
+			}
+
+			if(!fldigi_call("rx.get_data", "", buffer)){		
+				write_log(buffer);
+				printf("rx: <<\n%s\n>>\n", buffer);
+				fldigi_retry_at = millis() + 500;
+			}
+		}	
+
+	/*
 		//trivially decimate by a factor of 8,
 		//the modem needs 12000 samples/sec, not 96K
 		s = samples;
 		for (i = 0; i < count; i += 8){ 
 			int32_t sample = *s;
 			psk31_process_sample(&psk_modem, *s);
-			//fwrite(&sample, sizeof(int32_t), 1, pf);	
 			s += 8;
 		}
-		//fclose(pf);
+*/
 		break;
 	case MODE_RTTY:
+		j = 0;
+		sps += count;
+		//pf = fopen("rtty_rx.raw", "a");
 		for (i = 0; i < count; i += 8) {
 			s += 8;
 			float fs = *s / 1000000000.0;
 			int32_t si = *s;
+			deci++;
 			Rtty_Demodulator_ProcessSample(fs);
+		//	fwrite(&fs, 4, 1, pf);
 		}
+		if (s_timer + 1000  < millis()){
+			//printf("rtty decimated %d to %d\n", deci, sps);
+			deci = 0;
+			sps = 0;
+			s_timer = millis();
+		}
+		//fclose(pf);
 		break;
 	}
 }
@@ -2178,10 +2481,13 @@ void modem_rx(int mode, int32_t *samples, int count){
 void modem_init(){
 	// init the ft8
 	ft8_rx_buff_index = 0;
+	ft8_tx_buff_index = 0;
+	ft8_tx_nsamples = 0;
 	pthread_create( &ft8_thread, NULL, ft8_thread_function, (void*)NULL);
 	psk31_init(&psk_modem, 96000);
 	Rtty_Modem_Init(96000);
 	cw_init(700, 12, CW_KBD);
+	strcpy(fldigi_mode, "");
 }
 
 int modem_center_freq(int mode){
@@ -2189,7 +2495,7 @@ int modem_center_freq(int mode){
 		case MODE_FT8:
 			return 3000;
 		case MODE_RTTY:
-			return 915;
+			return 700;
 		case MODE_PSK31:
 			return 500; 
 		default:
@@ -2204,41 +2510,64 @@ int modem_center_freq(int mode){
 void modem_poll(int mode){
 	int bytes_available = get_tx_data_length();
 	int tx_is_on = is_in_tx();
+	int key_status;
+	time_t now;
 
 	switch(mode){
+	case MODE_FT8:
+		now = time(NULL);
+		if (now % 15 == 0){
+			if(ft8_tx_nsamples > 0 && !tx_is_on){
+				tx_on();	
+				write_log(ft8_tx_text);
+			}
+			if (tx_is_on && ft8_tx_nsamples == 0)
+				tx_off();
+		}
+	break;
 	case MODE_CW:
-		if (!tx_is_on && bytes_available > 0){
-			write_log("\n<tx>\n");
+	case MODE_CWR:
+		key_status = key_poll();
+		//if (key_poll())
+		//	modem_input_method = CW_STRAIGHT;
+		if (!tx_is_on && (bytes_available || key_status) > 0){
+			if (!key_status)
+				write_log("\n<tx>\n");
 			tx_on();
-			cw_init(700, 12, CW_KBD); 
-			modem_tx_timeout = millis() + 500;
+			cw_init(700, 12, CW_STRAIGHT); 
+			modem_tx_timeout = millis() + get_cw_delay();
 		}
 		if (tx_is_on){
-			if (bytes_available > 0)
-				modem_tx_timeout = millis() + 300;
-			else if (modem_tx_timeout < millis()){
+			if (bytes_available > 0 || key_status){
+				modem_tx_timeout = millis() + get_cw_delay();
+			}
+			else if (get_cw_delay() < millis()){
 				tx_off();
-				write_log("\n<rx>\n");
+				if (!key_status)
+					write_log("\n<rx>\n");
 			}
 		}
 	break;
 	case MODE_RTTY:
 	case MODE_PSK31:
+		//we will let the keyboard decide this
+		/*
 		if (!tx_is_on && bytes_available > 0){
 			write_log("\n<tx>\n");
 			if (mode == MODE_RTTY)
 				Rtty_Modulator_StartTX();
 			tx_on();
-			modem_tx_timeout = millis() + 1000;
+			modem_tx_timeout = millis() + get_data_delay();
 		}
 		if (tx_is_on){
 			if (bytes_available > 0)
-				modem_tx_timeout = millis() + 1000;	
+				modem_tx_timeout = millis() + get_data_delay();	
 			else if (modem_tx_timeout < millis()){
 				write_log("\n<rx>\n");	
 				tx_off();
 			}
 		}
+		*/
 	break;
 	}
 }
@@ -2247,6 +2576,16 @@ float modem_next_sample(int mode){
 	float sample=0;
 
 	switch(mode){
+		// the ft8 samples are generated at 12ksps, we need to feed the 
+		// sdr with 96 ksps (eight times as much)
+	case MODE_FT8: 
+		if (ft8_tx_buff_index/8 < ft8_tx_nsamples){
+			sample = ft8_tx_buff[ft8_tx_buff_index/8];
+			ft8_tx_buff_index++;
+		}
+		else //stop transmitting ft8 
+			ft8_tx_nsamples = 0;
+		break;
 	case MODE_PSK31:
 		psk31_tx_get_sample(&psk_modem,  &sample);
 		break;
@@ -2260,3 +2599,4 @@ float modem_next_sample(int mode){
 	}
 	return sample;
 }
+

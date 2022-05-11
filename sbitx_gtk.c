@@ -19,6 +19,7 @@ The initial sync between the gui values, the core radio values, settings, et al 
 #include <ncurses.h>
 #include <gtk/gtk.h>
 #include <gdk/gdkkeysyms.h>
+#include <errno.h>
 #include <cairo.h>
 #include <wiringPi.h>
 #include <wiringSerial.h>
@@ -145,6 +146,8 @@ char vfo_a_mode[10];
 char vfo_b_mode[10];
 char mycallsign[12];
 char mygrid[12];
+int	cw_delay = 500;
+int	data_delay = 700;
 
 #define MAX_RIT 25000
 //how much to shift on rit
@@ -287,9 +290,9 @@ struct field main_controls[] = {
 		"", 0, 100, 1},
 
 	//tx 
-	{ "tx_power", 550, 380, 50, 50, "WATTS", 40, "40", FIELD_NUMBER, FONT_FIELD_VALUE, 
+	{ "tx_power", 600, 380, 50, 50, "WATTS", 40, "40", FIELD_NUMBER, FONT_FIELD_VALUE, 
 		"", 1, 100, 1},
-	{ "tx_gain", 600, 380, 50, 50, "MIC", 40, "50", FIELD_NUMBER, FONT_FIELD_VALUE, 
+	{ "tx_gain", 550, 380, 50, 50, "MIC", 40, "50", FIELD_NUMBER, FONT_FIELD_VALUE, 
 		"", 0, 100, 1},
 
 	{ "#split", 700, 380, 50, 50, "SPLIT", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, 
@@ -300,10 +303,16 @@ struct field main_controls[] = {
 		"ON/OFF", 0,0,0},
 	{ "#tx_wpm", 650, 380, 50, 50, "WPM", 40, "12", FIELD_NUMBER, FONT_FIELD_VALUE, 
 		"", 1, 50, 1},
-	{ "#tx_key", 600, 430, 50, 50, "KEY", 40, "HARD", FIELD_SELECTION, FONT_FIELD_VALUE, 
-		"SOFT/HARD", 0, 0, 0},
-	{ "tx_record", 650, 430, 50, 50, "RECORD", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, 
+/*	{ "#tx_key", 600, 430, 50, 50, "KEY", 40, "HARD", FIELD_SELECTION, FONT_FIELD_VALUE, 
+		"SOFT/HARD", 0, 0, 0},*/
+	{ "tx_record", 700, 430, 50, 50, "RECORD", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, 
 		"ON/OFF", 0,0, 0},
+
+	{ "#tx", 550, 430, 75, 50, "TX", 40, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+		"RX/TX", 0,0, 0},
+
+	{ "#rx", 625, 430, 75, 50, "RX", 40, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+		"RX/TX", 0,0, 0},
 	
 	// top row
 	{"#step", 400, 0 ,50, 50, "STEP", 1, "50Hz", FIELD_SELECTION, FONT_FIELD_VALUE, 
@@ -311,7 +320,7 @@ struct field main_controls[] = {
 	{"#vfo", 450, 0 ,50, 50, "VFO", 1, "A", FIELD_SELECTION, FONT_FIELD_VALUE, 
 		"A/B", 0,0,0},
 	{"#span", 500, 0 ,50, 50, "SPAN", 1, "25KHz", FIELD_SELECTION, FONT_FIELD_VALUE, 
-		"25KHz/10KHz/3KHz", 0,0,0},
+		"25KHz/10KHz/2.5KHz", 0,0,0},
 
 	{"spectrum", 400, 50, 400, 100, "Spectrum ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, 
 		"", 0,0,0},   
@@ -471,7 +480,7 @@ static void save_user_settings(){
 
 	FILE *f = fopen(file_path, "w");
 	if (!f){
-		printf("Unable to save %s\n", file_path);
+		printf("Unable to save %s : %s\n", file_path, strerror(errno));
 		return;
 	}
 	for (int i= 0; i < active_layout[i].cmd[0] > 0; i++)
@@ -490,6 +499,8 @@ static void save_user_settings(){
 	fprintf(f, "vfo_b_freq=%d\n", vfo_b_freq);
 	fprintf(f, "callsign=%s\n", mycallsign);
 	fprintf(f, "grid=%s\n", mygrid);
+	fprintf(f, "cw_delay=%d\n", cw_delay);
+	fprintf(f, "data_delay=%d\n", data_delay);
 
 	fclose(f);
 //	printf("settings are saved\n");
@@ -564,7 +575,14 @@ static int user_settings_handler(void* user, const char* section,
 			strcpy(vfo_a_mode, value);
 		else if (!strcmp(name, "vfo_b_mode"))
 			strcpy(vfo_b_mode, value);
-
+		else if (!strcmp(name, "callsign"))
+			strcpy(mycallsign, value);
+		else if (!strcmp(name, "grid"))
+			strcpy(mygrid, value);
+		else if (!strcmp(name, "cw_delay"))
+			cw_delay = atoi(value);
+		else if (!strcmp(name, "data_delay"))
+			data_delay = atoi(value);
     return 1;
 }
 //static int field_in_focus = -1;
@@ -906,8 +924,11 @@ void log_init(){
 }
 
 void write_log(char *text){
+
 	while(*text){
-		log_buffer[next_log++] = *text++;
+		if ((*text < 128 & *text >= ' ') || *text == '\n')
+			log_buffer[next_log++] = *text;
+		text++;	
 		if (next_log >= MAX_LOG_BUFFER)
 			next_log = 0;
 	}
@@ -946,6 +967,50 @@ int log_display_start(int rows, int cols){
 			i = MAX_LOG_BUFFER - 1;
 	}
 	return i;
+}
+
+int list_text_at(int x, int click_y, char *txt){
+	char this_line[1000];
+
+	struct field *f = get_field("#log");
+
+	int line_height = font_table[f->font_index].height; 	
+	int n_lines = f->height / line_height;
+
+	int y = f->y + 2; 
+
+	int i = log_display_start(n_lines, log_cols);
+	int col_count = 0;
+
+	int j = 0;
+
+	while(i != next_log){
+		//wrap i around the buffer
+		if (i == MAX_LOG_BUFFER)
+			i = 0;
+
+		//break the line on overflow or newline 
+		if (log_buffer[i] == '\n' || col_count == log_cols){
+			if (log_buffer[i] != '\n')
+				txt[col_count++] = log_buffer[i];
+			txt[col_count] = 0;
+			y += line_height;
+			if (y > click_y)
+				return 1;
+			col_count = 0;
+		}
+		else{
+			txt[col_count++] = log_buffer[i];
+			//putchar(log_buffer[i]);
+		}
+		i++;
+	}
+	if (col_count > 0){
+		txt[col_count] = 0;
+		if (click_y < y)
+			return 1;
+	}
+	return 0;
 }
 
 void draw_list(cairo_t *gfx, struct field *f){
@@ -994,138 +1059,6 @@ void draw_list(cairo_t *gfx, struct field *f){
 	}
 }
 
-/*
-void draw_list(cairo_t *gfx, struct field *f){
-
-	int line_height = font_table[f->font_index].height; 	
-	int lines = f->height / line_height;
-
-	//estimate!
-	int char_width = measure_text(gfx, "01234567890123456789", f->font_index)/20;
-	log_cols = f->width / char_width;
-	int y = f->y + f->height -line_height - 2; 
-
-	int line_start = ((log_next_char) / log_cols) * log_cols;
-	
-	//printf("log_cols = %d\n", log_cols);
-
-	for (int i = 0; i < lines; i++){
-		char this_line[200];
-
-		strncpy(this_line, log_buffer + line_start, log_cols);
-		this_line[log_cols] = 0;
-		draw_text(gfx, f->x, y, this_line, f->font_index);
-		y -= line_height;
-	
-		line_start -= log_cols;
-		if (line_start < 0)
-			line_start = sizeof(log_buffer) -  log_cols;
-	}
-}
-*/
-
-/*
-void draw_list_old(cairo_t *gfx, struct field *f){
-	//get the text height
-	int line_height = font_table[f->font_index].height; 	
-	int lines = f->height / line_height;
-	//estimate!
-	int char_width = measure_text(gfx, "01234567890123456789", f->font_index)/20;
-	log_cols = f->width / char_width;
-	int y = f->y +f->height - line_height - 4; 
-
-	//printf("log_cols = %d\n", log_cols);
-
-	int line = last_log;
-	if (line == -1)
-		return;
-
-	for (int i = 0; i < lines; i++){
-		if (log_lines[line])
-			draw_text(gfx, f->x, y, log_lines[line], f->font_index);
-		y -= line_height;
-		line--;
-		//go back to the top
-		if (line < 0)
-			line = MAX_LOG_LINES - 1;
-	}
-}
-*/
-/*
-void write_log(char *text){
-	char *p;
-
-	return;
-	printf("{logging [%s]\n", text);
-
-	while(*text){
-
-		printf("printing [%c]\n", *text);
-		if (!log_lines[last_log]){
-			puts("allocating new line");
-			p = malloc(log_cols);
-			*p = 0;
-			log_lines[last_log] = p;
-		}
-	
-		int len = strlen(log_lines[last_log]);
-		printf("write_log: last_log %d, len %d\n", last_log, len);
-
-		if (len < log_cols-1 && *text != '\n'){
-			p = log_lines[last_log];
-			printf("Adding to line %d showing [%s]\n", last_log, p);
-			//move to the end of the line
-			p += strlen(p);
-			if (*text < ' ')
-				*text = '*';
-			*p++ = *text++;
-			*p = 0;
-		}	
-		else { 
-			puts("Moving to new line");
-			//move to the next line
-			if (*text == '\n')
-				*text++;
-			last_log++;
-			if (last_log >= MAX_LOG_LINES) //wrap the logger around to MAX_LOG_LINES
-				last_log = 0;
-			p = log_lines[last_log];
-			//clear the line if it has old content
-			if (p)
-				*p = 0;
-			//allow the next iteration to do the insertion
-		}	
-	}	
-	printf("}\n");
-	struct field *f = get_field("#log");
-	update_field(f);
-}
-*/
-/*
-void append_log(char *line){
-	char * p = malloc(strlen(line) + 1);
-	if (!p)
-		return; //silently discard
-	strcpy(p, line);
-
-	//move the last_log forward
-	last_log++;
-	if (last_log >= MAX_LOG_LINES) //wrap the logger around to MAX_LOG_LINES
-		last_log = 0;
-	if (log_lines[last_log])
-		free(log_lines[last_log]);
-	log_lines[last_log] = p;
-
-	struct field *f = get_field("#log");
-	update_field(f);
-}
-
-
-void init_log(){
-	memset(log_lines, 0, sizeof(log_lines));
-	last_log = 0;
-}
-*/
 void draw_dial(GtkWidget *widget, cairo_t *gfx, struct field *f){
 	struct font_style *s = font_table + 0;
 	struct field *rit = get_field("#rit");
@@ -1442,7 +1375,11 @@ static void edit_field(struct field *f, int action){
 		NULL; // ah, do nothing!
 	}
 	else if (f->value_type == FIELD_TEXT){
-		if (action >= ' ' && action <= 127 && strlen(f->value) < f->max-1){
+		if (action == '\n' && !strcmp(get_field("r1:mode")->value, "FT8")){
+			ft8_tx(f->value, 1000);
+			f->value[0] = 0;		
+		}
+		else if (action >= ' ' && action <= 127 && strlen(f->value) < f->max-1){
 			int l = strlen(f->value);
 			f->value[l++] = action;
 			f->value[l] = 0;
@@ -1648,7 +1585,6 @@ static gboolean on_key_release (GtkWidget *widget, GdkEventKey *event, gpointer 
 
 	if (event->keyval == MIN_KEY_TAB){
 		tx_off();
-    puts("on_key_release(TAB): Transmit off");
   }
 
 }
@@ -1802,8 +1738,6 @@ static gboolean on_mouse_press (GtkWidget *widget, GdkEventButton *event, gpoint
 		last_mouse_y = (int)event->y;
 		mouse_down = 1;
 	}
-	else
-		printf("mouse other event on_mouse_press %d\n", event->type);
   /* We've handled the event, stop processing */
   return FALSE;
 }
@@ -1989,6 +1923,24 @@ void cat_poll(){
 }
 */
 
+int key_poll(){
+	int key = 0;
+	
+	if (digitalRead(PTT) == LOW)
+		key |= CW_DASH;
+//	if (digitalRead(DASH) == LOW)
+//		key |= CW_DOT;
+
+	return key;
+}
+
+int get_cw_delay(){
+	return cw_delay;
+}
+
+int get_data_delay(){
+	return data_delay;
+}
 static int keyer_last_was_dash = 0;
 static int keyer_tx_until = 0;
 void do_cw(){
@@ -2102,15 +2054,15 @@ gboolean ui_tick(gpointer gook){
 		update_field(f);
 		redraw_flag = 0;
 		ticks = 0;
-
 		update_field(get_field("#log"));
-		
+	
+	/*	
 		//now check if the focus has been on something other than audio for long
 		if (f_focus && millis() > focus_since + 5000 && strcmp(f_focus->cmd, "r1:volume")){
 			focus_field(get_field("r1:volume"));
 			focus_since = millis();
 		}
-
+*/
 		// alternate character from the softkeyboard upon long press
 		if (f_focus && focus_since + 500 < millis() 
 						&& !strncmp(f_focus->cmd, "#kbd_", 5) && mouse_down){
@@ -2143,10 +2095,8 @@ gboolean ui_tick(gpointer gook){
  
 	f = get_field("r1:mode");
 	//straight key in CW
-	/* if (f && (!strcmp(f->value, "CW") || !strcmp(f->value, "CWR"))) 
-		do_keyer();	
-	else*/ if (f && (!strcmp(f->value, "2TONE") || !strcmp(f->value, "LSB") || 
-		!strcmp(f->value, "USB"))){
+	if (f && (!strcmp(f->value, "2TONE") || !strcmp(f->value, "LSB") || 
+	!strcmp(f->value, "USB"))){
 		if (digitalRead(PTT) == LOW && in_tx == 0)
 			tx_on();
 		else if (digitalRead(PTT) == HIGH && in_tx == 1)
@@ -2410,8 +2360,16 @@ void do_cmd(char *cmd){
 
 	if (!strcmp(request, "#close"))
 		gtk_window_iconify(GTK_WINDOW(window));
-	else if (!strcmp(request, "#off"))
+	else if (!strcmp(request, "#off")){
+		tx_off();
+		save_user_settings();
 		exit(0);
+	}
+
+	else if (!strcmp(request, "#tx"))	
+		tx_on();
+	else if (!strcmp(request, "#rx"))
+		tx_off();
 	else if (!strncmp(request, "#rit", 4))
 		update_field(get_field("r1:freq"));
 	else if (!strncmp(request, "#split", 5)){
@@ -2454,8 +2412,8 @@ void do_cmd(char *cmd){
 		tuning_step = 10;
 
 	//spectrum bandwidth
-	else if (!strcmp(request, "#span=3KHz"))
-		spectrum_span = 3000;
+	else if (!strcmp(request, "#span=2.5KHz"))
+		spectrum_span = 2500;
 	else if (!strcmp(request, "#span=10KHz"))
 		spectrum_span = 10000;
 	else if (!strcmp(request, "#span=25KHz"))

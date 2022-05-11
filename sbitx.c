@@ -766,7 +766,7 @@ void sdr_request(char *request, char *response){
 	} 
 	else if (!strcmp(cmd, "r1:mode")){
 		if (!strcmp(value, "LSB"))
-				rx_list->mode = MODE_LSB;
+			rx_list->mode = MODE_LSB;
 		else if (!strcmp(value, "CW"))
 			rx_list->mode = MODE_CW;
 		else if (!strcmp(value, "CWR"))
@@ -916,7 +916,7 @@ void sdr_request(char *request, char *response){
 		else if (!strcmp(value, "HARD"))
 			cw_shape = 1;
 	}
-  else
-		printf("*Error request[%s] not accepted\n", request);
+  /* else
+		printf("*Error request[%s] not accepted\n", request); */
 }
 
