@@ -14,11 +14,16 @@ The initial sync between the gui values, the core radio values, settings, et al 
 #include <linux/fb.h>
 #include <sys/types.h>
 #include <stdint.h>
+#include <ctype.h>
 #include <sys/mman.h>
 #include <sys/ioctl.h>
 #include <ncurses.h>
 #include <gtk/gtk.h>
 #include <gdk/gdkkeysyms.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #include <errno.h>
 #include <cairo.h>
 #include <wiringPi.h>
@@ -171,6 +176,7 @@ void cmd_line(char *cmd);
 #define MIN_KEY_ESC	0xFF1B
 #define MIN_KEY_BACKSPACE 0xFF08
 #define MIN_KEY_TAB 0xFF09
+#define MIN_KEY_CONTROL 0xFFE3
 
 #define COLOR_SELECTED_TEXT 0
 #define COLOR_TEXT 1
@@ -322,9 +328,9 @@ struct field main_controls[] = {
 	{"#span", 500, 0 ,50, 50, "SPAN", 1, "25KHz", FIELD_SELECTION, FONT_FIELD_VALUE, 
 		"25KHz/10KHz/2.5KHz", 0,0,0},
 
-	{"spectrum", 400, 50, 400, 100, "Spectrum ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, 
+	{"spectrum", 400, 80, 400, 100, "Spectrum ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, 
 		"", 0,0,0},   
-	{"waterfall", 400, 150 , 400, 180, "Waterfall ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, 
+	{"waterfall", 400, 180 , 400, 150, "Waterfall ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, 
 		"", 0,0,0},
 	{"#log", 0, 0 , 400, 330, "log", 70, "log box", FIELD_LIST, FONT_LOG, 
 		"nothing valuable", 0,0,0},
@@ -469,20 +475,28 @@ static void save_user_settings(){
 	if (now < last_save_at + 30000 ||  !settings_updated)
 		return;
 
+	char *path = getenv("HOME");
+	strcpy(file_path, path);
+	strcat(file_path, "/.sbitx/user_settings.ini");
 
 	//copy the current freq settings to the currently selected vfo
 	struct field *f_freq = get_field("r1:freq");
 	struct field *f_vfo  = get_field("#vfo");
-
-	char *path = getenv("HOME");
-	strcpy(file_path, path);
-	strcat(file_path, "/.sbitx/user_settings.ini");
 
 	FILE *f = fopen(file_path, "w");
 	if (!f){
 		printf("Unable to save %s : %s\n", file_path, strerror(errno));
 		return;
 	}
+
+	//save other stuff
+	fprintf(f, "vfo_a_freq=%d\n", vfo_a_freq);
+	fprintf(f, "vfo_b_freq=%d\n", vfo_b_freq);
+	fprintf(f, "callsign=%s\n", mycallsign);
+	fprintf(f, "grid=%s\n", mygrid);
+	fprintf(f, "cw_delay=%d\n", cw_delay);
+	fprintf(f, "data_delay=%d\n", data_delay);
+
 	for (int i= 0; i < active_layout[i].cmd[0] > 0; i++)
 		fprintf(f, "%s=%s\n", active_layout[i].cmd, active_layout[i].value);
 
@@ -494,13 +508,6 @@ static void save_user_settings(){
 			fprintf(f, "freq%d=%d\nmode%d=%d\n", j, band_stack[i].freq[j], j, band_stack[i].mode[j]);
 	}
 
-	//save other stuff
-	fprintf(f, "vfo_a_freq=%d\n", vfo_a_freq);
-	fprintf(f, "vfo_b_freq=%d\n", vfo_b_freq);
-	fprintf(f, "callsign=%s\n", mycallsign);
-	fprintf(f, "grid=%s\n", mygrid);
-	fprintf(f, "cw_delay=%d\n", cw_delay);
-	fprintf(f, "data_delay=%d\n", data_delay);
 
 	fclose(f);
 //	printf("settings are saved\n");
@@ -523,7 +530,22 @@ static int user_settings_handler(void* user, const char* section,
       strcpy(cmd, name);
       set_field(cmd, new_value);
     }
-    
+		else if (!strcmp(name, "vfo_a_freq"))
+			vfo_a_freq = atoi(value);
+		else if (!strcmp(name, "vfo_b_freq"))
+			vfo_b_freq = atoi(value);
+		else if (!strcmp(name, "vfo_a_mode"))
+			strcpy(vfo_a_mode, value);
+		else if (!strcmp(name, "vfo_b_mode"))
+			strcpy(vfo_b_mode, value);
+		else if (!strcmp(name, "callsign"))
+			strcpy(mycallsign, value);
+		else if (!strcmp(name, "grid"))
+			strcpy(mygrid, value);
+		else if (!strcmp(name, "cw_delay"))
+			cw_delay = atoi(value);
+		else if (!strcmp(name, "data_delay"))
+			data_delay = atoi(value);
     // if it is an empty section
     else if (strlen(section) == 0){
       sprintf(cmd, "%s", name);
@@ -567,22 +589,6 @@ static int user_settings_handler(void* user, const char* section,
 		else if (band >= 0 && !strcmp(name, "mode3"))
 			band_stack[band].mode[3] = atoi(value);	
 
-		else if (!strcmp(name, "vfo_a_freq"))
-			vfo_a_freq = atoi(value);
-		else if (!strcmp(name, "vfo_b_freq"))
-			vfo_b_freq = atoi(value);
-		else if (!strcmp(name, "vfo_a_mode"))
-			strcpy(vfo_a_mode, value);
-		else if (!strcmp(name, "vfo_b_mode"))
-			strcpy(vfo_b_mode, value);
-		else if (!strcmp(name, "callsign"))
-			strcpy(mycallsign, value);
-		else if (!strcmp(name, "grid"))
-			strcpy(mygrid, value);
-		else if (!strcmp(name, "cw_delay"))
-			cw_delay = atoi(value);
-		else if (!strcmp(name, "data_delay"))
-			data_delay = atoi(value);
     return 1;
 }
 //static int field_in_focus = -1;
@@ -1317,7 +1323,8 @@ static void edit_field(struct field *f, int action){
 					else
 						return;
 				else
-					v -= tuning_step;
+					v = (v / tuning_step - 1)*tuning_step;
+					//v -= tuning_step;
 			}
 			else
 				v -= f->step;
@@ -1375,7 +1382,7 @@ static void edit_field(struct field *f, int action){
 		NULL; // ah, do nothing!
 	}
 	else if (f->value_type == FIELD_TEXT){
-		if (action == '\n' && !strcmp(get_field("r1:mode")->value, "FT8")){
+		if ((action == '\n' || action == MIN_KEY_ENTER)&& !strcmp(get_field("r1:mode")->value, "FT8")){
 			ft8_tx(f->value, 1000);
 			f->value[0] = 0;		
 		}
@@ -1390,7 +1397,8 @@ static void edit_field(struct field *f, int action){
 		}
 		
 		//if it is a command, then execute it and clear the field
-		if (f->value[0] == '\\' &&  strlen(f->value) > 1 && action == '\n' ){
+		if (f->value[0] == '\\' &&  strlen(f->value) > 1 && 
+				(action == '\n' || action == MIN_KEY_ENTER)){
 			cmd_line(f->value + 1);
 			f->value[0] = 0;
 		}
@@ -1542,6 +1550,8 @@ void tx_on(){
 		set_operating_freq(atoi(freq->value), response);
 		update_field(get_field("r1:freq"));
 	}
+	if (tx_mode == MODE_DIGITAL)
+		sound_input(1);
 
 	tx_start_time = millis();
 }
@@ -1559,6 +1569,7 @@ void tx_off(){
 		set_operating_freq(atoi(freq->value), response);
 		update_field(get_field("r1:freq"));
 	}
+	sound_input(0); //it is a low overhead call, might as well be sure
 }
 
 
@@ -1580,8 +1591,13 @@ static void cw_key(int state){
 }
 
 
+static int control_down = 0;
 static gboolean on_key_release (GtkWidget *widget, GdkEventKey *event, gpointer user_data) {
 	key_modifier = 0;
+
+	if (event->keyval == MIN_KEY_CONTROL){
+		control_down = 0;
+	}
 
 	if (event->keyval == MIN_KEY_TAB){
 		tx_off();
@@ -1591,6 +1607,52 @@ static gboolean on_key_release (GtkWidget *widget, GdkEventKey *event, gpointer 
 
 static gboolean on_key_press (GtkWidget *widget, GdkEventKey *event, gpointer user_data) {
 	char request[1000], response[1000];
+
+	if (event->keyval == MIN_KEY_CONTROL){
+		control_down = 1;
+	}
+
+	if (control_down){
+		GtkClipboard *clip;
+		struct field *f;	
+		switch(event->keyval){
+			case 'r':
+				tx_off();
+				break;
+			case 't':
+				tx_on();
+				break;
+			case 'q':
+				save_user_settings();
+				exit(0);
+				break;
+			case 'c':
+				f = get_field("#text_in");
+				clip = gtk_clipboard_get(GDK_SELECTION_CLIPBOARD);
+				gtk_clipboard_set_text(clip, f->value, strlen(f->value));
+				break; 
+			case 'v':
+				clip = gtk_clipboard_get(GDK_SELECTION_CLIPBOARD);
+				if (clip){
+					int i = 0;
+					gchar *text = gtk_clipboard_wait_for_text(clip);
+					f = get_field("#text_in");
+					if (text){
+						i = strlen(f->value);
+						while(i < MAX_FIELD_LENGTH-1 && *text){
+							if (*text >= ' ' || *text == '\n' || 
+											(*text >= ' ' && *text <= 128))
+								f->value[i++] = *text;  
+							text++;	
+						}
+						f->value[i] = 0;
+						update_field(f);
+					}
+				}
+			break;
+		}
+		return FALSE;
+	}
 
 	if (f_focus && f_focus->value_type == FIELD_TEXT){
 		edit_field(f_focus, event->keyval); 
@@ -1625,10 +1687,12 @@ static gboolean on_key_press (GtkWidget *widget, GdkEventKey *event, gpointer us
 			key_modifier |= event->keyval;
 			//printf("key_modifier set to %d\n", key_modifier);
 			break;
+/*
 		case MIN_KEY_TAB:
 			tx_on();
       puts("Tx is ON!");
 			break;
+*/
 		default:
 			//by default, all text goes to the text_input control
 			if (event->keyval == MIN_KEY_ENTER)
@@ -2159,6 +2223,43 @@ void ui_init(int argc, char *argv[]){
 
 /* handle modem callbacks for more data */
 
+long get_freq(){
+	return atol(get_field("r1:freq")->value);
+}
+
+void set_freq(long freq){
+	struct field *f = get_field("r1:freq");
+	if (freq < 10)
+		return;
+	if (freq < 30000)
+		freq *= 1000;
+
+	sprintf(f->value, "%ld", freq);
+	update_field(f);
+}
+
+void set_mode(char *mode){
+	struct field *f = get_field("r1:mode");
+	char umode[10];
+	int i;
+
+	for (i = 0; i < sizeof(umode) - 1 && *mode; i++)
+		umode[i] = toupper(*mode++);
+	umode[i] = 0;
+
+	if (strstr(f->selection, umode)){
+		strcpy(f->value, umode);
+		update_field(f);
+	}
+	else
+		write_log("%s is not a mode\n");
+}
+
+void get_mode(char *mode){
+	struct field *f = get_field("r1:mode");
+	strcpy(mode, f->value);
+}
+
 int get_tx_data_byte(char *c){
 	//take out the first byte and return it to the modem
 	struct field *f = get_field("#text_in");
@@ -2248,9 +2349,11 @@ void change_band(char *request){
 			stack = 0;
 		band_stack[new_band].index = stack;
 	}
-	sprintf(buff, "%d", band_stack[new_band].freq[stack]);
-	set_field("r1:freq", buff);	
-	set_field("r1:mode", mode_name[band_stack[new_band].mode[stack]]);	
+	//sprintf(buff, "%d", band_stack[new_band].freq[stack]);
+	//set_field("r1:freq", buff);	
+	//set_field("r1:mode", mode_name[band_stack[new_band].mode[stack]]);	
+	set_mode(mode_name[band_stack[new_band].mode[stack]]);
+	set_freq(band_stack[new_band].freq[stack]);
 }
 
 /*
@@ -2366,10 +2469,12 @@ void do_cmd(char *cmd){
 		exit(0);
 	}
 
-	else if (!strcmp(request, "#tx"))	
+	else if (!strcmp(request, "#tx")){	
 		tx_on();
-	else if (!strcmp(request, "#rx"))
+	}
+	else if (!strcmp(request, "#rx")){
 		tx_off();
+	}
 	else if (!strncmp(request, "#rit", 4))
 		update_field(get_field("r1:freq"));
 	else if (!strncmp(request, "#split", 5)){
@@ -2477,6 +2582,20 @@ void cmd_line(char *cmd){
 		sprintf(response, "\n[Your grid is set to %s]\n", mygrid);
 		write_log(response);
 	}
+	else if(!strcmp(exec, "freq") || !strcmp(exec, "f"))
+		set_freq(atol(args));
+	else if (!strcmp(exec, "mode") || !strcmp(exec, "m"))
+		set_mode(args);
+	else if (!strcmp(exec, "t"))
+		tx_on();
+	else if (!strcmp(exec, "r"))
+		tx_off();
+	else if (!strcmp(exec, "topen"))
+		telnet_open(args);
+	else if (!strcmp(exec, "tclose"))
+		telnet_close(args);
+	else if (!strcmp(exec, "w"))
+		telnet_write(args);
 	save_user_settings();
 }
 

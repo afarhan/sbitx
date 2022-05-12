@@ -192,7 +192,6 @@ void sdr_request(char *request, char *response);
 
 void sdr_modulation_update(int32_t *samples, int count);
 
-
 /* from modems.c */
 void modem_rx(int mode, int32_t *samples, int count);
 int	modem_center_freq(int mode);
@@ -205,12 +204,16 @@ float modem_next_sample(int mode);
 void ft8_tx(char *message, int freq);
 void tx_on();
 void tx_off();
-
-
-int fldigi_call(char *action, char *param, char *result);
+long get_freq();
+void set_freq(long f);
 
 #define CW_DASH (1)
 #define CW_DOT (2)
 int key_poll();
 int get_cw_delay();
 int	get_data_delay();
+
+void telnet_open(char *server);
+int telnet_write(char *text);
+void telnet_close();
+

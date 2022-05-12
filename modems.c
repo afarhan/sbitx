@@ -134,7 +134,7 @@ void *ft8_thread_function(void *ptr){
 		if (!ft8_do_decode)
 			continue;
 
-		puts("Decoding FT8 on cmd line");
+//		puts("Decoding FT8 on cmd line");
 		//create a temporary file of the ft8 samples
 		pf = fopen("/tmp/ftrx.raw", "w");
 		fwrite(ft8_rx_buff, sizeof(ft8_rx_buff), 1, pf);

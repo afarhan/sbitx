@@ -590,7 +590,9 @@ int sound_loop(){
           printf("ESTRPIPE ");
         snd_pcm_prepare(loopback_capture_handle);
 				continue;
+				putchar('*');
       }
+			//printf(" loopback read %d samples\n", pcmreturn);
 			//we have some data in here.
 			j = 0; //make it 1 for the right channel, as 1,3,5.. are left and 2,4,6.. are right 
 			// we have to push two samples to double up the sampling rate from 48K to 96K
@@ -621,8 +623,8 @@ int sound_loop(){
 		}
 		else {
 			while (i < pcmreturn){
-				input_i[i] = data_in[j++];
-				input_q[i] = data_in[j++];
+				input_i[i] = data_in[j++]/2;
+				input_q[i] = data_in[j++]/2;
 				i++;
 			}
 		}
@@ -725,11 +727,9 @@ void sound_thread_stop(){
 void sound_input(int loop){
   if (loop){
     use_virtual_cable = 1;
-		puts("**********opening the sound log");
 	}
   else{
     use_virtual_cable = 0;
-		puts("************closing the sound log");
 	}
 }
 

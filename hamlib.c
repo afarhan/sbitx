@@ -9,13 +9,18 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <complex.h>
+#include <math.h>
+#include <fcntl.h>
+#include <complex.h>
+#include <fftw3.h>
+#include "sdr.h"
+#include "sdr_ui.h"
 
 static int welcome_socket = -1, data_socket = -1;
 #define MAX_DATA 1000
 char incoming_data[MAX_DATA];
 int incoming_ptr;
 
-void set_field(char *id, char *value);
 void  hamlib_tx(int tx_on);
 
 //copied from gqrx on github
@@ -89,27 +94,27 @@ int check_cmd(char *cmd, char *token){
 }
 
 void send_response(char *response){
-    send(data_socket, response, strlen(response), 0);
+  send(data_socket, response, strlen(response), 0);
+	printf(" %s]\n", response); 
 }
 
-int freq = 7000000;
 int in_tx = 0;
 void send_freq(){
   char response[20];
-  sprintf(response, "%d\n", freq);
+  sprintf(response, "%d\n", get_freq());
   send_response(response);
 }
 
-void set_freq(char *f){
+void hamlib_set_freq(char *f){
+	long freq;
   if (!strncmp(f, "VFO", 3))
     freq = atoi(f+5);
   else
     freq = atoi(f);
   send_response("RPRT 0\n");
-  char s[100];
-  sprintf(s, "%d", freq);
-  set_field("r1:freq", s);
+	set_freq(freq);
 }
+	
 
 void tx_control(int s){
 	//printf("tx_control(%d)\n", s);
@@ -144,14 +149,19 @@ void interpret_command(char *cmd){
   else if (!strncmp(cmd, "m VFOA", 6))
     send_response("USB 3000\n");
   else if (check_cmd(cmd, "f"))
-    send_freq("7074000\n");
+		send_freq();
   else if (check_cmd(cmd, "F"))
-    set_freq(cmd + 2);
+    hamlib_set_freq(cmd + 2);
   else if (cmd[0] == 'T'){
-    if (!strcmp(cmd, "T 0") || !strcmp(cmd, "T VFOA 0"))
+		if (strchr(cmd, '0'))
+			tx_control(0); //if there is a zero in it, we are to rx
+		else
+			tx_control(1); //this is a shaky way to do it, who has the time to parse?
+/*    if (!strcmp(cmd, "T 0") || !strcmp(cmd, "T VFOA 0"))
       tx_control(0);
     else if (!strcmp(cmd, "T 1") || !strcmp(cmd, "T VFOA 1"))
       tx_control(1);
+*/
   }
   else if (check_cmd(cmd, "s"))
     send_response("0\n");
@@ -162,12 +172,12 @@ void interpret_command(char *cmd){
     data_socket = -1;
   }
 	else 
-		printf("Unrecognized command [%s] '%c'\n", cmd, cmd[0]);
+		printf("Hamlib: Unrecognized command [%s] '%c'\n", cmd, cmd[0]);
 }
 
 void hamlib_handler(char *data, int len){
 
-	printf("<<<hamlib cmd [%s]>>>\n", data);
+	printf("<<<hamlib cmd %s =>", data);
   for (int i = 0; i < len; i++){
     if (data[i] == '\n'){
       incoming_data[incoming_ptr] = 0;
