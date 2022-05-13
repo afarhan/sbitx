@@ -205,7 +205,7 @@ void ft8_tx(char *message, int freq);
 void tx_on();
 void tx_off();
 long get_freq();
-void set_freq(long f);
+void do_cmd(char *cmd);
 
 #define CW_DASH (1)
 #define CW_DOT (2)

@@ -48,7 +48,7 @@ int freq_hdr = 7000000;
 
 static double volume 	= 100000.0;
 static double mic_gain = 200000000.0;
-static int tx_power = 100;
+static int tx_power_watts = 40;
 static int rx_gain = 100;
 static int rx_vol = 100;
 static int tx_gain = 100;
@@ -198,31 +198,16 @@ void set_lpf_40mhz(int frequency){
 }
 
 /*
-void radio_tx(int turn_on){
-	u_int8_t cmd[5];
-	if (turn_on){
-		cmd[0] = CMD_TX;
-	}
-	else{
-		cmd[0] = CMD_RX;
-	}
-	
-	for (int i = 0; i < 5; i++)
-		serialPutchar(fserial, cmd[i]);
-	//printf("tx is %d\n", (int)cmd[0]);
-}
-*/
 void set_lo(int frequency){
 	freq_hdr = frequency;
-	//printf("freq: %d\n", frequency);
 	set_lpf_40mhz(frequency);
 	radio_tune_to(frequency);
 }
+*/
 
 void set_rx1(int frequency){
 	radio_tune_to(frequency);
 	freq_hdr = frequency;
-	//printf("freq: %d\n", frequency);
 	set_lpf_40mhz(frequency);
 }
 
@@ -528,23 +513,6 @@ void tx_process(
 			i_sample = modem_next_sample(r->mode) / 3;
 			output_speaker[j] = i_sample * 100000000.0;
 		}
-/*
-    else if (r->mode == MODE_CW || r->mode == MODE_CWR){
-			//the cw shaping is done here by ramping the amplitude up and down at cw_shape rate
-			if (cw_keydown && cw_amplitude < 1000){
-				cw_amplitude += cw_shape;
-				if (cw_amplitude > 1000)
-					cw_amplitude = 1000;
-			}
-			else if (cw_keydown == 0 && cw_amplitude > 0){
-				cw_amplitude -= cw_shape;
-				if(cw_amplitude < 0)
-					cw_amplitude = 0;	
-			}
-			output_speaker[j] = (vfo_read(&tone_a)/1000) * cw_amplitude ;
-			//i_sample = ((vfo_read(&tone_a) * ((1.0) *cw_amplitude)) / 1000.0) / 10000000000.0;
-			i_sample = (1.0 * output_speaker[j]) / 10000000000.0;
-		} */
 	  else {
 	  	i_sample = (1.0 * input_mic[j]) / 2000000000.0;
 			output_speaker[j] = 0;
@@ -689,6 +657,46 @@ void setup_oscillators(){
   si5351_reset();
 }
 
+struct power_settings {
+	int f_start;
+	int f_stop;
+	int	max_watts;
+	int tx_scale;
+};
+
+struct power_settings band_power[] ={
+	{ 3500000,  4000000, 40, 80},
+	{ 7000000,  7300000, 40, 82},
+	{10000000, 10200000, 30, 81},
+	{14000000, 14300000, 30, 91},
+	{18000000, 18200000, 25, 93},
+	{21000000, 21450000, 20, 93},
+	{24800000, 25000000, 10, 94},
+	{28000000, 29700000,  6, 95}  
+};
+
+void set_tx_power_levels(){
+  printf("Setting tx_power to %d, gain to %d\n", tx_power_watts, tx_gain);
+	int tx_power_gain = 0;
+
+	//search for power in the approved bands
+	for (int i = 0; i < sizeof(band_power)/sizeof(struct power_settings); i++){
+		if (band_power[i].f_start <= freq_hdr && freq_hdr <= band_power[i].f_stop){
+			if (tx_power_watts > band_power[i].max_watts)
+				tx_power_watts = band_power[i].max_watts;
+		
+			//next we do a decimal coversion of the power reduction needed
+			int attenuation = 
+			(20*log10((1.0*tx_power_watts)/(1.0*band_power[i].max_watts))); 
+			tx_power_gain = band_power[i].tx_scale + attenuation; 
+			printf("Attenuation is set to %d\n", attenuation);
+		}	
+	}
+	printf("tx_power_gain set to %d for %d watts\n", tx_power_gain, tx_power_watts);
+	sound_mixer(audio_card, "Master", tx_power_gain);
+	sound_mixer(audio_card, "Capture", tx_gain);
+}
+
 /* 
 This is the one-time initialization code 
 */
@@ -749,14 +757,6 @@ void sdr_request(char *request, char *response){
 			strcpy(response, "ok on");
 		else
 			strcpy(response, "ok off");
-	}
-	if (!strcmp(cmd, "xit")){
-		int d = atoi(value);
-		set_lo(d);
-		if (d > 0 && d < 2048)
-			tx_shift = -d;
-		//printf("xit set to %d\n", freq_hdr);
-		strcpy(response, "ok");	
 	}
 	else if (!strcmp(cmd, "r1:freq")){
 		int d = atoi(value);
@@ -841,9 +841,7 @@ void sdr_request(char *request, char *response){
       fft_reset_m_bins();
 			digitalWrite(TX_LINE, HIGH);
       delay(50);
-      printf("Setting tx_power to %d, gain to %d\n", tx_power, tx_gain);
-			sound_mixer(audio_card, "Master", tx_power);
-			sound_mixer(audio_card, "Capture", tx_gain);
+			set_tx_power_levels();
 			strcpy(response, "ok");
 			spectrum_reset();
 		}
@@ -867,15 +865,12 @@ void sdr_request(char *request, char *response){
 	else if (!strcmp(cmd, "tx_gain")){
 		tx_gain = atoi(value);
 		if(in_tx)
-			sound_mixer(audio_card, "Capture", tx_gain);
+			set_tx_power_levels();
 	}
 	else if (!strcmp(cmd, "tx_power")){
-    //the drive levels are different between ubitx (that already has a
-    //mic amp and sbitx (that needs a boost)
-		//tx_power = atoi(value) - 25;
-    tx_power = atoi(value);
-		if(in_tx)	
-			sound_mixer(audio_card, "Master", tx_power);
+    tx_power_watts = atoi(value);
+		if(in_tx)
+			set_tx_power_levels();	
 	}
 	else if(!strcmp(cmd, "r1:gain")){
 		rx_gain = atoi(value);

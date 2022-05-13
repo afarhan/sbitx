@@ -107,12 +107,15 @@ void send_freq(){
 
 void hamlib_set_freq(char *f){
 	long freq;
+	char cmd[50];
   if (!strncmp(f, "VFO", 3))
     freq = atoi(f+5);
   else
     freq = atoi(f);
   send_response("RPRT 0\n");
-	set_freq(freq);
+	sprintf(cmd, "r1:freq=%ld", freq);
+	do_cmd(cmd);
+	//set_freq(freq);
 }
 	
 

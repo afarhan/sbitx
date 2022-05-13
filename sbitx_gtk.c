@@ -123,9 +123,9 @@ struct band {
 struct band band_stack[] = {
 	{"80m", 3500000, 4000000, 30, 30, 82, 0, 
 		{3500000,3574000,3600000,3700000},{MODE_CW, MODE_USB, MODE_CW,MODE_LSB}},
-	{"40m", 7000000,7300000, 30, 30, 84, 0,
+	{"40m", 7000000,7300000, 40, 40, 84, 0,
 		{7000000,7040000,7074000,7150000},{MODE_CW, MODE_CW, MODE_USB, MODE_LSB}},
-	{"30m", 10100000, 1015000, 25,25,85, 0,
+	{"30m", 10100000, 1015000, 30, 30, 85, 0,
 		{10100000, 10100000, 10136000, 10150000}, {MODE_CW, MODE_CW, MODE_USB, MODE_USB}},
 	{"20m", 14000000, 14400000, 25,25,92, 0,
 		{14010000, 14040000, 14074000, 14200000}, {MODE_CW, MODE_CW, MODE_USB, MODE_USB}},
@@ -139,9 +139,6 @@ struct band band_stack[] = {
 		{28000000, 28040000, 28074000, 28250000}, {MODE_CW, MODE_CW, MODE_USB, MODE_USB}},
 };
 
-#define INC_OFF 0
-#define INC_RIT 1
-#define INC_XIT	2
 
 #define VFO_A 0 
 #define VFO_B 1 
@@ -157,9 +154,6 @@ int	data_delay = 700;
 #define MAX_RIT 25000
 //how much to shift on rit
 int	rit_delta = 0;
-
-
-int select_incremental_tuning = INC_OFF;
 
 GtkWidget *display_area = NULL;
 static int redraw_flag = 1; 
@@ -1432,14 +1426,17 @@ static void focus_field(struct field *f){
 		edit_field(f_focus, MIN_KEY_DOWN);	
 
 	//if the button has been pressed, do the needful
-	if (f_focus->value_type == FIELD_TOGGLE || f_focus->value_type == FIELD_BUTTON)
+	if (f_focus->value_type == FIELD_TOGGLE || 
+			f_focus->value_type == FIELD_BUTTON)
 		do_cmd(f->cmd);
 }
 
+// setting the frequency is complicated by having to take care of the
+// rit/split and power levels associated with each frequency
 void set_operating_freq(int dial_freq, char *response){
 	struct field *rit = get_field("#rit");
 	struct field *split = get_field("#split");
-	char freq_request[12];
+	char freq_request[30];
  
 	if (!strcmp(rit->value, "ON")){
 		if (!in_tx)
@@ -1455,7 +1452,44 @@ void set_operating_freq(int dial_freq, char *response){
 	}
 	else
 			sprintf(freq_request, "r1:freq=%d", dial_freq);
+
+	//set the power levels
+	long operating_freq = atoi(freq_request + strlen("r1:freq="));
+	//find the best match for this frequency in the bands table
+	int max_power = 0;
+	int power = 0;
+	for (int i = 0; i < sizeof(band_stack)/sizeof(struct band); i++){
+		if (band_stack[i].start <= operating_freq && 
+				operating_freq <= band_stack[i].stop){
+			max_power = band_stack[i].max;
+			power = band_stack[i].power;
+		}
+	} 
+	// now, we set this up in the gui
+	struct field *f_power = get_field("tx_power");
+	f_power->max = max_power;
+	sprintf(f_power->value, "%d", power);
+
+	edit_field(f_power, 0);
+	printf("max_power set to %d watts\n", f_power->max);
+
+	//get back to setting the frequency
 	sdr_request(freq_request, response);
+}
+
+void band_stack_update_power(int power){
+	struct field *f = get_field("r1:freq");
+	long freq = atol(f->value);
+
+	for (int i = 0; i < sizeof(band_stack)/sizeof(struct band); i++){
+		if (band_stack[i].start <= freq && 
+				freq <= band_stack[i].stop){
+				if (power < band_stack[i].max)
+					band_stack[i].power = power;
+				else
+					band_stack[i].power = band_stack[i].max;
+		}
+	} 
 }
 
 //set the field directly to a particuarl value, programmatically
@@ -2227,6 +2261,7 @@ long get_freq(){
 	return atol(get_field("r1:freq")->value);
 }
 
+/*
 void set_freq(long freq){
 	struct field *f = get_field("r1:freq");
 	if (freq < 10)
@@ -2236,6 +2271,16 @@ void set_freq(long freq){
 
 	sprintf(f->value, "%ld", freq);
 	update_field(f);
+}
+*/
+
+//this is used to trigger an actual frequency change
+//by eventually calling set_operating_freq() through do_cmd
+//and update the frequency display as well
+void set_freq(long freq){
+	char cmd[100];
+	sprintf(cmd, "r1:freq:%ld", freq);
+	do_cmd(cmd);
 }
 
 void set_mode(char *mode){
@@ -2295,13 +2340,6 @@ int is_in_tx(){
 
 /* handle the ui request and update the controls */
 
-
-void set_rx_freq(int f){
-	freq_hdr = f;
-
-	set_lo(f - ((rx_list->tuned_bin * 96000)/MAX_BINS));
-}
-
 void change_band(char *request){
 	int i, old_band, new_band; 
 	int max_bands = sizeof(band_stack)/sizeof(struct band);
@@ -2349,112 +2387,14 @@ void change_band(char *request){
 			stack = 0;
 		band_stack[new_band].index = stack;
 	}
-	//sprintf(buff, "%d", band_stack[new_band].freq[stack]);
-	//set_field("r1:freq", buff);	
-	//set_field("r1:mode", mode_name[band_stack[new_band].mode[stack]]);	
-	set_mode(mode_name[band_stack[new_band].mode[stack]]);
-	set_freq(band_stack[new_band].freq[stack]);
+	sprintf(buff, "%d", band_stack[new_band].freq[stack]);
+	set_field("r1:freq", buff);	
+	set_field("r1:mode", mode_name[band_stack[new_band].mode[stack]]);	
+	//sprintf(buff, "r1:freq=%d", band_stack[new_band].freq[stack]);
+	//do_cmd(buff);
+	//set_mode(mode_name[band_stack[new_band].mode[stack]]);
+	//set_freq(band_stack[new_band].freq[stack]);
 }
-
-/*
-void switch_band(){
-	struct field *f_freq, *f_band;
-	int old_freq, freq_khz, new_freq;
-	char buff[100];
-	
-	f_freq = get_field("r1:freq");
-	f_band = get_field("#band");
-
-	old_freq = atoi(f_freq->value);	
-	if (old_freq >= 1800000 && old_freq < 2000000)
-		freq_khz = old_freq - 1800000;
-	else if (old_freq >= 3500000 && old_freq < 4000000)
-		freq_khz = old_freq - 3500000;
-	else if (old_freq >= 5500000 && old_freq < 5600000)
-		freq_khz = old_freq - 5500000;
-	else
-		freq_khz = old_freq % 1000000; 
-
-	if (!strcmp(f_band->value, "20M"))
-		new_freq = 14000000 + freq_khz;
-	else if (!strcmp(f_band->value, "15M"))
-		new_freq = 21000000 + freq_khz;
-	else if (!strcmp(f_band->value, "10M"))
-		new_freq = 28000000 + freq_khz;
-	else if (!strcmp(f_band->value, "40M"))
-		new_freq = 7000000 + freq_khz;
-	else if (!strcmp(f_band->value, "80M"))
-		new_freq = 3500000 + freq_khz;
-	else if (!strcmp(f_band->value, "160M"))
-		new_freq = 1800000 + freq_khz;
-	else if (!strcmp(f_band->value, "30M"))
-		new_freq = 10000000 + freq_khz;
-	else if (!strcmp(f_band->value, "17M"))
-		new_freq = 18000000 + freq_khz;
-	else if (!strcmp(f_band->value, "60M"))
-		new_freq = 5500000 + freq_khz;
-	else
-		new_freq = old_freq;
-
-	sprintf(f_freq->value, "%d", new_freq);
-	sprintf(buff, "r1:freq=%d", new_freq);	
-	update_field(f_freq);
-	do_cmd(buff);
-}
-*/
-
-/*
-void do_calibration(){
-	int fxtal_new, bfo_new;
-	//check if the calibration has been invoked
-	puts("Calibration Procedure\n"
-		"Monitor the signal at TP1. It should be approximately at 10 MHz\n"
-		"Use the tuning dial to set it to exactly 10 MHz\n"
-		"(You can monitor it on  radio at 10.000.000 MHz and tune the main knob\n"
-		" until it is exactly zero-beat\n"
-		"When you are done. Press the Main tuning knob to save the setting\n"); 
-
-	si570_freq(10000000);
-	while (!read_switch(ENC2_SW)){
-		int steps = enc_read(&enc_b);
-		if (steps){
-			fxtal += 20 * steps;
-			si570_freq(10000000);
-			printf("\r %ld ", (long)fxtal);
-			fflush(stdout);
-		}
-	}	
-	//debounce the encoder switch
-	while(read_switch(ENC2_SW))
-		delay(10);
-	delay(100);
-
-	fxtal_new = fxtal;
-	printf("\nThe new Si570's calculated frequency is %ld\n", fxtal_new);
-	puts("We have to measure the frequency of the second oscillator exactly\n"
-	"We do this by beating it with the Si570.\n"
-	"Tune the frequency until the audio pitch drops"
-	" and the audio is  at perfect zero-beat.\n"
-	"Press the tuning knob to confirm"); 
-
-	set_lo(0);
-	while (!read_switch(ENC2_SW)){
-		int steps = enc_read(&enc_b);
-		if (steps){
-			bfo_freq += 10 * steps;
-			set_lo(0);
-			printf("\r %ld ", (long)bfo_freq);
-			fflush(stdout);
-		}
-	}	
-	//debounce the encoder switch
-	while(read_switch(ENC2_SW))
-		delay(10);
-	delay(100);
-
-	printf("\nBFO is at %ld\n", (long) bfo_freq);	
-}
-*/
 
 void do_cmd(char *cmd){	
 	char request[1000], response[1000], buff[100];
@@ -2468,7 +2408,6 @@ void do_cmd(char *cmd){
 		save_user_settings();
 		exit(0);
 	}
-
 	else if (!strcmp(request, "#tx")){	
 		tx_on();
 	}
@@ -2542,6 +2481,9 @@ void do_cmd(char *cmd){
 			set_operating_freq(atoi(request+8), response);
 		else
 			sdr_request(request, response);
+		if (!strncmp(request, "tx_power=", strlen("tx_power="))){
+			band_stack_update_power(atoi(request+strlen("tx_power=")));
+	}
 	}
 }
 
@@ -2582,8 +2524,15 @@ void cmd_line(char *cmd){
 		sprintf(response, "\n[Your grid is set to %s]\n", mygrid);
 		write_log(response);
 	}
-	else if(!strcmp(exec, "freq") || !strcmp(exec, "f"))
-		set_freq(atol(args));
+	else if(!strcmp(exec, "freq") || !strcmp(exec, "f")){
+		long freq = atol(args);
+		if (freq < 10000)
+			freq *= 1000;
+		char freq_s[20];
+		sprintf(freq_s, "%ld",freq);
+		set_field("r1:freq", freq_s);
+		//set_freq(atol(args));
+	}
 	else if (!strcmp(exec, "mode") || !strcmp(exec, "m"))
 		set_mode(args);
 	else if (!strcmp(exec, "t"))
@@ -2638,7 +2587,6 @@ int main( int argc, char* argv[] ) {
 	int e = g_timeout_add(10, ui_tick, NULL);
 	printf("g_timeout_add() = %d\n", e);
 
-	set_field("#band", "40M");
 	set_field("r1:freq", "7000000");
 	set_field("r1:mode", "USB");
 	set_field("tx_gain", "24");
