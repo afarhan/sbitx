@@ -255,6 +255,7 @@ struct font_style font_table[] = {
 
 struct field {
 	char	*cmd;
+	int		(*fn)(struct field *f, cairo_t *gfx, int event);
 	int		x, y, width, height;
 	char	label[30];
 	int 	label_width;
@@ -271,131 +272,131 @@ char settings_updated = 0;
 
 // the cmd fields that have '#' are not to be sent to the sdr
 struct field main_controls[] = {
-	{ "r1:freq", 600, 0, 150, 49, "", 5, "14000000", FIELD_NUMBER, FONT_LARGE_VALUE, 
+	{ "r1:freq", NULL, 600, 0, 150, 49, "", 5, "14000000", FIELD_NUMBER, FONT_LARGE_VALUE, 
 		"", 500000, 30000000, 100},
 
 	// Main RX
-	{ "r1:volume", 750, 330, 50, 50, "AUDIO", 40, "60", FIELD_NUMBER, FONT_FIELD_VALUE, 
+	{ "r1:volume", NULL, 750, 330, 50, 50, "AUDIO", 40, "60", FIELD_NUMBER, FONT_FIELD_VALUE, 
 		"", 0, 1024, 1},
-	{ "r1:mode", 500, 330, 50, 50, "MODE", 40, "USB", FIELD_SELECTION, FONT_FIELD_VALUE, 
+	{ "r1:mode", NULL, 500, 330, 50, 50, "MODE", 40, "USB", FIELD_SELECTION, FONT_FIELD_VALUE, 
 		"USB/LSB/CW/CWR/FT8/PSK31/RTTY/DIGITAL/2TONE", 0,0, 0},
-	{ "r1:low", 550, 330, 50, 50, "LOW", 40, "300", FIELD_NUMBER, FONT_FIELD_VALUE, 
+	{ "r1:low", NULL, 550, 330, 50, 50, "LOW", 40, "300", FIELD_NUMBER, FONT_FIELD_VALUE, 
 		"", 0,4000, 50},
-	{ "r1:high", 600, 330, 50, 50, "HIGH", 40, "3000", FIELD_NUMBER, FONT_FIELD_VALUE, 
+	{ "r1:high", NULL, 600, 330, 50, 50, "HIGH", 40, "3000", FIELD_NUMBER, FONT_FIELD_VALUE, 
 		"", 300, 4000, 50},
 
-	{ "r1:agc", 650, 330, 50, 50, "AGC", 40, "SLOW", FIELD_SELECTION, FONT_FIELD_VALUE, 
+	{ "r1:agc", NULL, 650, 330, 50, 50, "AGC", 40, "SLOW", FIELD_SELECTION, FONT_FIELD_VALUE, 
 		"OFF/SLOW/FAST", 0, 1024, 1},
-	{ "r1:gain", 700, 330, 50, 50, "IF", 40, "60", FIELD_NUMBER, FONT_FIELD_VALUE, 
+	{ "r1:gain", NULL, 700, 330, 50, 50, "IF", 40, "60", FIELD_NUMBER, FONT_FIELD_VALUE, 
 		"", 0, 100, 1},
 
 	//tx 
-	{ "tx_power", 600, 380, 50, 50, "WATTS", 40, "40", FIELD_NUMBER, FONT_FIELD_VALUE, 
+	{ "tx_power", NULL, 600, 380, 50, 50, "WATTS", 40, "40", FIELD_NUMBER, FONT_FIELD_VALUE, 
 		"", 1, 100, 1},
-	{ "tx_gain", 550, 380, 50, 50, "MIC", 40, "50", FIELD_NUMBER, FONT_FIELD_VALUE, 
+	{ "tx_gain", NULL, 550, 380, 50, 50, "MIC", 40, "50", FIELD_NUMBER, FONT_FIELD_VALUE, 
 		"", 0, 100, 1},
 
-	{ "#split", 700, 380, 50, 50, "SPLIT", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, 
+	{ "#split", NULL, 700, 380, 50, 50, "SPLIT", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, 
 		"ON/OFF", 0,0,0},
-	{ "tx_compress", 750, 380, 50, 50, "COMP", 40, "0", FIELD_NUMBER, FONT_FIELD_VALUE, 
+	{ "tx_compress", NULL, 750, 380, 50, 50, "COMP", 40, "0", FIELD_NUMBER, FONT_FIELD_VALUE, 
 		"ON/OFF", 0,100,1},
-	{"#rit", 550, 0, 50, 50, "RIT", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, 
+	{"#rit", NULL, 550, 0, 50, 50, "RIT", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, 
 		"ON/OFF", 0,0,0},
-	{ "#tx_wpm", 650, 380, 50, 50, "WPM", 40, "12", FIELD_NUMBER, FONT_FIELD_VALUE, 
+	{ "#tx_wpm", NULL, 650, 380, 50, 50, "WPM", 40, "12", FIELD_NUMBER, FONT_FIELD_VALUE, 
 		"", 1, 50, 1},
-/*	{ "#tx_key", 600, 430, 50, 50, "KEY", 40, "HARD", FIELD_SELECTION, FONT_FIELD_VALUE, 
+/*	{ "#tx_key", NULL, 600, 430, 50, 50, "KEY", 40, "HARD", FIELD_SELECTION, FONT_FIELD_VALUE, 
 		"SOFT/HARD", 0, 0, 0},*/
-	{ "tx_record", 700, 430, 50, 50, "RECORD", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, 
+	{ "tx_record", NULL, 700, 430, 50, 50, "RECORD", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, 
 		"ON/OFF", 0,0, 0},
-
-	{ "#tx", 550, 430, 75, 50, "TX", 40, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+	
+	{ "#tx", NULL, 550, 430, 75, 50, "TX", 40, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
 		"RX/TX", 0,0, 0},
 
-	{ "#rx", 625, 430, 75, 50, "RX", 40, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+	{ "#rx", NULL, 625, 430, 75, 50, "RX", 40, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
 		"RX/TX", 0,0, 0},
 	
 	// top row
-	{"#step", 400, 0 ,50, 50, "STEP", 1, "50Hz", FIELD_SELECTION, FONT_FIELD_VALUE, 
+	{"#step", NULL, 400, 0 ,50, 50, "STEP", 1, "50Hz", FIELD_SELECTION, FONT_FIELD_VALUE, 
 		"100KHz/10KHz/1KHz/100Hz/10Hz", 0,0,0},
-	{"#vfo", 450, 0 ,50, 50, "VFO", 1, "A", FIELD_SELECTION, FONT_FIELD_VALUE, 
+	{"#vfo", NULL, 450, 0 ,50, 50, "VFO", 1, "A", FIELD_SELECTION, FONT_FIELD_VALUE, 
 		"A/B", 0,0,0},
-	{"#span", 500, 0 ,50, 50, "SPAN", 1, "25KHz", FIELD_SELECTION, FONT_FIELD_VALUE, 
+	{"#span", NULL, 500, 0 ,50, 50, "SPAN", 1, "25KHz", FIELD_SELECTION, FONT_FIELD_VALUE, 
 		"25KHz/10KHz/2.5KHz", 0,0,0},
 
-	{"spectrum", 400, 80, 400, 100, "Spectrum ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, 
+	{"spectrum", NULL, 400, 80, 400, 100, "Spectrum ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, 
 		"", 0,0,0},   
-	{"waterfall", 400, 180 , 400, 150, "Waterfall ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, 
+	{"waterfall", NULL, 400, 180 , 400, 150, "Waterfall ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, 
 		"", 0,0,0},
-	{"#log", 0, 0 , 400, 330, "log", 70, "log box", FIELD_LIST, FONT_LOG, 
+	{"#log", NULL, 0, 0 , 400, 330, "log", 70, "log box", FIELD_LIST, FONT_LOG, 
 		"nothing valuable", 0,0,0},
 
-	{"#text_in", 0, 330, 400, 30, "text", 70, "text box", FIELD_TEXT, FONT_LOG, 
+	{"#text_in", NULL, 0, 330, 400, 30, "text", 70, "text box", FIELD_TEXT, FONT_LOG, 
 		"nothing valuable", 0,128,0},
 
 
-	{"#close", 750, 430 ,50, 50, "CLOSE", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+	{"#close", NULL, 750, 430 ,50, 50, "CLOSE", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
 		"", 0,0,0},
-	{"#off", 750, 0 ,50, 50, "OFF", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+	{"#off", NULL, 750, 0 ,50, 50, "OFF", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
 		"", 0,0,0},
 
 	/* band stack registers */
-	{"#10m", 400, 330, 50, 50, "10 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+	{"#10m", NULL, 400, 330, 50, 50, "10 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
 		"", 0,0,0},
-	{"#12m", 450, 330, 50, 50, "12 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+	{"#12m", NULL, 450, 330, 50, 50, "12 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
 		"", 0,0,0},
-	{"#15m", 400, 380, 50, 50, "15 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+	{"#15m", NULL, 400, 380, 50, 50, "15 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
 		"", 0,0,0},
-	{"#17m", 450, 380, 50, 50, "17 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+	{"#17m", NULL, 450, 380, 50, 50, "17 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
 		"", 0,0,0},
-	{"#20m", 500, 380, 50, 50, "20 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+	{"#20m", NULL, 500, 380, 50, 50, "20 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
 		"", 0,0,0},
-	{"#30m", 400, 430, 50, 50, "30 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+	{"#30m", NULL, 400, 430, 50, 50, "30 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
 		"", 0,0,0},
-	{"#40m", 450, 430, 50, 50, "40 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+	{"#40m", NULL, 450, 430, 50, 50, "40 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
 		"", 0,0,0},
-	{"#80m", 500, 430, 50, 50, "80 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+	{"#80m", NULL, 500, 430, 50, 50, "80 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
 		"", 0,0,0},
 
 	//soft keyboard
-	{"#kbd_q", 0, 360 ,40, 30, "#", 1, "q", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_w", 40, 360, 40, 30, "1", 1, "w", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_e", 80, 360, 40, 30, "2", 1, "e", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_r", 120, 360, 40, 30, "3", 1, "r", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_t", 160, 360, 40, 30, "(", 1, "t", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_y", 200, 360, 40, 30, ")", 1, "y", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_u", 240, 360, 40, 30, "_", 1, "u", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_i", 280, 360, 40, 30, "-", 1, "i", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_o", 320, 360, 40, 30, "+", 1, "o", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_o", 360, 360, 40, 30, "@", 1, "p", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_q", NULL, 0, 360 ,40, 30, "#", 1, "q", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_w", NULL, 40, 360, 40, 30, "1", 1, "w", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_e", NULL, 80, 360, 40, 30, "2", 1, "e", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_r", NULL, 120, 360, 40, 30, "3", 1, "r", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_t", NULL, 160, 360, 40, 30, "(", 1, "t", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_y", NULL, 200, 360, 40, 30, ")", 1, "y", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_u", NULL, 240, 360, 40, 30, "_", 1, "u", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_i", NULL, 280, 360, 40, 30, "-", 1, "i", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_o", NULL, 320, 360, 40, 30, "+", 1, "o", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_o", NULL, 360, 360, 40, 30, "@", 1, "p", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
 
-	{"#kbd_a", 0, 390 ,40, 30, "*", 1, "a", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_s", 40, 390, 40, 30, "4", 1, "s", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_d", 80, 390, 40, 30, "5", 1, "d", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_f", 120, 390, 40, 30, "6", 1, "f", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_g", 160, 390, 40, 30, "/", 1, "g", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_h", 200, 390, 40, 30, ":", 1, "h", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_j", 240, 390, 40, 30, ";", 1, "j", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_k", 280, 390, 40, 30, "'", 1, "k", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_l", 320, 390, 40, 30, "\"", 1, "l", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_bs", 360, 390, 40, 30, "", 1, "DEL", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0},
+	{"#kbd_a", NULL, 0, 390 ,40, 30, "*", 1, "a", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_s", NULL, 40, 390, 40, 30, "4", 1, "s", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_d", NULL, 80, 390, 40, 30, "5", 1, "d", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_f", NULL, 120, 390, 40, 30, "6", 1, "f", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_g", NULL, 160, 390, 40, 30, "/", 1, "g", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_h", NULL, 200, 390, 40, 30, ":", 1, "h", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_j", NULL, 240, 390, 40, 30, ";", 1, "j", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_k", NULL, 280, 390, 40, 30, "'", 1, "k", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_l", NULL, 320, 390, 40, 30, "\"", 1, "l", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_bs", NULL, 360, 390, 40, 30, "", 1, "DEL", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0},
  
-	{"#kbd_alt", 0, 420 ,40, 30, "", 1, "Alt", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_z", 40, 420, 40, 30, "7", 1, "z", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_x", 80, 420, 40, 30, "8", 1, "x", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_c", 120, 420, 40, 30, "9", 1, "c", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_v", 160, 420, 40, 30, "?", 1, "v", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_b", 200, 420, 40, 30, "!", 1, "b", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_n", 240, 420, 40, 30, ",", 1, "n", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_m", 280, 420, 40, 30, ".", 1, "m", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_alt", NULL, 0, 420 ,40, 30, "", 1, "Alt", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_z", NULL, 40, 420, 40, 30, "7", 1, "z", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_x", NULL, 80, 420, 40, 30, "8", 1, "x", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_c", NULL, 120, 420, 40, 30, "9", 1, "c", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_v", NULL, 160, 420, 40, 30, "?", 1, "v", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_b", NULL, 200, 420, 40, 30, "!", 1, "b", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_n", NULL, 240, 420, 40, 30, ",", 1, "n", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_m", NULL, 280, 420, 40, 30, ".", 1, "m", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
 
-	{"#kbd_cmd", 0, 450, 80, 30, "", 1, "\\cmd", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_0", 80, 450, 40, 30, "", 1, "0", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_ ", 120, 450, 120, 30, "", 1, " SPACE ", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_.", 240, 450, 40, 30, "\"", 1, ".", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_?", 280, 450, 40, 30, "?", 1, "?", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_Enter", 320, 450, 80, 30, "", 1, "Enter", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_cmd", NULL, 0, 450, 80, 30, "", 1, "\\cmd", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_0", NULL, 80, 450, 40, 30, "", 1, "0", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_ ", NULL, 120, 450, 120, 30, "", 1, " SPACE ", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_.", NULL, 240, 450, 40, 30, "\"", 1, ".", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_?", NULL, 280, 450, 40, 30, "?", 1, "?", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_Enter", NULL, 320, 450, 80, 30, "", 1, "Enter", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
 	//the last control has empty cmd field 
-	{"", 0, 0 ,0, 0, "#", 1, "Q", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
+	{"", NULL, 0, 0 ,0, 0, "#", 1, "Q", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
 };
 
 
@@ -2483,7 +2484,7 @@ void do_cmd(char *cmd){
 			sdr_request(request, response);
 		if (!strncmp(request, "tx_power=", strlen("tx_power="))){
 			band_stack_update_power(atoi(request+strlen("tx_power=")));
-	}
+		}
 	}
 }
 
