@@ -162,6 +162,11 @@ int spectrum_span = 48000;
 
 void do_cmd(char *cmd);
 void cmd_line(char *cmd);
+
+// event ids, some of them are mapped from gtk itself
+#define FIELD_DRAW 0
+#define FIELD_UPDATE 1 
+#define FIELD_EDIT 0x10000
 #define MIN_KEY_UP 0xFF52
 #define MIN_KEY_DOWN	0xFF54
 #define MIN_KEY_LEFT 0xFF51
@@ -246,6 +251,7 @@ struct font_style font_table[] = {
 	{FONT_SMALL, 0, 1, 1, "Mono", 10, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
 	{FONT_LOG, 0, 1, 0, "Mono", 14, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
 };
+
 /*
 	Warning: The field selection is used for TOGGLE and SELECTION fields
 	each selection by the '/' should be unique. otherwise, the simple logic will
@@ -255,7 +261,7 @@ struct font_style font_table[] = {
 
 struct field {
 	char	*cmd;
-	int		(*fn)(struct field *f, cairo_t *gfx, int event);
+	int		(*fn)(struct field *f, cairo_t *gfx, int event, int param_a, int param_b);
 	int		x, y, width, height;
 	char	label[30];
 	int 	label_width;
@@ -266,13 +272,17 @@ struct field {
 	int	 	min, max, step;
 };
 
+int do_spectrum(struct field *f, cairo_t *gfx, int e, int a, int b);
+int do_waterfall(struct field *f, cairo_t *gfx, int event, int a, int b);
+int do_dial(struct field *f, cairo_t *gfx, int event, int a, int b);
+
 
 struct field *active_layout = NULL;
 char settings_updated = 0;
 
 // the cmd fields that have '#' are not to be sent to the sdr
 struct field main_controls[] = {
-	{ "r1:freq", NULL, 600, 0, 150, 49, "", 5, "14000000", FIELD_NUMBER, FONT_LARGE_VALUE, 
+	{ "r1:freq", do_dial, 600, 0, 150, 49, "", 5, "14000000", FIELD_NUMBER, FONT_LARGE_VALUE, 
 		"", 500000, 30000000, 100},
 
 	// Main RX
@@ -323,9 +333,9 @@ struct field main_controls[] = {
 	{"#span", NULL, 500, 0 ,50, 50, "SPAN", 1, "25KHz", FIELD_SELECTION, FONT_FIELD_VALUE, 
 		"25KHz/10KHz/2.5KHz", 0,0,0},
 
-	{"spectrum", NULL, 400, 80, 400, 100, "Spectrum ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, 
+	{"spectrum", do_spectrum, 400, 80, 400, 100, "Spectrum ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, 
 		"", 0,0,0},   
-	{"waterfall", NULL, 400, 180 , 400, 150, "Waterfall ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, 
+	{"waterfall", do_waterfall, 400, 180 , 400, 150, "Waterfall ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, 
 		"", 0,0,0},
 	{"#log", NULL, 0, 0 , 400, 330, "log", 70, "log box", FIELD_LIST, FONT_LOG, 
 		"nothing valuable", 0,0,0},
@@ -668,14 +678,13 @@ void sdr_modulation_update(int32_t *samples, int count){
 	}
 }
 
-void draw_modulation(GtkWidget *widget, cairo_t *gfx){
+void draw_modulation(struct field *f, cairo_t *gfx){
 
 	int y, sub_division, i, grid_height;
-	struct field *f;
 	long	freq, freq_div;
 	char	freq_text[20];
 
-	f = get_field("spectrum");
+//	f = get_field("spectrum");
 	sub_division = f->width / 10;
 	grid_height = f->height - 10;
 
@@ -751,15 +760,12 @@ void init_waterfall(){
 }
 
 
-void draw_waterfall(GtkWidget *widget, cairo_t *gfx){
-	struct field *f;
-	f = get_field("waterfall");
+void draw_waterfall(struct field *f, cairo_t *gfx){
 
 	memmove(waterfall_map + f->width * 3, waterfall_map, 
 		f->width * (f->height - 1) * 3);
 
 	int index = 0;
-
 	
 	for (int i = 0; i < f->width; i++){
 			int v = wf[i] * 2;
@@ -797,26 +803,24 @@ void draw_waterfall(GtkWidget *widget, cairo_t *gfx){
 	cairo_fill(gfx);
 }
 
-void draw_spectrum(GtkWidget *widget, cairo_t *gfx){
+int dbg_count = 0;
+void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
 	int y, sub_division, i, grid_height, span;
 	struct field *f;
 	long	freq, freq_div;
 	char	freq_text[20];
 
-
 	if (in_tx){
-		draw_modulation(widget, gfx);
+		draw_modulation(f_spectrum, gfx);
 		return;
 	}
 
-	f = get_field("r1:freq");
-	freq = atol(f->value);
-	f = get_field("#span");
-	span = atoi(f->value);
+	freq = atol(get_field("r1:freq")->value);
+	span = atoi(get_field("#span")->value);
 	// the step is in khz, we multiply by 1000 and div 10(divisions) = 100 
-	freq_div = atol(f->value) * 100;  
+	freq_div = span * 100;  
 
-	f = get_field("spectrum");
+	f = f_spectrum;
 	sub_division = f->width / 10;
 	grid_height = f->height - 10;
 
@@ -910,7 +914,16 @@ void draw_spectrum(GtkWidget *widget, cairo_t *gfx){
 		fill_rect(gfx, f->x + needle_x, f->y, 1, grid_height,  SPECTRUM_NEEDLE);
 	}
 
-	draw_waterfall(widget, gfx);
+	draw_waterfall(get_field("waterfall"), gfx);
+}
+
+int waterfall_fn(struct field *f, cairo_t *gfx, int event, int a, int b){
+		if(f->fn(f, gfx, FIELD_DRAW, -1, -1))
+	switch(FIELD_DRAW){
+		case FIELD_DRAW:
+			draw_waterfall(f, gfx);
+			break;
+	}
 }
 
 
@@ -1060,7 +1073,7 @@ void draw_list(cairo_t *gfx, struct field *f){
 	}
 }
 
-void draw_dial(GtkWidget *widget, cairo_t *gfx, struct field *f){
+void draw_dial(struct field *f, cairo_t *gfx){
 	struct font_style *s = font_table + 0;
 	struct field *rit = get_field("#rit");
 	struct field *split = get_field("#split");
@@ -1134,18 +1147,14 @@ void draw_dial(GtkWidget *widget, cairo_t *gfx, struct field *f){
 
 void draw_field(GtkWidget *widget, cairo_t *gfx, struct field *f){
 	struct font_style *s = font_table + 0;
-	if (!strcmp(f->cmd, "spectrum")){
-		draw_spectrum(widget, gfx);
-		return;
-	}
-	if (!strcmp(f->cmd, "waterfall")){
-		return;
+
+	//if there is a handling function, use that else
+	//skip down to the default behaviour of the controls
+	if (f->fn){
+		if(f->fn(f, gfx, FIELD_DRAW, -1, -1))
+			return;
 	}
 
-	if (!strcmp(f->cmd, "r1:freq")){
-		draw_dial(widget, gfx, f);
-		return;
-	}
 	fill_rect(gfx, f->x, f->y, f->width,f->height, COLOR_BACKGROUND);
 	if (f_focus == f)
 		rect(gfx, f->x, f->y, f->width-1,f->height, COLOR_SELECTED_BOX, 2);
@@ -1245,7 +1254,6 @@ void redraw_main_screen(GtkWidget *widget, cairo_t *gfx){
 			draw_field(widget, gfx, active_layout + i);
 		}
 	}
-	draw_spectrum(widget, gfx);
 }
 
 /* gtk specific routines */
@@ -1470,9 +1478,7 @@ void set_operating_freq(int dial_freq, char *response){
 	struct field *f_power = get_field("tx_power");
 	f_power->max = max_power;
 	sprintf(f_power->value, "%d", power);
-
 	edit_field(f_power, 0);
-	printf("max_power set to %d watts\n", f_power->max);
 
 	//get back to setting the frequency
 	sdr_request(freq_request, response);
@@ -1552,6 +1558,35 @@ void set_field(char *id, char *value){
 }
 
 
+int do_spectrum(struct field *f, cairo_t *gfx, int event, int a, int b){
+	switch(event){
+		case FIELD_DRAW:
+			draw_spectrum(f, gfx);
+			return 1;
+		break;
+	}
+	return 0;	
+}
+
+int do_waterfall(struct field *f, cairo_t *gfx, int event, int a, int b){
+	switch(event){
+		case FIELD_DRAW:
+			draw_waterfall(f, gfx);
+			return 1;
+		break;
+	}
+	return 0;	
+}
+
+int do_dial(struct field *f, cairo_t *gfx, int event, int a, int b){
+	switch(event){
+		case FIELD_DRAW:
+			draw_dial(f, gfx);
+			return 1;
+		break;
+	}
+	return 0;	
+}
 
 void tx_on(){
 	char response[100];
@@ -1714,20 +1749,10 @@ static gboolean on_key_press (GtkWidget *widget, GdkEventKey *event, gpointer us
 				edit_field(f_focus, MIN_KEY_DOWN);
 			}
 			break;
-/*		case MIN_KEY_ESC:
-			focus_field(NULL);
-			break;
-*/
 		case 65507:
 			key_modifier |= event->keyval;
 			//printf("key_modifier set to %d\n", key_modifier);
 			break;
-/*
-		case MIN_KEY_TAB:
-			tx_on();
-      puts("Tx is ON!");
-			break;
-*/
 		default:
 			//by default, all text goes to the text_input control
 			if (event->keyval == MIN_KEY_ENTER)
