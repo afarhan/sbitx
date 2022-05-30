@@ -48,10 +48,6 @@ char pins[15] = {0, 2, 3, 6, 7,
 #define ENC2_B (2)
 #define ENC2_SW (3)
 
-#define SW1 (6)
-#define SW2 (10)
-#define SW3 (11)
-#define SW4 (7)
 #define SW5 (22)
 #define PTT (7)
 #define DASH (21)
@@ -59,6 +55,12 @@ char pins[15] = {0, 2, 3, 6, 7,
 #define ENC_FAST 1
 #define ENC_SLOW 5
 
+//mouse/touch screen state
+static int mouse_down = 0;
+static int last_mouse_x = -1;
+static int last_mouse_y = -1;
+
+//encoder state
 struct encoder {
 	int pin_a,  pin_b;
 	int speed;
@@ -66,15 +68,236 @@ struct encoder {
 	int history;
 };
 
+#define COLOR_SELECTED_TEXT 0
+#define COLOR_TEXT 1
+#define COLOR_TEXT_MUTED 2
+#define COLOR_SELECTED_BOX 3 
+#define COLOR_BACKGROUND 4
+#define COLOR_FREQ 5
+#define COLOR_LABEL 6
+#define SPECTRUM_BACKGROUND 7
+#define SPECTRUM_GRID 8
+#define SPECTRUM_PLOT 9
+#define SPECTRUM_NEEDLE 10
+#define COLOR_CONTROL_BOX 11
+
+float palette[][3] = {
+	{1,1,1}, 		// COLOR_SELECTED_TEXT
+	{0,1,1},		// COLOR_TEXT
+	{0.5,0.5,0.5}, //COLOR_TEXT_MUTED
+	{1,1,1},		// COLOR_SELECTED_BOX
+	{0,0,0},		// COLOR_BACKGROUND
+	{1,1,0},		//COLOR_FREQ
+	{1,0,1},		//COLOR_LABEL
+	//spectrum
+	{0,0,0},	//SPECTRUM_BACKGROUND
+	{0.1, 0.1, 0.1}, //SPECTRUM_GRID
+	{1,1,0},	//SPECTRUM_PLOT
+	{0.2,0.2,0.2}, 	//SPECTRUM_NEEDLE
+	{0.5,0.5,0.5}, COLOR_CONTROL_BOX
+};
+
+char *ui_font = "Sans";
+int field_font_size = 12;
+// we just use a look-up table to define the fonts used
+// the struct field indexes into this table
+struct font_style {
+	int index;
+	double r, g, b;
+	char name[32];
+	int height;
+	int weight;
+	int type;
+};
+
+guint key_modifier = 0;
+
+#define FONT_FIELD_LABEL 0
+#define FONT_FIELD_VALUE 1
+#define FONT_LARGE_FIELD 2
+#define FONT_LARGE_VALUE 3
+#define FONT_SMALL 4
+#define FONT_LOG 5
+
+struct font_style font_table[] = {
+	{FONT_FIELD_LABEL, 0, 1, 1, "Mono", 14, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
+	{FONT_FIELD_VALUE, 1, 1, 1, "Mono", 14, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
+	{FONT_LARGE_FIELD, 0, 1, 1, "Mono", 14, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
+	{FONT_LARGE_VALUE, 1, 1, 1, "Arial", 24, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
+	{FONT_SMALL, 0, 1, 1, "Mono", 10, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
+	{FONT_LOG, 0, 1, 0, "Mono", 14, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
+};
+
 struct encoder enc_a, enc_b;
 
-#define TX_LINE 4
-#define BAND_SELECT 5
-#define LPF_A 5
-#define LPF_B 6
-#define LPF_C 10
-#define LPF_D 11
+#define FIELD_NUMBER 0
+#define FIELD_BUTTON 1
+#define FIELD_TOGGLE 2
+#define FIELD_SELECTION 3
+#define FIELD_TEXT 4
+#define FIELD_STATIC 5
+#define FIELD_LOG 6
 
+#define MAX_FIELD_LENGTH 128
+#define MAX_LOG_BUFFER 10000
+
+//we use just one text list in our user interface
+static int 	log_cols = 50;
+static char	log_buffer[MAX_LOG_BUFFER];
+static int	next_log = 0;
+
+// event ids, some of them are mapped from gtk itself
+#define FIELD_DRAW 0
+#define FIELD_UPDATE 1 
+#define FIELD_EDIT 2
+#define MIN_KEY_UP 0xFF52
+#define MIN_KEY_DOWN	0xFF54
+#define MIN_KEY_LEFT 0xFF51
+#define MIN_KEY_RIGHT 0xFF53
+#define MIN_KEY_ENTER 0xFF0D
+#define MIN_KEY_ESC	0xFF1B
+#define MIN_KEY_BACKSPACE 0xFF08
+#define MIN_KEY_TAB 0xFF09
+#define MIN_KEY_CONTROL 0xFFE3
+
+/* 	the field in focus will be exited when you hit an escape
+		the field in focus will be changeable until it loses focus
+		hover will always be on the field in focus.
+		if the focus is -1,then hover works
+*/
+
+/*
+	Warning: The field selection is used for TOGGLE and SELECTION fields
+	each selection by the '/' should be unique. otherwise, the simple logic will
+	get confused 
+*/
+
+
+//the main app window
+GtkWidget *window;
+GtkWidget *display_area = NULL;
+
+// these are callbacks called by the operating system
+static gboolean on_draw_event( GtkWidget* widget, cairo_t *cr, 
+	gpointer user_data); 
+static gboolean on_key_release (GtkWidget *widget, GdkEventKey *event, 
+	gpointer user_data);
+static gboolean on_key_press (GtkWidget *widget, GdkEventKey *event, 
+	gpointer user_data);
+static gboolean on_mouse_press (GtkWidget *widget, GdkEventButton *event, 
+	gpointer data); 
+static gboolean on_mouse_move (GtkWidget *widget, GdkEventButton *event, 
+	gpointer data); 
+static gboolean on_mouse_release (GtkWidget *widget, GdkEventButton *event, 
+	gpointer data); 
+static gboolean on_scroll (GtkWidget *widget, GdkEventScroll *event, 
+	gpointer data); 
+static gboolean on_window_state (GtkWidget *widget, GdkEventKey *event, 
+	gpointer user_data);
+static gboolean on_resize(GtkWidget *widget, GdkEventConfigure *event, 
+	gpointer user_data);
+gboolean ui_tick(gpointer gook);
+
+static int measure_text(cairo_t *gfx, char *text, int font_entry){
+	cairo_text_extents_t ext;
+	struct font_style *s = font_table + font_entry;
+	
+	cairo_select_font_face(gfx, s->name, s->type, s->weight);
+	cairo_set_font_size(gfx, s->height);
+	cairo_move_to(gfx, 0, 0);
+	cairo_text_extents(gfx, text, &ext);
+	return (int) ext.x_advance;
+}
+
+static void draw_text(cairo_t *gfx, int x, int y, char *text, int font_entry){
+	struct font_style *s  = font_table + font_entry;
+  cairo_set_source_rgb( gfx, s->r, s->g, s->b);
+	cairo_select_font_face(gfx, s->name, s->type, s->weight);
+	cairo_set_font_size(gfx, s->height);
+	cairo_move_to(gfx, x, y + s->height);
+	cairo_show_text(gfx, text);
+	//printf("drawing '%s' with font %s / %d\n", text, s->name, s->height);
+}
+
+static void fill_rect(cairo_t *gfx, int x, int y, int w, int h, int color){
+  cairo_set_source_rgb( gfx, palette[color][0], palette[color][1], palette[color][2]);
+	cairo_rectangle(gfx, x, y, w, h);
+  cairo_fill(gfx);
+}
+
+static void rect(cairo_t *gfx, int x, int y, int w, int h, 
+	int color, int thickness){
+
+  cairo_set_source_rgb( gfx, 
+		palette[color][0], 
+		palette[color][1], 
+		palette[color][2]);
+
+	cairo_set_line_width(gfx, thickness);
+	cairo_rectangle(gfx, x, y, w, h);
+  cairo_stroke(gfx);
+}
+
+
+void ui_init(int argc, char *argv[]){
+  
+  gtk_init( &argc, &argv );
+
+  window = gtk_window_new( GTK_WINDOW_TOPLEVEL );
+  gtk_window_set_default_size( GTK_WINDOW(window), 800, 480 );
+  gtk_window_set_title( GTK_WINDOW(window), "sBITX" );
+  
+  display_area = gtk_drawing_area_new();
+
+  gtk_container_add( GTK_CONTAINER(window), display_area );
+
+  g_signal_connect( G_OBJECT(window), "destroy", G_CALLBACK( gtk_main_quit ), NULL );
+  g_signal_connect( G_OBJECT(display_area), "draw", G_CALLBACK( on_draw_event ), NULL );
+  g_signal_connect (G_OBJECT (window), "key_press_event", G_CALLBACK (on_key_press), NULL);
+  g_signal_connect (G_OBJECT (window), "key_release_event", G_CALLBACK (on_key_release), NULL);
+  g_signal_connect (G_OBJECT (window), "window_state_event", G_CALLBACK (on_window_state), NULL);
+	g_signal_connect (G_OBJECT(display_area), "button_press_event", G_CALLBACK (on_mouse_press), NULL);
+	g_signal_connect (G_OBJECT(window), "button_release_event", G_CALLBACK (on_mouse_release), NULL);
+	g_signal_connect (G_OBJECT(display_area), "motion_notify_event", G_CALLBACK (on_mouse_move), NULL);
+	g_signal_connect (G_OBJECT(display_area), "scroll_event", G_CALLBACK (on_scroll), NULL);
+	g_signal_connect(G_OBJECT(window), "configure_event", G_CALLBACK(on_resize), NULL);
+
+  /* Ask to receive events the drawing area doesn't normally
+   * subscribe to. In particular, we need to ask for the
+   * button press and motion notify events that want to handle.
+   */
+  gtk_widget_set_events (display_area, gtk_widget_get_events (display_area)
+                                     | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK 
+																			| GDK_SCROLL_MASK
+                                     | GDK_POINTER_MOTION_MASK);
+
+
+  gtk_widget_show_all( window );
+	gtk_window_fullscreen(GTK_WINDOW(window));
+}
+
+/****************************************************************************
+	Using the above hooks and primitives, we build user interface controls,
+	All of them are defined by the struct field
+****************************************************************************/
+
+
+struct field {
+	char	*cmd;
+	int		(*fn)(struct field *f, cairo_t *gfx, int event, int param_a, int param_b);
+	int		x, y, width, height;
+	char	label[30];
+	int 	label_width;
+	char	value[MAX_FIELD_LENGTH];
+	char	value_type; //NUMBER, SELECTION, TEXT, TOGGLE, BUTTON
+	int 	font_index; //refers to font_style table
+	char  selection[1000];
+	int	 	min, max, step;
+};
+
+static unsigned long focus_since = 0;
+static struct field *f_focus = NULL;
+static struct field *f_hover = NULL;
 //variables to power up and down the tx
 static int in_tx = 0;
 static int key_down = 0;
@@ -87,10 +310,6 @@ static int tx_mod_max = 0;
 char*mode_name[MAX_MODES] = {
 	"USB", "LSB", "CW", "CWR", "NBFM", "AM", "FT8", "PSK31", "RTTY", 
 	"DIGITAL", "2TONE" 
-};
-
-char output_pins[] = {
-	TX_LINE, BAND_SELECT	
 };
 
 static int serial_fd = -1;
@@ -155,7 +374,6 @@ int	data_delay = 700;
 //how much to shift on rit
 int	rit_delta = 0;
 
-GtkWidget *display_area = NULL;
 static int redraw_flag = 1; 
 int screen_width, screen_height;
 int spectrum_span = 48000;
@@ -163,126 +381,20 @@ int spectrum_span = 48000;
 void do_cmd(char *cmd);
 void cmd_line(char *cmd);
 
-// event ids, some of them are mapped from gtk itself
-#define FIELD_DRAW 0
-#define FIELD_UPDATE 1 
-#define FIELD_EDIT 0x10000
-#define MIN_KEY_UP 0xFF52
-#define MIN_KEY_DOWN	0xFF54
-#define MIN_KEY_LEFT 0xFF51
-#define MIN_KEY_RIGHT 0xFF53
-#define MIN_KEY_ENTER 0xFF0D
-#define MIN_KEY_ESC	0xFF1B
-#define MIN_KEY_BACKSPACE 0xFF08
-#define MIN_KEY_TAB 0xFF09
-#define MIN_KEY_CONTROL 0xFFE3
-
-#define COLOR_SELECTED_TEXT 0
-#define COLOR_TEXT 1
-#define COLOR_TEXT_MUTED 2
-#define COLOR_SELECTED_BOX 3 
-#define COLOR_BACKGROUND 4
-#define COLOR_FREQ 5
-#define COLOR_LABEL 6
-#define SPECTRUM_BACKGROUND 7
-#define SPECTRUM_GRID 8
-#define SPECTRUM_PLOT 9
-#define SPECTRUM_NEEDLE 10
-#define COLOR_CONTROL_BOX 11
-
-float palette[][3] = {
-	{1,1,1}, 		// COLOR_SELECTED_TEXT
-	{0,1,1},		// COLOR_TEXT
-	{0.5,0.5,0.5}, //COLOR_TEXT_MUTED
-	{1,1,1},		// COLOR_SELECTED_BOX
-	{0,0,0},		// COLOR_BACKGROUND
-	{1,1,0},		//COLOR_FREQ
-	{1,0,1},		//COLOR_LABEL
-	//spectrum
-	{0,0,0},	//SPECTRUM_BACKGROUND
-	{0.1, 0.1, 0.1}, //SPECTRUM_GRID
-	{1,1,0},	//SPECTRUM_PLOT
-	{0.2,0.2,0.2}, 	//SPECTRUM_NEEDLE
-	{0.5,0.5,0.5}, COLOR_CONTROL_BOX
-};
-
-char *ui_font = "Sans";
-int field_font_size = 12;
-
-/* 	the field in focus will be exited when you hit an escape
-		the field in focus will be changeable until it loses focus
-		hover will always be on the field in focus.
-		if the focus is -1,then hover works
-*/
-
-guint key_modifier = 0;
-
-#define FIELD_NUMBER 0
-#define FIELD_BUTTON 1
-#define FIELD_TOGGLE 2
-#define FIELD_SELECTION 3
-#define FIELD_TEXT 4
-#define FIELD_STATIC 5
-#define FIELD_LIST 6
-
-#define MAX_FIELD_LENGTH 128
-
-#define FONT_FIELD_LABEL 0
-#define FONT_FIELD_VALUE 1
-#define FONT_LARGE_FIELD 2
-#define FONT_LARGE_VALUE 3
-#define FONT_SMALL 4
-#define FONT_LOG 5
-
-struct font_style {
-	int index;
-	double r, g, b;
-	char name[32];
-	int height;
-	int weight;
-	int type;
-};
-
-struct font_style font_table[] = {
-	{FONT_FIELD_LABEL, 0, 1, 1, "Mono", 14, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
-	{FONT_FIELD_VALUE, 1, 1, 1, "Mono", 14, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
-	{FONT_LARGE_FIELD, 0, 1, 1, "Mono", 14, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
-	{FONT_LARGE_VALUE, 1, 1, 1, "Arial", 24, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
-	{FONT_SMALL, 0, 1, 1, "Mono", 10, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
-	{FONT_LOG, 0, 1, 0, "Mono", 14, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
-};
-
-/*
-	Warning: The field selection is used for TOGGLE and SELECTION fields
-	each selection by the '/' should be unique. otherwise, the simple logic will
-	get confused 
-*/
-
-
-struct field {
-	char	*cmd;
-	int		(*fn)(struct field *f, cairo_t *gfx, int event, int param_a, int param_b);
-	int		x, y, width, height;
-	char	label[30];
-	int 	label_width;
-	char	value[MAX_FIELD_LENGTH];
-	char	value_type; //NUMBER, SELECTION, TEXT, TOGGLE, BUTTON
-	int 	font_index; //refers to font_style table
-	char  selection[1000];
-	int	 	min, max, step;
-};
 
 int do_spectrum(struct field *f, cairo_t *gfx, int e, int a, int b);
 int do_waterfall(struct field *f, cairo_t *gfx, int event, int a, int b);
-int do_dial(struct field *f, cairo_t *gfx, int event, int a, int b);
-
+int do_tuning(struct field *f, cairo_t *gfx, int event, int a, int b);
+int do_text(struct field *f, cairo_t *gfx, int event, int a, int b);
+int do_kbd(struct field *f, cairo_t *gfx, int event, int a, int b);
+int do_mouse_move(struct field *f, cairo_t *gfx, int event, int a, int b);
 
 struct field *active_layout = NULL;
 char settings_updated = 0;
 
 // the cmd fields that have '#' are not to be sent to the sdr
 struct field main_controls[] = {
-	{ "r1:freq", do_dial, 600, 0, 150, 49, "", 5, "14000000", FIELD_NUMBER, FONT_LARGE_VALUE, 
+	{ "r1:freq", do_tuning, 600, 0, 150, 49, "", 5, "14000000", FIELD_NUMBER, FONT_LARGE_VALUE, 
 		"", 500000, 30000000, 100},
 
 	// Main RX
@@ -337,10 +449,10 @@ struct field main_controls[] = {
 		"", 0,0,0},   
 	{"waterfall", do_waterfall, 400, 180 , 400, 150, "Waterfall ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, 
 		"", 0,0,0},
-	{"#log", NULL, 0, 0 , 400, 330, "log", 70, "log box", FIELD_LIST, FONT_LOG, 
+	{"#log", NULL, 0, 0 , 400, 330, "log", 70, "log box", FIELD_LOG, FONT_LOG, 
 		"nothing valuable", 0,0,0},
 
-	{"#text_in", NULL, 0, 330, 400, 30, "text", 70, "text box", FIELD_TEXT, FONT_LOG, 
+	{"#text_in", do_text, 0, 330, 400, 30, "text", 70, "text box", FIELD_TEXT, FONT_LOG, 
 		"nothing valuable", 0,128,0},
 
 
@@ -368,43 +480,44 @@ struct field main_controls[] = {
 		"", 0,0,0},
 
 	//soft keyboard
-	{"#kbd_q", NULL, 0, 360 ,40, 30, "#", 1, "q", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_w", NULL, 40, 360, 40, 30, "1", 1, "w", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_e", NULL, 80, 360, 40, 30, "2", 1, "e", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_r", NULL, 120, 360, 40, 30, "3", 1, "r", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_t", NULL, 160, 360, 40, 30, "(", 1, "t", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_y", NULL, 200, 360, 40, 30, ")", 1, "y", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_u", NULL, 240, 360, 40, 30, "_", 1, "u", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_i", NULL, 280, 360, 40, 30, "-", 1, "i", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_o", NULL, 320, 360, 40, 30, "+", 1, "o", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_o", NULL, 360, 360, 40, 30, "@", 1, "p", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_q", do_kbd, 0, 360 ,40, 30, "#", 1, "q", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_w", do_kbd, 40, 360, 40, 30, "1", 1, "w", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_e", do_kbd, 80, 360, 40, 30, "2", 1, "e", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_r", do_kbd, 120, 360, 40, 30, "3", 1, "r", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_t", do_kbd, 160, 360, 40, 30, "(", 1, "t", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_y", do_kbd, 200, 360, 40, 30, ")", 1, "y", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_u", do_kbd, 240, 360, 40, 30, "_", 1, "u", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_i", do_kbd, 280, 360, 40, 30, "-", 1, "i", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_o", do_kbd, 320, 360, 40, 30, "+", 1, "o", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
 
-	{"#kbd_a", NULL, 0, 390 ,40, 30, "*", 1, "a", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_s", NULL, 40, 390, 40, 30, "4", 1, "s", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_d", NULL, 80, 390, 40, 30, "5", 1, "d", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_f", NULL, 120, 390, 40, 30, "6", 1, "f", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_g", NULL, 160, 390, 40, 30, "/", 1, "g", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_h", NULL, 200, 390, 40, 30, ":", 1, "h", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_j", NULL, 240, 390, 40, 30, ";", 1, "j", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_k", NULL, 280, 390, 40, 30, "'", 1, "k", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_l", NULL, 320, 390, 40, 30, "\"", 1, "l", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_bs", NULL, 360, 390, 40, 30, "", 1, "DEL", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0},
+	{"#kbd_p", do_kbd, 360, 360, 40, 30, "@", 1, "p", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+
+	{"#kbd_a", do_kbd, 0, 390 ,40, 30, "*", 1, "a", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_s", do_kbd, 40, 390, 40, 30, "4", 1, "s", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_d", do_kbd, 80, 390, 40, 30, "5", 1, "d", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_f", do_kbd, 120, 390, 40, 30, "6", 1, "f", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_g", do_kbd, 160, 390, 40, 30, "/", 1, "g", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_h", do_kbd, 200, 390, 40, 30, ":", 1, "h", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_j", do_kbd, 240, 390, 40, 30, ";", 1, "j", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_k", do_kbd, 280, 390, 40, 30, "'", 1, "k", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_l", do_kbd, 320, 390, 40, 30, "\"", 1, "l", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_bs", do_kbd, 360, 390, 40, 30, "", 1, "DEL", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0},
  
-	{"#kbd_alt", NULL, 0, 420 ,40, 30, "", 1, "Alt", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_z", NULL, 40, 420, 40, 30, "7", 1, "z", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_x", NULL, 80, 420, 40, 30, "8", 1, "x", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_c", NULL, 120, 420, 40, 30, "9", 1, "c", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_v", NULL, 160, 420, 40, 30, "?", 1, "v", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_b", NULL, 200, 420, 40, 30, "!", 1, "b", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_n", NULL, 240, 420, 40, 30, ",", 1, "n", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_m", NULL, 280, 420, 40, 30, ".", 1, "m", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_alt", do_kbd, 0, 420 ,40, 30, "", 1, "Alt", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_z", do_kbd, 40, 420, 40, 30, "7", 1, "z", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_x", do_kbd, 80, 420, 40, 30, "8", 1, "x", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_c", do_kbd, 120, 420, 40, 30, "9", 1, "c", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_v", do_kbd, 160, 420, 40, 30, "?", 1, "v", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_b", do_kbd, 200, 420, 40, 30, "!", 1, "b", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_n", do_kbd, 240, 420, 40, 30, ",", 1, "n", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_m", do_kbd, 280, 420, 40, 30, ".", 1, "m", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
 
-	{"#kbd_cmd", NULL, 0, 450, 80, 30, "", 1, "\\cmd", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_0", NULL, 80, 450, 40, 30, "", 1, "0", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_ ", NULL, 120, 450, 120, 30, "", 1, " SPACE ", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_.", NULL, 240, 450, 40, 30, "\"", 1, ".", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_?", NULL, 280, 450, 40, 30, "?", 1, "?", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_Enter", NULL, 320, 450, 80, 30, "", 1, "Enter", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_cmd", do_kbd, 0, 450, 80, 30, "", 1, "\\cmd", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_0", do_kbd, 80, 450, 40, 30, "", 1, "0", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_ ", do_kbd, 120, 450, 120, 30, "", 1, " SPACE ", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_.", do_kbd, 240, 450, 40, 30, "\"", 1, ".", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_?", do_kbd, 280, 450, 40, 30, "?", 1, "?", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_Enter", do_kbd, 320, 450, 80, 30, "", 1, "Enter", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
 	//the last control has empty cmd field 
 	{"", NULL, 0, 0 ,0, 0, "#", 1, "Q", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
 };
@@ -419,7 +532,300 @@ void tx_off();
 char *log_lines[MAX_LOG_LINES];
 int last_log = 0;
 
-void set_field(char *id, char *value);
+struct field *get_field(char *cmd){
+	for (int i = 0; active_layout[i].cmd[0] > 0; i++)
+		if (!strcmp(active_layout[i].cmd, cmd))
+			return active_layout + i;
+	return NULL;
+}
+
+//set the field directly to a particuarl value, programmatically
+void set_field(char *id, char *value){
+	struct field *f = get_field(id);
+	int v;
+
+	if (!f){
+		printf("*Error: field[%s] not found. Check for typo?\n", id);
+		return;
+	}
+
+	if (f->value_type == FIELD_NUMBER){
+		int	v = atoi(value);
+		if (v < f->min)
+			v = f->min;
+		if (v > f->max)
+			v = f->max;
+		sprintf(f->value, "%d",  v);
+	}
+	else if (f->value_type == FIELD_SELECTION || f->value_type == FIELD_TOGGLE){
+		// toggle and selection are the same type: toggle has just two values instead of many more
+		char *p, *prev, *next, b[100];
+		//search the current text in the selection
+		prev = NULL;
+		strcpy(b, f->selection);
+		p = strtok(b, "/");
+		while(p){
+			if (!strcmp(value, p))
+				break;
+			else
+				prev = p;
+			p = strtok(NULL, "/");
+		}	
+		//set to the first option
+		if (p == NULL){
+			if (prev)
+				strcpy(f->value, prev);
+			printf("*Error: setting field[%s] to [%s] not permitted\n", f->cmd, value);
+		}
+		else
+			strcpy(f->value, value);
+	}
+	else if (f->value_type == FIELD_BUTTON){
+		NULL; // ah, do nothing!
+	}
+	else if (f->value_type == FIELD_TEXT){
+		if (strlen(value) > f->max || strlen(value) < f->min)
+			printf("*Error: field[%s] can't be set to [%s], improper size.\n", f->cmd, value);
+		else
+			strcpy(f->value, value);
+	}
+
+	//send a command to the receiver
+	char buff[200];
+	sprintf(buff, "%s=%s", f->cmd, f->value);
+	do_cmd(buff);
+	update_field(f);
+}
+
+// log is a special field that essentially is a like text
+// on a terminal
+
+void log_init(){
+	next_log = 0;
+	memset(log_buffer, ' ', sizeof(log_buffer));
+}
+
+void write_log(char *text){
+
+	while(*text){
+		if ((*text < 128 & *text >= ' ') || *text == '\n')
+			log_buffer[next_log++] = *text;
+		text++;	
+		if (next_log >= MAX_LOG_BUFFER)
+			next_log = 0;
+	}
+	redraw_flag++;
+}
+
+void log_back(){
+	next_log--;
+	if (next_log < 0)
+		next_log = MAX_LOG_BUFFER - 1;
+}
+/*
+	1. count the characters and break on cols count for lines
+	2. break earlier if newline is encountered
+*/
+
+int log_display_start(int rows, int cols){
+	int col_count = 0;
+
+	int i = next_log;	
+	while(rows >= 0){
+		if (log_buffer[i] == '\n'){
+			rows--;
+			col_count = 0;
+		}
+		else
+			col_count++;
+		if (col_count >= cols){
+			col_count = 0;
+			rows--;
+			if (!rows)
+				return i;
+		}
+		//wrap i around the log_buffer
+		if (--i < 0)
+			i = MAX_LOG_BUFFER - 1;
+	}
+	return i;
+}
+
+int list_text_at(int x, int click_y, char *txt){
+	char this_line[1000];
+
+	struct field *f = get_field("#log");
+
+	int line_height = font_table[f->font_index].height; 	
+	int n_lines = f->height / line_height;
+
+	int y = f->y + 2; 
+
+	int i = log_display_start(n_lines, log_cols);
+	int col_count = 0;
+
+	int j = 0;
+
+	while(i != next_log){
+		//wrap i around the buffer
+		if (i == MAX_LOG_BUFFER)
+			i = 0;
+
+		//break the line on overflow or newline 
+		if (log_buffer[i] == '\n' || col_count == log_cols){
+			if (log_buffer[i] != '\n')
+				txt[col_count++] = log_buffer[i];
+			txt[col_count] = 0;
+			y += line_height;
+			if (y > click_y)
+				return 1;
+			col_count = 0;
+		}
+		else{
+			txt[col_count++] = log_buffer[i];
+			//putchar(log_buffer[i]);
+		}
+		i++;
+	}
+	if (col_count > 0){
+		txt[col_count] = 0;
+		if (click_y < y)
+			return 1;
+	}
+	return 0;
+}
+void draw_log(cairo_t *gfx, struct field *f){
+	char this_line[1000];
+	int line_height = font_table[f->font_index].height; 	
+	int n_lines = f->height / line_height;
+
+	//estimate!
+	int char_width = measure_text(gfx, "01234567890123456789", f->font_index)/20;
+	log_cols = f->width / char_width;
+	int y = f->y + 2; 
+
+	int i = log_display_start(n_lines, log_cols);
+	int col_count = 0;
+
+	int j = 0;
+
+	//printf("rows %d, col %d\n", n_lines, log_cols);
+	while(i != next_log){
+		//wrap i around the buffer
+		if (i == MAX_LOG_BUFFER)
+			i = 0;
+		//break the line on overflow or newline 
+		if (log_buffer[i] == '\n' || col_count == log_cols){
+			if (log_buffer[i] != '\n')
+				this_line[col_count++] = log_buffer[i];
+			this_line[col_count] = 0;
+			draw_text(gfx, f->x, y, this_line, f->font_index);
+			//printf("line %d/%d [%s]\n", j++, y, this_line);
+			y += line_height;
+			//draw the line
+			//printf("[%d]\n", i);
+			col_count = 0;
+			//rows--;
+		}
+		else{
+			this_line[col_count++] = log_buffer[i];
+			//putchar(log_buffer[i]);
+		}
+		i++;
+	}
+	if (col_count > 0){
+		this_line[col_count] = 0;
+		//printf("last line %d/%d [%s]\n", j++, y, this_line);
+		draw_text(gfx, f->x, y, this_line, f->font_index);
+	}
+}
+
+void draw_field(GtkWidget *widget, cairo_t *gfx, struct field *f){
+	struct font_style *s = font_table + 0;
+
+	//if there is a handling function, use that else
+	//skip down to the default behaviour of the controls
+	if (f->fn){
+		if(f->fn(f, gfx, FIELD_DRAW, -1, -1))
+			return;
+	}
+
+	fill_rect(gfx, f->x, f->y, f->width,f->height, COLOR_BACKGROUND);
+	if (f_focus == f)
+		rect(gfx, f->x, f->y, f->width-1,f->height, COLOR_SELECTED_BOX, 2);
+	else if (f_hover == f)
+		rect(gfx, f->x, f->y, f->width,f->height, COLOR_SELECTED_BOX, 1);
+	else if (f->value_type != FIELD_STATIC)
+		rect(gfx, f->x, f->y, f->width,f->height, COLOR_CONTROL_BOX, 1);
+
+	int width, offset, text_length, line_start, y;	
+	char this_line[MAX_FIELD_LENGTH];
+	int text_line_width = 0;
+
+	switch(f->value_type){
+		case FIELD_TEXT:
+			text_length = strlen(f->value);
+			line_start = 0;
+			y = f->y + 2;
+			text_line_width = 0;
+			while(text_length > 0){
+				if (text_length > log_cols){
+					strncpy(this_line, f->value + line_start, log_cols);
+					this_line[log_cols] = 0;
+				}
+				else
+					strcpy(this_line, f->value + line_start);		
+				draw_text(gfx, f->x + 2, y, this_line, f->font_index);
+				text_line_width= measure_text(gfx, this_line, f->font_index);
+				y += 14;
+				line_start += log_cols;
+				text_length -= log_cols;
+			}
+			//draw the text cursor, if there is no text, the text baseline is zero
+			if (strlen(f->value))
+				y -= 14;
+			fill_rect(gfx, f->x + text_line_width + 5, y+3, 9, 10, f->font_index);
+		break;
+		case FIELD_SELECTION:
+		case FIELD_NUMBER:
+		case FIELD_TOGGLE:
+			width = measure_text(gfx, f->label, FONT_FIELD_LABEL);
+			offset = f->width/2 - width/2;
+			draw_text(gfx, f->x + offset, f->y+5 ,  f->label, FONT_FIELD_LABEL);
+			width = measure_text(gfx, f->value, f->font_index);
+			offset = f->width/2 - width/2;
+			if (!strlen(f->label))
+				draw_text(gfx, f->x + offset , f->y+6, f->value, f->font_index);
+			else
+				draw_text(gfx, f->x+offset , f->y+25 , f->value , f->font_index);
+			break;
+
+		case FIELD_BUTTON:
+			width = measure_text(gfx, f->label, FONT_FIELD_LABEL);
+			offset = f->width/2 - width/2;
+			if (strlen(f->value) == 0)
+				draw_text(gfx, f->x + offset, f->y+13 , f->label , FONT_FIELD_LABEL);
+			else if (f->height <= 30){
+				if (strlen(f->label)){
+					draw_text(gfx, f->x + 5, f->y ,  f->label, FONT_FIELD_LABEL);
+					draw_text(gfx, f->x+18 , f->y+8 , f->value , f->font_index);
+				}
+				else 
+					draw_text(gfx, f->x+10 , f->y+5 , f->value , f->font_index);
+			}
+			else {
+				draw_text(gfx, f->x + offset, f->y+5 ,  f->label, FONT_FIELD_LABEL);
+				draw_text(gfx, f->x+offset , f->y+25 , f->value , f->font_index);
+			}	
+			break;
+		case FIELD_STATIC:
+			draw_text(gfx, f->x, f->y, f->label, FONT_FIELD_LABEL);
+			break;
+		case FIELD_LOG:
+			draw_log(gfx, f);
+			break;
+	}
+}
 
 static int mode_id(char *mode_str){
 	if (!strcmp(mode_str, "CW"))
@@ -445,29 +851,6 @@ static int mode_id(char *mode_str){
 	else if (!strcmp(mode_str, "DIGITAL"))
 		return MODE_DIGITAL;
 	return -1;
-}
-
-void write_gui_ini(){
-  FILE *pf = fopen("gui_main.ini", "w");
-	int total = sizeof(active_layout) / sizeof(struct field);
-	for (int i = 0; active_layout[i].cmd[0] > 0; i++){
-		struct field *f = active_layout + i;
-    fprintf(pf, "[%s]\n", f->cmd);
-    fprintf(pf, "x = %d\n", f->x);
-    fprintf(pf, "y = %d\n", f->y);
-    fprintf(pf, "width = %d\n", f->width);
-    fprintf(pf, "height = %d\n", f->height);
-    fprintf(pf, "label = %s\n", f->label);
-    fprintf(pf, "label_width = %d\n", f->label_width);
-    fprintf(pf, "value = %s\n", f->value);
-    fprintf(pf, "value = %d\n", f->value_type);
-    fprintf(pf, "font_index = %d\n", f->font_index);
-    fprintf(pf, "selection = %s\n", f->selection);
-    fprintf(pf, "min = %d\n", f->min);
-    fprintf(pf, "max = %d\n", f->max);
-    fprintf(pf, "step = %d\n\n", f->step);
-  }
-  fclose(pf);
 }
 
 static void save_user_settings(){
@@ -515,7 +898,6 @@ static void save_user_settings(){
 
 
 	fclose(f);
-//	printf("settings are saved\n");
 	settings_updated = 0;
 }
 
@@ -596,59 +978,6 @@ static int user_settings_handler(void* user, const char* section,
 
     return 1;
 }
-//static int field_in_focus = -1;
-//static int field_in_hover = 0;
-
-static unsigned long focus_since = 0;
-static struct field *f_focus = NULL;
-static struct field *f_hover = NULL;
-
-//the main app window
-GtkWidget *window;
-
-void do_cmd(char *cmd_string);
-
-static int measure_text(cairo_t *gfx, char *text, int font_entry){
-	cairo_text_extents_t ext;
-	struct font_style *s = font_table + font_entry;
-	
-	cairo_select_font_face(gfx, s->name, s->type, s->weight);
-	cairo_set_font_size(gfx, s->height);
-	cairo_move_to(gfx, 0, 0);
-	cairo_text_extents(gfx, text, &ext);
-	return (int) ext.x_advance;
-}
-
-static void draw_text(cairo_t *gfx, int x, int y, char *text, int font_entry){
-	struct font_style *s  = font_table + font_entry;
-  cairo_set_source_rgb( gfx, s->r, s->g, s->b);
-	cairo_select_font_face(gfx, s->name, s->type, s->weight);
-	cairo_set_font_size(gfx, s->height);
-	cairo_move_to(gfx, x, y + s->height);
-	cairo_show_text(gfx, text);
-	//printf("drawing '%s' with font %s / %d\n", text, s->name, s->height);
-}
-
-static void fill_rect(cairo_t *gfx, int x, int y, int w, int h, int color){
-  cairo_set_source_rgb( gfx, palette[color][0], palette[color][1], palette[color][2]);
-	cairo_rectangle(gfx, x, y, w, h);
-  cairo_fill(gfx);
-}
-
-static void rect(cairo_t *gfx, int x, int y, int w, int h, int color, int thickness){
-  cairo_set_source_rgb( gfx, palette[color][0], palette[color][1], palette[color][2]);
-	cairo_set_line_width(gfx, thickness);
-	cairo_rectangle(gfx, x, y, w, h);
-  cairo_stroke(gfx);
-}
-
-struct field *get_field(char *cmd){
-	for (int i = 0; active_layout[i].cmd[0] > 0; i++)
-		if (!strcmp(active_layout[i].cmd, cmd))
-			return active_layout + i;
-	return NULL;
-}
-
 /* rendering of the fields */
 
 // mod disiplay holds the tx modulation time domain envelope
@@ -927,151 +1256,8 @@ int waterfall_fn(struct field *f, cairo_t *gfx, int event, int a, int b){
 }
 
 
-#define MAX_LOG_BUFFER 10000
-static int 	log_cols = 50;
-static char	log_buffer[MAX_LOG_BUFFER];
-static int	next_log = 0;
 
-void log_init(){
-	next_log = 0;
-	memset(log_buffer, ' ', sizeof(log_buffer));
-}
 
-void write_log(char *text){
-
-	while(*text){
-		if ((*text < 128 & *text >= ' ') || *text == '\n')
-			log_buffer[next_log++] = *text;
-		text++;	
-		if (next_log >= MAX_LOG_BUFFER)
-			next_log = 0;
-	}
-	redraw_flag++;
-}
-
-void log_back(){
-	next_log--;
-	if (next_log < 0)
-		next_log = MAX_LOG_BUFFER - 1;
-}
-/*
-	1. count the characters and break on cols count for lines
-	2. break earlier if newline is encountered
-*/
-
-int log_display_start(int rows, int cols){
-	int col_count = 0;
-
-	int i = next_log;	
-	while(rows >= 0){
-		if (log_buffer[i] == '\n'){
-			rows--;
-			col_count = 0;
-		}
-		else
-			col_count++;
-		if (col_count >= cols){
-			col_count = 0;
-			rows--;
-			if (!rows)
-				return i;
-		}
-		//wrap i around the log_buffer
-		if (--i < 0)
-			i = MAX_LOG_BUFFER - 1;
-	}
-	return i;
-}
-
-int list_text_at(int x, int click_y, char *txt){
-	char this_line[1000];
-
-	struct field *f = get_field("#log");
-
-	int line_height = font_table[f->font_index].height; 	
-	int n_lines = f->height / line_height;
-
-	int y = f->y + 2; 
-
-	int i = log_display_start(n_lines, log_cols);
-	int col_count = 0;
-
-	int j = 0;
-
-	while(i != next_log){
-		//wrap i around the buffer
-		if (i == MAX_LOG_BUFFER)
-			i = 0;
-
-		//break the line on overflow or newline 
-		if (log_buffer[i] == '\n' || col_count == log_cols){
-			if (log_buffer[i] != '\n')
-				txt[col_count++] = log_buffer[i];
-			txt[col_count] = 0;
-			y += line_height;
-			if (y > click_y)
-				return 1;
-			col_count = 0;
-		}
-		else{
-			txt[col_count++] = log_buffer[i];
-			//putchar(log_buffer[i]);
-		}
-		i++;
-	}
-	if (col_count > 0){
-		txt[col_count] = 0;
-		if (click_y < y)
-			return 1;
-	}
-	return 0;
-}
-
-void draw_list(cairo_t *gfx, struct field *f){
-	char this_line[1000];
-	int line_height = font_table[f->font_index].height; 	
-	int n_lines = f->height / line_height;
-
-	//estimate!
-	int char_width = measure_text(gfx, "01234567890123456789", f->font_index)/20;
-	log_cols = f->width / char_width;
-	int y = f->y + 2; 
-
-	int i = log_display_start(n_lines, log_cols);
-	int col_count = 0;
-
-	int j = 0;
-
-	//printf("rows %d, col %d\n", n_lines, log_cols);
-	while(i != next_log){
-		//wrap i around the buffer
-		if (i == MAX_LOG_BUFFER)
-			i = 0;
-		//break the line on overflow or newline 
-		if (log_buffer[i] == '\n' || col_count == log_cols){
-			if (log_buffer[i] != '\n')
-				this_line[col_count++] = log_buffer[i];
-			this_line[col_count] = 0;
-			draw_text(gfx, f->x, y, this_line, f->font_index);
-			//printf("line %d/%d [%s]\n", j++, y, this_line);
-			y += line_height;
-			//draw the line
-			//printf("[%d]\n", i);
-			col_count = 0;
-			//rows--;
-		}
-		else{
-			this_line[col_count++] = log_buffer[i];
-			//putchar(log_buffer[i]);
-		}
-		i++;
-	}
-	if (col_count > 0){
-		this_line[col_count] = 0;
-		//printf("last line %d/%d [%s]\n", j++, y, this_line);
-		draw_text(gfx, f->x, y, this_line, f->font_index);
-	}
-}
 
 void draw_dial(struct field *f, cairo_t *gfx){
 	struct font_style *s = font_table + 0;
@@ -1145,92 +1331,6 @@ void draw_dial(struct field *f, cairo_t *gfx){
 	} 
 }
 
-void draw_field(GtkWidget *widget, cairo_t *gfx, struct field *f){
-	struct font_style *s = font_table + 0;
-
-	//if there is a handling function, use that else
-	//skip down to the default behaviour of the controls
-	if (f->fn){
-		if(f->fn(f, gfx, FIELD_DRAW, -1, -1))
-			return;
-	}
-
-	fill_rect(gfx, f->x, f->y, f->width,f->height, COLOR_BACKGROUND);
-	if (f_focus == f)
-		rect(gfx, f->x, f->y, f->width-1,f->height, COLOR_SELECTED_BOX, 2);
-	else if (f_hover == f)
-		rect(gfx, f->x, f->y, f->width,f->height, COLOR_SELECTED_BOX, 1);
-	else if (f->value_type != FIELD_STATIC)
-		rect(gfx, f->x, f->y, f->width,f->height, COLOR_CONTROL_BOX, 1);
-
-	int width, offset, text_length, line_start, y;	
-	char this_line[MAX_FIELD_LENGTH];
-	int text_line_width = 0;
-
-	switch(f->value_type){
-		case FIELD_TEXT:
-			text_length = strlen(f->value);
-			line_start = 0;
-			y = f->y + 2;
-			text_line_width = 0;
-			while(text_length > 0){
-				if (text_length > log_cols){
-					strncpy(this_line, f->value + line_start, log_cols);
-					this_line[log_cols] = 0;
-				}
-				else
-					strcpy(this_line, f->value + line_start);		
-				draw_text(gfx, f->x + 2, y, this_line, f->font_index);
-				text_line_width= measure_text(gfx, this_line, f->font_index);
-				y += 14;
-				line_start += log_cols;
-				text_length -= log_cols;
-			}
-			//draw the text cursor, if there is no text, the text baseline is zero
-			if (strlen(f->value))
-				y -= 14;
-			fill_rect(gfx, f->x + text_line_width + 5, y+3, 9, 10, f->font_index);
-		break;
-		case FIELD_SELECTION:
-		case FIELD_NUMBER:
-		case FIELD_TOGGLE:
-			width = measure_text(gfx, f->label, FONT_FIELD_LABEL);
-			offset = f->width/2 - width/2;
-			draw_text(gfx, f->x + offset, f->y+5 ,  f->label, FONT_FIELD_LABEL);
-			width = measure_text(gfx, f->value, f->font_index);
-			offset = f->width/2 - width/2;
-			if (!strlen(f->label))
-				draw_text(gfx, f->x + offset , f->y+6, f->value, f->font_index);
-			else
-				draw_text(gfx, f->x+offset , f->y+25 , f->value , f->font_index);
-			break;
-
-		case FIELD_BUTTON:
-			width = measure_text(gfx, f->label, FONT_FIELD_LABEL);
-			offset = f->width/2 - width/2;
-			if (strlen(f->value) == 0)
-				draw_text(gfx, f->x + offset, f->y+13 , f->label , FONT_FIELD_LABEL);
-			else if (f->height <= 30){
-				if (strlen(f->label)){
-					draw_text(gfx, f->x + 5, f->y ,  f->label, FONT_FIELD_LABEL);
-					draw_text(gfx, f->x+18 , f->y+8 , f->value , f->font_index);
-				}
-				else 
-					draw_text(gfx, f->x+10 , f->y+5 , f->value , f->font_index);
-			}
-			else {
-				draw_text(gfx, f->x + offset, f->y+5 ,  f->label, FONT_FIELD_LABEL);
-				draw_text(gfx, f->x+offset , f->y+25 , f->value , f->font_index);
-			}	
-			break;
-		case FIELD_STATIC:
-			draw_text(gfx, f->x, f->y, f->label, FONT_FIELD_LABEL);
-			break;
-		case FIELD_LIST:
-			draw_list(gfx, f);
-			break;
-	}
-}
 
 void redraw_main_screen(GtkWidget *widget, cairo_t *gfx){
 	double dx1, dy1, dx2, dy2;
@@ -1298,40 +1398,19 @@ static void edit_field(struct field *f, int action){
 	int v;
 
 	if (f == f_focus)
-	focus_since = millis();
+		focus_since = millis();
 
+	if (f->fn){
+		if (f->fn(f, NULL, FIELD_EDIT, action, 0))
+			return;
+	}
+	
 	if (f->value_type == FIELD_NUMBER){
 		int	v = atoi(f->value);
-		if (action == MIN_KEY_UP && v + f->step <= f->max){
-			//this is tuning the radio
-			if (!strcmp(f->cmd, "r1:freq") || !strcmp(f->cmd, "r2:freq")){
-				if (!strcmp(get_field("#rit")->value, "ON"))
-					if(rit_delta < MAX_RIT)
-						rit_delta += tuning_step;
-					else
-						return;
-				else
-					v = (v / tuning_step + 1)*tuning_step;
-					//v += tuning_step;
-			}
-			else
-				v += f->step;
-			
-		}
-		else if (action == MIN_KEY_DOWN && v - f->step >= f->min){
-			if (!strcmp(f->cmd, "r1:freq") || !strcmp(f->cmd, "r2:freq")){
-				if (!strcmp(get_field("#rit")->value, "ON"))
-					if (rit_delta > -MAX_RIT)
-						rit_delta -= tuning_step;
-					else
-						return;
-				else
-					v = (v / tuning_step - 1)*tuning_step;
-					//v -= tuning_step;
-			}
-			else
-				v -= f->step;
-		}
+		if (action == MIN_KEY_UP && v + f->step <= f->max)
+			v += f->step;
+		else if (action == MIN_KEY_DOWN && v - f->step >= f->min)
+			v -= f->step;
 		sprintf(f->value, "%d",  v);
 	}
 	else if (f->value_type == FIELD_SELECTION){
@@ -1383,28 +1462,6 @@ static void edit_field(struct field *f, int action){
 	}
 	else if (f->value_type == FIELD_BUTTON){
 		NULL; // ah, do nothing!
-	}
-	else if (f->value_type == FIELD_TEXT){
-		if ((action == '\n' || action == MIN_KEY_ENTER)&& !strcmp(get_field("r1:mode")->value, "FT8")){
-			ft8_tx(f->value, 1000);
-			f->value[0] = 0;		
-		}
-		else if (action >= ' ' && action <= 127 && strlen(f->value) < f->max-1){
-			int l = strlen(f->value);
-			f->value[l++] = action;
-			f->value[l] = 0;
-		}
-		else if (action == MIN_KEY_BACKSPACE && strlen(f->value) > 0){
-			int l = strlen(f->value) - 1;
-			f->value[l] = 0;
-		}
-		
-		//if it is a command, then execute it and clear the field
-		if (f->value[0] == '\\' &&  strlen(f->value) > 1 && 
-				(action == '\n' || action == MIN_KEY_ENTER)){
-			cmd_line(f->value + 1);
-			f->value[0] = 0;
-		}
 	}
 
 	//send a command to the receiver
@@ -1499,69 +1556,28 @@ void band_stack_update_power(int power){
 	} 
 }
 
-//set the field directly to a particuarl value, programmatically
-void set_field(char *id, char *value){
-	struct field *f = get_field(id);
-	int v;
-
-	if (!f){
-		printf("*Error: field[%s] not found. Check for typo?\n", id);
-		return;
-	}
-
-	if (f->value_type == FIELD_NUMBER){
-		int	v = atoi(value);
-		if (v < f->min)
-			v = f->min;
-		if (v > f->max)
-			v = f->max;
-		sprintf(f->value, "%d",  v);
-	}
-	else if (f->value_type == FIELD_SELECTION || f->value_type == FIELD_TOGGLE){
-		// toggle and selection are the same type: toggle has just two values instead of many more
-		char *p, *prev, *next, b[100];
-		//search the current text in the selection
-		prev = NULL;
-		strcpy(b, f->selection);
-		p = strtok(b, "/");
-		while(p){
-			if (!strcmp(value, p))
-				break;
-			else
-				prev = p;
-			p = strtok(NULL, "/");
-		}	
-		//set to the first option
-		if (p == NULL){
-			if (prev)
-				strcpy(f->value, prev);
-			printf("*Error: setting field[%s] to [%s] not permitted\n", f->cmd, value);
-		}
-		else
-			strcpy(f->value, value);
-	}
-	else if (f->value_type == FIELD_BUTTON){
-		NULL; // ah, do nothing!
-	}
-	else if (f->value_type == FIELD_TEXT){
-		if (strlen(value) > f->max || strlen(value) < f->min)
-			printf("*Error: field[%s] can't be set to [%s], improper size.\n", f->cmd, value);
-		else
-			strcpy(f->value, value);
-	}
-
-	//send a command to the receiver
-	char buff[200];
-	sprintf(buff, "%s=%s", f->cmd, f->value);
-	do_cmd(buff);
-	update_field(f);
-}
 
 
 int do_spectrum(struct field *f, cairo_t *gfx, int event, int a, int b){
+	struct field *f_freq, *f_span;
+	int 	span;
+	long 	freq;
+	char buff[100];
+
 	switch(event){
 		case FIELD_DRAW:
 			draw_spectrum(f, gfx);
+			return 1;
+		break;
+		case GDK_MOTION_NOTIFY:
+			f_freq = get_field("r1:freq");
+			freq = atoi(f_freq->value);
+			f_span = get_field("#span");
+			span = atoi(f_span->value);
+			//a has the x position of the mouse
+			freq -= ((a - last_mouse_x) *tuning_step)/4;	//slow this down a bit
+			sprintf(buff, "%ld", freq);
+			set_field("r1:freq", buff);
 			return 1;
 		break;
 	}
@@ -1573,19 +1589,113 @@ int do_waterfall(struct field *f, cairo_t *gfx, int event, int a, int b){
 		case FIELD_DRAW:
 			draw_waterfall(f, gfx);
 			return 1;
+/*
+		case GDK_MOUSE_MOVE:{
+			struct field *f_freq = get_field("r1:freq");
+			long freq = atoi(f_freq->value);
+			struct field *f_span = get_field("#span");
+			int span = atoi(f_focus->value);
+			freq -= ((x - last_mouse_x) *tuning_step)/4;	//slow this down a bit
+			sprintf(buff, "%ld", freq);
+			set_field("r1:freq", buff);
+			}
+			return 1;
 		break;
+*/
 	}
 	return 0;	
 }
 
-int do_dial(struct field *f, cairo_t *gfx, int event, int a, int b){
-	switch(event){
-		case FIELD_DRAW:
+
+int do_text(struct field *f, cairo_t *gfx, int event, int a, int b){
+
+	if (event == FIELD_EDIT){
+		if ((a == '\n' || a == MIN_KEY_ENTER)&& !strcmp(get_field("r1:mode")->value, "FT8")){
+			ft8_tx(f->value, 1000);
+			f->value[0] = 0;		
+		}
+		else if (a >= ' ' && a <= 127 && strlen(f->value) < f->max-1){
+			int l = strlen(f->value);
+			f->value[l++] = a;
+			f->value[l] = 0;
+		}
+		else if (a == MIN_KEY_BACKSPACE && strlen(f->value) > 0){
+			int l = strlen(f->value) - 1;
+			f->value[l] = 0;
+		}
+		
+		//if it is a command, then execute it and clear the field
+		if (f->value[0] == '\\' &&  strlen(f->value) > 1 && (a == '\n' || a == MIN_KEY_ENTER)){
+			cmd_line(f->value + 1);
+			f->value[0] = 0;
+			update_field(f);
+			redraw_flag++;
+		}
+		return 1;
+	}
+	return 0;
+}
+
+//called for RIT as well as the main tuning
+int do_tuning(struct field *f, cairo_t *gfx, int event, int a, int b){
+
+	int	v = atoi(f->value);
+
+	if (event == FIELD_EDIT){
+		if (a == MIN_KEY_UP && v + f->step <= f->max){
+			//this is tuning the radio
+			if (!strcmp(get_field("#rit")->value, "ON")){
+				if(rit_delta < MAX_RIT)
+					rit_delta += tuning_step;
+				else
+					return 1;
+			}
+			else
+				v = (v / tuning_step + 1)*tuning_step;
+		}
+		else if (a == MIN_KEY_DOWN && v - f->step >= f->min){
+			if (!strcmp(get_field("#rit")->value, "ON")){
+				if (rit_delta > -MAX_RIT)
+					rit_delta -= tuning_step;
+				else
+					return 1;
+			}
+			else
+				v = (v / tuning_step - 1)*tuning_step;
+		}
+		
+		sprintf(f->value, "%d",  v);
+		
+		//send the new frequency to the sbitx core
+		char buff[100];
+		sprintf(buff, "%s=%s", f->cmd, f->value);
+		do_cmd(buff);
+		//update the GUI
+		update_field(f);
+		settings_updated++;
+		//leave it to us, we have handled it
+		return 1;
+	}
+	else if (event == FIELD_DRAW){
 			draw_dial(f, gfx);
-			return 1;
-		break;
+			return 1; 
 	}
 	return 0;	
+}
+
+int do_kbd(struct field *f, cairo_t *gfx, int event, int a, int b){
+	if(event == GDK_BUTTON_PRESS){
+		struct field *f_text = get_field("#text_in");
+		if (!strcmp(f->cmd, "#kbd_bs"))
+			edit_field(f_text, MIN_KEY_BACKSPACE);
+		else if (!strcmp(f->cmd, "#kbd_Enter"))
+			edit_field(f_text, '\n');
+		else
+			edit_field(f_text, f->value[0]);
+		focus_since = millis();
+		return 1;
+	}	
+	return 0;
 }
 
 void tx_on(){
@@ -1612,7 +1722,8 @@ void tx_on(){
 	}
 
 	if (in_tx == 0){
-		digitalWrite(TX_LINE, HIGH);
+		//tx line on/off is handled by sbitx.c
+		//digitalWrite(TX_LINE, HIGH);
 		sdr_request("tx=on", response);	
 		in_tx = 1;
 		char response[20];
@@ -1630,7 +1741,8 @@ void tx_off(){
 	char response[100];
 
 	if (in_tx == 1){
-		digitalWrite(TX_LINE, LOW);
+		//the tx_line on/off is done by the sbitx.c
+		//digitalWrite(TX_LINE, LOW);
 		sdr_request("tx=off", response);	
 		in_tx = 0;
 		sdr_request("key=up", response);
@@ -1777,9 +1889,6 @@ static gboolean on_scroll (GtkWidget *widget, GdkEventScroll *event, gpointer da
 		
 }
 
-static int mouse_down = 0;
-static int last_mouse_x = -1;
-static int last_mouse_y = -1;
 
 static gboolean on_window_state (GtkWidget *widget, GdkEventKey *event, gpointer user_data) {
 	mouse_down = 0;
@@ -1800,21 +1909,17 @@ static gboolean on_mouse_release (GtkWidget *widget, GdkEventButton *event, gpoi
 static gboolean on_mouse_move (GtkWidget *widget, GdkEventButton *event, gpointer data) {
 	char buff[100];
 
-	if (mouse_down)	{
-		int x = (int)(event->x);
-		int y = (int)(event->y);
-		if (f_focus){
-			//drag the frequency around
-			if(!strcmp(f_focus->cmd, "spectrum")){
-				struct field *f_freq = get_field("r1:freq");
-				long freq = atoi(f_freq->value);
-				struct field *f_span = get_field("#span");
-				int span = atoi(f_focus->value);
-				freq -= ((x - last_mouse_x) *tuning_step)/4;	//slow this down a bit
-				sprintf(buff, "%ld", freq);
-				set_field("r1:freq", buff);
-			}
-			else {
+	if (!mouse_down)
+		return false;
+
+	int x = (int)(event->x);
+	int y = (int)(event->y);
+
+	// if a control is in focus and it handles the mouse drag, then just do that
+	// else treat it as a spin up/down of the control
+	if (f_focus){
+
+			if (!f_focus->fn ||  !f_focus->fn(f_focus, NULL, GDK_MOTION_NOTIFY, event->x, event->y)){
 				//just emit up or down
 				if(last_mouse_x < x || last_mouse_y > y)
 					edit_field(f_focus, MIN_KEY_UP);
@@ -1822,11 +1927,10 @@ static gboolean on_mouse_move (GtkWidget *widget, GdkEventButton *event, gpointe
 					edit_field(f_focus, MIN_KEY_DOWN);
 			}
 		}
-		last_mouse_x = x;
-		last_mouse_y = y;
+	last_mouse_x = x;
+	last_mouse_y = y;
 
-	}
-//		printf("mouse move at %d, %d\n", (int)(event->x), (int)(event->y));
+	return true;
 }
 
 static gboolean on_mouse_press (GtkWidget *widget, GdkEventButton *event, gpointer data) {
@@ -1844,18 +1948,8 @@ static gboolean on_mouse_press (GtkWidget *widget, GdkEventButton *event, gpoint
 			if (f->x < event->x && event->x < f->x + f->width 
 					&& f->y < event->y && event->y < f->y + f->height){
 				focus_field(f);
-
-				//send the keyboard button events to the text input
-				if (!strncmp(f->cmd,"#kbd_", 5)){
-					struct field *f_text = get_field("#text_in");
-					if (!strcmp(f->cmd, "#kbd_bs"))
-						edit_field(f_text, MIN_KEY_BACKSPACE);
-					else if (!strcmp(f->cmd, "#kbd_Enter"))
-						edit_field(f_text, '\n');
-					else
-						edit_field(f_text, f->value[0]);
-					focus_since = millis();
-				}
+				if (f->fn)
+					f->fn(f, NULL, GDK_BUTTON_PRESS, event->x, event->y);	
 			} 
 		}
 		last_mouse_x = (int)event->x;
@@ -1879,31 +1973,19 @@ void redraw(){
 	redraw_flag++;
 }
 
+/* hardware specific routines */
+
 void init_gpio_pins(){
 	for (int i = 0; i < 15; i++){
 		pinMode(pins[i], INPUT);
 		pullUpDnControl(pins[i], PUD_UP);
 	}
-	pinMode(TX_LINE, OUTPUT);
-	pinMode(LPF_A, OUTPUT);
-	pinMode(LPF_B, OUTPUT);
-	pinMode(LPF_C, OUTPUT);
-	pinMode(LPF_D, OUTPUT);
+
 	pinMode(PTT, INPUT);
 	pullUpDnControl(PTT, PUD_UP);
 	pinMode(DASH, INPUT);
 	pullUpDnControl(DASH, PUD_UP);
-  digitalWrite(LPF_A, LOW);
-  digitalWrite(LPF_B, LOW);
-  digitalWrite(LPF_C, LOW);
-  digitalWrite(LPF_D, LOW);
-	digitalWrite(TX_LINE, LOW);
-	digitalWrite(BAND_SELECT, LOW);
 }
-
-
-/* Front Panel Routines */
-
 
 int read_switch(int i){
 	return digitalRead(i) == HIGH ? 0 : 1;
@@ -1959,6 +2041,17 @@ int enc_read(struct encoder *e) {
   return result;
 }
 
+void hw_init(){
+	wiringPiSetup();
+	init_gpio_pins();
+
+	enc_init(&enc_a, ENC_FAST, ENC1_B, ENC1_A);
+	enc_init(&enc_b, ENC_FAST, ENC2_A, ENC2_B);
+
+	int e = g_timeout_add(10, ui_tick, NULL);
+	printf("g_timeout_add() = %d\n", e);
+}
+
 void hamlib_tx(int tx_input){
   if (tx_input){
     sound_input(1);
@@ -1969,83 +2062,6 @@ void hamlib_tx(int tx_input){
 		tx_off();
 	}
 }
-
-/*
-char cat_command[100];
-
-void cat_init(){
-  serial_fd = serialOpen("/dev/pts/2", 38400);
-  if (serial_fd == -1){
-    puts("*Error: Serial port didn't open\n");
-  }
-  strcpy(cat_command, ""); 
-}
-
-
-void cat_poll(){
-  char c, buff[100];
-
-  while(serialDataAvail(serial_fd)){
-    c = serialGetchar(serial_fd);
-    int l = strlen(cat_command);
-    if (l < sizeof(cat_command) - 1){
-      cat_command[l++] = c;
-      cat_command[l] = 0;
-    }
-    if (c == ';'){
-      if (!strcmp(cat_command, "ID;"))
-        serialPuts(serial_fd, "ID020;");
-      else if (!strncmp(cat_command, "FA", 2)){ //read the frequency
-	      struct field *f = get_field("r1:freq");
-	      int freq = atoi(f->value);	
-        if (cat_command[2] != ';'){
-          int freq = atoi(cat_command + 5);
-	        sprintf(f->value, "%d", freq);
-	        sprintf(buff, "r1:freq=%d", freq);	
-	        update_field(f);
-	        do_cmd(buff);
-        }
-        serialPrintf(serial_fd, "FA000%08d;", atoi(f->value));
-      }
-      else if(!strncmp(cat_command, "IF", 2)){
-	      struct field *f = get_field("r1:freq");
-        serialPrintf(serial_fd, "IF000%8d     +00000000002000000 ;", f->value);
-        //                       12345678456789012345678901234567890
-      }
-      else if (!strncmp(cat_command, "PS", 2))
-        serialPrintf(serial_fd, "PS1;");
-      else if (!strncmp(cat_command, "AI", 2))
-        serialPrintf(serial_fd, "AI1;");
-      else if (!strncmp(cat_command, "MD", 2)){
-          switch(cat_command[2]){
-          case '1': set_field("r1:mode", "LSB");break;
-          case '2': set_field("r1:mode", "USB");break;
-          case '3': set_field("r1:mode", "CW");break;
-          case '4': set_field("r1:mode", "NBFM");break;
-          case '7': set_field("r1:mode", "CWR");break;
-          }
-          struct field *f = get_field("r1:mode");
-          if (!strcmp(f->value, "USB"))
-            serialPuts(serial_fd, "MD2;");
-          else if (!strcmp(f->value, "LSB"))
-            serialPuts(serial_fd, "MD1;");
-          else if (!strcmp(f->value, "CW"))
-            serialPuts(serial_fd, "MD3;");
-          else if (!strcmp(f->value, "CWR"))
-            serialPuts(serial_fd, "MD7;");
-          else if (!strcmp(f->value, "NBFM"))
-            serialPuts(serial_fd, "MD4;");
-      }
-      else if (!strcmp(cat_command, "RX;")){
-        serialPuts(serial_fd, "RX0;");
-      }
-    
-      printf("*** CAT : %s\n", cat_command);
-      cat_command[0] = 0;
-    }
-  }
-}
-*/
 
 int key_poll(){
 	int key = 0;
@@ -2180,13 +2196,6 @@ gboolean ui_tick(gpointer gook){
 		ticks = 0;
 		update_field(get_field("#log"));
 	
-	/*	
-		//now check if the focus has been on something other than audio for long
-		if (f_focus && millis() > focus_since + 5000 && strcmp(f_focus->cmd, "r1:volume")){
-			focus_field(get_field("r1:volume"));
-			focus_since = millis();
-		}
-*/
 		// alternate character from the softkeyboard upon long press
 		if (f_focus && focus_since + 500 < millis() 
 						&& !strncmp(f_focus->cmd, "#kbd_", 5) && mouse_down){
@@ -2215,7 +2224,6 @@ gboolean ui_tick(gpointer gook){
 		else if (tuning > 0)
 			edit_field(f, MIN_KEY_UP);
 	}
-
  
 	f = get_field("r1:mode");
 	//straight key in CW
@@ -2237,68 +2245,12 @@ gboolean ui_tick(gpointer gook){
 	return TRUE;
 }
 
-void ui_init(int argc, char *argv[]){
-  
-  gtk_init( &argc, &argv );
-	log_init();
-
-  window = gtk_window_new( GTK_WINDOW_TOPLEVEL );
-  gtk_window_set_default_size( GTK_WINDOW(window), 800, 480 );
-  gtk_window_set_title( GTK_WINDOW(window), "sBITX" );
-  
-  display_area = gtk_drawing_area_new();
-
-  gtk_container_add( GTK_CONTAINER(window), display_area );
-
-  g_signal_connect( G_OBJECT(window), "destroy", G_CALLBACK( gtk_main_quit ), NULL );
-  g_signal_connect( G_OBJECT(display_area), "draw", G_CALLBACK( on_draw_event ), NULL );
-  g_signal_connect (G_OBJECT (window), "key_press_event", G_CALLBACK (on_key_press), NULL);
-  g_signal_connect (G_OBJECT (window), "key_release_event", G_CALLBACK (on_key_release), NULL);
-  g_signal_connect (G_OBJECT (window), "window_state_event", G_CALLBACK (on_window_state), NULL);
-	g_signal_connect (G_OBJECT(display_area), "button_press_event", G_CALLBACK (on_mouse_press), NULL);
-	g_signal_connect (G_OBJECT(window), "button_release_event", G_CALLBACK (on_mouse_release), NULL);
-	g_signal_connect (G_OBJECT(display_area), "motion_notify_event", G_CALLBACK (on_mouse_move), NULL);
-	g_signal_connect (G_OBJECT(display_area), "scroll_event", G_CALLBACK (on_scroll), NULL);
-	g_signal_connect(G_OBJECT(window), "configure_event", G_CALLBACK(on_resize), NULL);
-
-  /* Ask to receive events the drawing area doesn't normally
-   * subscribe to. In particular, we need to ask for the
-   * button press and motion notify events that want to handle.
-   */
-  gtk_widget_set_events (display_area, gtk_widget_get_events (display_area)
-                                     | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK 
-																			| GDK_SCROLL_MASK
-                                     | GDK_POINTER_MOTION_MASK);
-
-	//initialize the modulation display
-	tx_mod_max = get_field("spectrum")->width;
-	tx_mod_buff = malloc(sizeof(int32_t) * tx_mod_max);
-	memset(tx_mod_buff, 0, sizeof(int32_t) * tx_mod_max);
-	tx_mod_index = 0;
-
-	init_waterfall();
-  gtk_widget_show_all( window );
-	gtk_window_fullscreen(GTK_WINDOW(window));
-}
 
 /* handle modem callbacks for more data */
 
 long get_freq(){
 	return atol(get_field("r1:freq")->value);
 }
-
-/*
-void set_freq(long freq){
-	struct field *f = get_field("r1:freq");
-	if (freq < 10)
-		return;
-	if (freq < 30000)
-		freq *= 1000;
-
-	sprintf(f->value, "%ld", freq);
-	update_field(f);
-}
-*/
 
 //this is used to trigger an actual frequency change
 //by eventually calling set_operating_freq() through do_cmd
@@ -2576,15 +2528,23 @@ void cmd_line(char *cmd){
 
 int main( int argc, char* argv[] ) {
 
-	puts("sBITX v0.30");
+	puts("sBITX v0.31");
 	active_layout = main_controls;
 	ui_init(argc, argv);
-	wiringPiSetup();
-	init_gpio_pins();
+	hw_init();
+	log_init();
+
 	setup();
 	struct field *f;
-
 	f = active_layout;
+
+	//initialize the modulation display
+
+	tx_mod_max = get_field("spectrum")->width;
+	tx_mod_buff = malloc(sizeof(int32_t) * tx_mod_max);
+	memset(tx_mod_buff, 0, sizeof(int32_t) * tx_mod_max);
+	tx_mod_index = 0;
+	init_waterfall();
 
 	//set the radio to some decent defaults
 	do_cmd("r1:freq=7100000");
@@ -2602,16 +2562,6 @@ int main( int argc, char* argv[] ) {
 	update_field(f);
 	set_volume(3000000);
 
-	enc_init(&enc_a, ENC_FAST, ENC1_B, ENC1_A);
-	enc_init(&enc_b, ENC_FAST, ENC2_A, ENC2_B);
-
-/*
-	if (argc > 1 && !strcmp(argv[1], "calibrate"))
-		do_calibration();
-*/
-
-	int e = g_timeout_add(10, ui_tick, NULL);
-	printf("g_timeout_add() = %d\n", e);
 
 	set_field("r1:freq", "7000000");
 	set_field("r1:mode", "USB");

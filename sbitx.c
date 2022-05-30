@@ -628,6 +628,7 @@ void loop(){
 
 void setup_audio_codec(){
 
+
 	strcpy(audio_card, "hw:0");
 
 	//configure all the channels of the mixer
@@ -702,10 +703,17 @@ This is the one-time initialization code
 */
 void setup(){
 
-  pinMode(LPF_A, OUTPUT);
-  pinMode(LPF_B, OUTPUT);
-  pinMode(LPF_C, OUTPUT);
-  pinMode(LPF_D, OUTPUT);
+	//setup the LPF and the gpio pins
+	pinMode(TX_LINE, OUTPUT);
+	pinMode(LPF_A, OUTPUT);
+	pinMode(LPF_B, OUTPUT);
+	pinMode(LPF_C, OUTPUT);
+	pinMode(LPF_D, OUTPUT);
+  digitalWrite(LPF_A, LOW);
+  digitalWrite(LPF_B, LOW);
+  digitalWrite(LPF_C, LOW);
+  digitalWrite(LPF_D, LOW);
+	digitalWrite(TX_LINE, LOW);
 
 	fft_init();
 	vfo_init_phase_table();
