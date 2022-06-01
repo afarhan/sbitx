@@ -80,6 +80,7 @@ struct encoder {
 #define SPECTRUM_PLOT 9
 #define SPECTRUM_NEEDLE 10
 #define COLOR_CONTROL_BOX 11
+#define SPECTRUM_BANDWIDTH 12
 
 float palette[][3] = {
 	{1,1,1}, 		// COLOR_SELECTED_TEXT
@@ -94,7 +95,8 @@ float palette[][3] = {
 	{0.1, 0.1, 0.1}, //SPECTRUM_GRID
 	{1,1,0},	//SPECTRUM_PLOT
 	{0.2,0.2,0.2}, 	//SPECTRUM_NEEDLE
-	{0.5,0.5,0.5}, COLOR_CONTROL_BOX
+	{0.5,0.5,0.5}, //COLOR_CONTROL_BOX
+	{0.5, 0.5, 0.5} //SPECTRUM_BANDWIDTH
 };
 
 char *ui_font = "Sans";
@@ -237,7 +239,6 @@ static void rect(cairo_t *gfx, int x, int y, int w, int h,
 	cairo_rectangle(gfx, x, y, w, h);
   cairo_stroke(gfx);
 }
-
 
 void ui_init(int argc, char *argv[]){
   
@@ -694,6 +695,7 @@ int list_text_at(int x, int click_y, char *txt){
 	}
 	return 0;
 }
+
 void draw_log(cairo_t *gfx, struct field *f){
 	char this_line[1000];
 	int line_height = font_table[f->font_index].height; 	
@@ -1132,9 +1134,8 @@ void draw_waterfall(struct field *f, cairo_t *gfx){
 	cairo_fill(gfx);
 }
 
-int dbg_count = 0;
 void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
-	int y, sub_division, i, grid_height, span;
+	int y, sub_division, i, grid_height, span, bw_high, bw_low;
 	struct field *f;
 	long	freq, freq_div;
 	char	freq_text[20];
@@ -1146,16 +1147,40 @@ void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
 
 	freq = atol(get_field("r1:freq")->value);
 	span = atoi(get_field("#span")->value);
+	bw_high = atoi(get_field("r1:high")->value);
+	bw_low = atoi(get_field("r1:low")->value);
+
 	// the step is in khz, we multiply by 1000 and div 10(divisions) = 100 
 	freq_div = span * 100;  
 
+	struct field *mode_f = get_field("r1:mode");
+	int filter_start;
+	int filter_width;
+	if(!strcmp(mode_f->value, "CWR") || !strcmp(mode_f->value, "LSB")){
+	 	filter_start = f_spectrum->x + (f_spectrum->width/2) - 
+		((f_spectrum->width * bw_high)/(span * 1000)); 
+	 	filter_width = (f_spectrum->width * (bw_high -bw_low))/(span * 1000); 
+	}
+	else {
+		filter_start = f_spectrum->x + (f_spectrum->width/2) + 
+		((f_spectrum->width * bw_low)/(span * 1000)); 
+		filter_width = (f_spectrum->width * (bw_high-bw_low))/(span * 1000); 
+	}
+
+	printf("%d %d\n", filter_start, filter_width);
 	f = f_spectrum;
 	sub_division = f->width / 10;
 	grid_height = f->height - 10;
 
+	cairo_set_line_width(gfx, 1);
+	cairo_set_source_rgb(gfx, palette[SPECTRUM_GRID][0], palette[SPECTRUM_GRID][1], palette[SPECTRUM_GRID][2]);
+
 	// clear the spectrum	
 	fill_rect(gfx, f->x,f->y, f->width, f->height, SPECTRUM_BACKGROUND);
 	cairo_stroke(gfx);
+	fill_rect(gfx, filter_start,f->y,filter_width,f->height,SPECTRUM_BANDWIDTH);  
+	cairo_stroke(gfx);
+
 	cairo_set_line_width(gfx, 1);
 	cairo_set_source_rgb(gfx, palette[SPECTRUM_GRID][0], palette[SPECTRUM_GRID][1], palette[SPECTRUM_GRID][2]);
 
@@ -1185,7 +1210,6 @@ void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
 
 	//we find out the mode and plot the marker line
 	
-	struct field *mode_f = get_field("r1:mode");
 
 	/*	
 	int marker_offset = (modem_center_freq(mode_id(mode_f->value)) * f->width)/(span * 1000);
@@ -1254,10 +1278,6 @@ int waterfall_fn(struct field *f, cairo_t *gfx, int event, int a, int b){
 			break;
 	}
 }
-
-
-
-
 
 void draw_dial(struct field *f, cairo_t *gfx){
 	struct font_style *s = font_table + 0;
@@ -1991,6 +2011,17 @@ int read_switch(int i){
 	return digitalRead(i) == HIGH ? 0 : 1;
 }
 
+int key_poll(){
+	int key = 0;
+	
+	if (digitalRead(PTT) == LOW)
+		key |= CW_DASH;
+//	if (digitalRead(DASH) == LOW)
+//		key |= CW_DOT;
+
+	return key;
+}
+
 void enc_init(struct encoder *e, int speed, int pin_a, int pin_b){
 	e->pin_a = pin_a;
 	e->pin_b = pin_b;
@@ -2063,16 +2094,6 @@ void hamlib_tx(int tx_input){
 	}
 }
 
-int key_poll(){
-	int key = 0;
-	
-	if (digitalRead(PTT) == LOW)
-		key |= CW_DASH;
-//	if (digitalRead(DASH) == LOW)
-//		key |= CW_DOT;
-
-	return key;
-}
 
 int get_cw_delay(){
 	return cw_delay;
