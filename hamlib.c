@@ -148,9 +148,9 @@ void interpret_command(char *cmd){
   else if (check_cmd(cmd, "v"))
     send_response("VFOA\n");
 	else if (!strcmp(cmd, "m VFOA"))
-		send_response("USB 3000\n");
+		send_response("USB\n3000\n");
   else if (!strncmp(cmd, "m VFOA", 6))
-    send_response("USB 3000\n");
+    send_response("USB\n3000\n");
   else if (check_cmd(cmd, "f"))
 		send_freq();
   else if (check_cmd(cmd, "F"))
@@ -245,7 +245,7 @@ void hamlib_slice(){
       //for other errors, just close the socket
 			puts("Hamlib connection dropped. Restarting to listen ..."); 
       close(data_socket);
-      data_socket = 0;      
+      data_socket = -1;      
     }
   } 
 }

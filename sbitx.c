@@ -847,7 +847,7 @@ void sdr_request(char *request, char *response){
 		if (!strcmp(value, "on")){
 			in_tx = 1;
       fft_reset_m_bins();
-			digitalWrite(TX_LINE, HIGH);
+			//digitalWrite(TX_LINE, HIGH);
       delay(50);
 			set_tx_power_levels();
 			strcpy(response, "ok");
@@ -857,7 +857,7 @@ void sdr_request(char *request, char *response){
 			in_tx = 0;
       fft_reset_m_bins();
 			strcpy(response, "ok");
-			digitalWrite(TX_LINE, LOW);
+			//digitalWrite(TX_LINE, LOW);
 			sound_mixer(audio_card, "Master", rx_vol);
 			sound_mixer(audio_card, "Capture", rx_gain);
 			spectrum_reset();

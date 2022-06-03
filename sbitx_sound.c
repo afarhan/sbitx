@@ -535,8 +535,8 @@ int32_t	resample_in[10000];
 int32_t	resample_out[10000];
 
 int last_second = 0;
-int nsamples = 0;
-int	played_samples = 0;
+//int nsamples = 0;
+//int	played_samples = 0;
 int sound_loop(){
 	int32_t		*line_in, *line_out, *data_in, *data_out, 
 						*input_i, *output_i, *input_q, *output_q;
@@ -544,7 +544,7 @@ int sound_loop(){
   short s1, s2;
   int frames;
 
-	//we allocate enough for two channels of in32_t sized samples	
+	//we allocate enough for two channels of int32_t sized samples	
   data_in = (int32_t *)malloc(buff_size * 2);
   line_in = (int32_t *)malloc(buff_size * 2);
   line_out = (int32_t *)malloc(buff_size * 2);
@@ -564,7 +564,8 @@ int sound_loop(){
 	q_init(&qloop, 100000);
 	//Note: the virtual cable samples queue should be flushed at the start of tx
  	qloop.stall = 1;
-	
+
+	FILE *pf = fopen("loopback.raw", "w");	
 
   while(sound_thread_continue) {
 
@@ -574,8 +575,11 @@ int sound_loop(){
 		last_time = gettime_now.tv_nsec/1000;
 
 
-		while ((pcmreturn = snd_pcm_readi(pcm_capture_handle, data_in, frames)) < 0)
+		while ((pcmreturn = snd_pcm_readi(pcm_capture_handle, data_in, frames)) < 0){
 			snd_pcm_prepare(pcm_capture_handle);
+			putchar('=');
+		}
+		printf("wm8731 read %d vs ", pcmreturn);
 		i = 0; 
 		j = 0;
     if (use_virtual_cable){
@@ -592,7 +596,15 @@ int sound_loop(){
 				continue;
 				putchar('*');
       }
-			//printf(" loopback read %d samples\n", pcmreturn);
+			fwrite(data_in, 8, pcmreturn, pf);
+			printf(" loopback read %d samples\n", pcmreturn);
+			for (i = 0; i < pcmreturn; i++){
+				input_i[j] = input_q[j] =  data_in[i];
+				j++;
+				input_i[j] = input_q[j] =  data_in[i];
+				j++;	
+			}
+	/*
 			//we have some data in here.
 			j = 0; //make it 1 for the right channel, as 1,3,5.. are left and 2,4,6.. are right 
 			// we have to push two samples to double up the sampling rate from 48K to 96K
@@ -618,7 +630,7 @@ int sound_loop(){
 					input_i[i] = q_read(&qloop);
 				input_q[i] = input_i[i];
 			}
-
+*/
 			//printf("ret %d, q=%d, %d\n", pcmreturn, q_length(&qloop), qloop.stall);
 		}
 		else {
@@ -628,6 +640,7 @@ int sound_loop(){
 				i++;
 			}
 		}
+/*
 		clock_gettime(CLOCK_MONOTONIC, &gettime_now);
 		if (gettime_now.tv_sec != last_sec){
 			//printf("sampling rate %d/%d\n", played_samples, nsamples);
@@ -636,13 +649,14 @@ int sound_loop(){
 			played_samples = 0;
 			count = 0;
 		}
+
 		if (pcmreturn > 0)
 			nsamples += pcmreturn;
 		//printf("%d %ld %d\n", count++, nsamples, pcmreturn);
-
+*/
    	if (use_virtual_cable){
 			sound_process(input_i, input_q, output_i, output_q, 1024);
-			//printf("loop wrote %d\n", 1024 * sizeof(int32_t));
+			printf("loop wrote %d, queue:%d\n", 1024 * sizeof(int32_t), qloop.stall);
 		}
     else 
 			sound_process(input_i, input_q, output_i, output_q, pcmreturn);
@@ -674,8 +688,9 @@ int sound_loop(){
        snd_pcm_prepare(loopback_play_handle);
 			//puts("preparing loopback");
     }
-		played_samples += pcmreturn;
+		//played_samples += pcmreturn;
   }
+	fclose(pf);
   printf("********Ending sound thread\n");
 }
 /*

@@ -1167,7 +1167,6 @@ void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
 		filter_width = (f_spectrum->width * (bw_high-bw_low))/(span * 1000); 
 	}
 
-	printf("%d %d\n", filter_start, filter_width);
 	f = f_spectrum;
 	sub_division = f->width / 10;
 	grid_height = f->height - 10;
@@ -1208,16 +1207,6 @@ void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
 		f_start += freq_div;
 	}
 
-	//we find out the mode and plot the marker line
-	
-
-	/*	
-	int marker_offset = (modem_center_freq(mode_id(mode_f->value)) * f->width)/(span * 1000);
-	//int marker_offset = 0;
-	cairo_move_to(gfx, f->x + f->width/2 + marker_offset, f->y);
-	cairo_line_to(gfx, f->x + f->width/2 + marker_offset, f->y + f->height); 
-	cairo_stroke(gfx);
-	*/
 
 	//we only plot the second half of the bins (on the lower sideband
 	int last_y = 100;
@@ -1751,8 +1740,9 @@ void tx_on(){
 		set_operating_freq(atoi(freq->value), response);
 		update_field(get_field("r1:freq"));
 	}
-	if (tx_mode == MODE_DIGITAL)
-		sound_input(1);
+	// let the modems decide this
+	//if (tx_mode == MODE_DIGITAL || tx_mode == MODE_RTTY || tx_mode == MODE_PSK31)
+		//sound_input(1);
 
 	tx_start_time = millis();
 }
