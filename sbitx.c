@@ -19,6 +19,8 @@
 char audio_card[32];
 int tx_shift = 512;
 
+FILE *pf_debug = NULL;
+
 //this is for processing FT8 decodes 
 //unsigned int	wallclock = 0;
 
@@ -41,8 +43,6 @@ fftw_complex *fft_out;		// holds the incoming samples in freq domain (for rx as 
 fftw_complex *fft_in;			// holds the incoming samples in time domain (for rx as well as tx) 
 fftw_complex *fft_m;			// holds previous samples for overlap and discard convolution 
 fftw_plan plan_fwd, plan_tx;
-/* int bfo_freq = 27025570; //for vxo */
-// bfo_freq = 27034000;
 int bfo_freq = 40035000;
 int freq_hdr = 7000000;
 
@@ -82,13 +82,6 @@ void radio_tune_to(u_int32_t f){
   si5351bx_setfreq(2, f + bfo_freq - 24000 + TUNING_SHIFT);
   //printf("Setting radio to %d\n", f);
 }
-
-/*
-//ffts for transmit, we only transmit one channel at a time
-fftw_plan tx_plan_rev;
-fftw_complex *tx_fft_freq;
-fftw_complex *tx_fft_time;
-*/
 
 void fft_init(){
 	int mem_needed;
@@ -497,6 +490,9 @@ void tx_process(
 
 	struct rx *r = tx_list;
 
+	printf("txing %d\n", n_samples);
+	//fwrite(input_mic, 4, n_samples, pf_debug);
+
 	//first add the previous M samples
 	for (i = 0; i < MAX_BINS/2; i++)
 		fft_in[i]  = fft_m[i];
@@ -509,14 +505,19 @@ void tx_process(
 		if (r->mode == MODE_2TONE)
 			i_sample = (1.0 * (vfo_read(&tone_a) 
 										+ vfo_read(&tone_b))) / 20000000000.0;
-		else if (r->mode > MODE_AM || r->mode == MODE_CW || r->mode == MODE_CWR){
+		else if (r->mode == MODE_CW || r->mode == MODE_CWR){
 			i_sample = modem_next_sample(r->mode) / 3;
 			output_speaker[j] = i_sample * 100000000.0;
 		}
-	  else {
+		else 
 	  	i_sample = (1.0 * input_mic[j]) / 2000000000.0;
+
+		//don't echo the voice modes
+		if (r->mode == MODE_USB || r->mode == MODE_LSB || r->mode == MODE_AM 
+			|| r->mode == MODE_NBFM)
 			output_speaker[j] = 0;
-    }
+		else
+			output_speaker[j] = i_sample * 2000000000.0; 	
 	  q_sample = 0;
 
 	  j++;
@@ -727,6 +728,7 @@ void setup(){
   tx_list->tuned_bin = 512;
 	tx_init(7000000, MODE_LSB, -3000, -300);
 
+	pf_debug = fopen("tx_samples.raw", "w");
 
 	sound_thread_start("plughw:0,0");
 	setup_audio_codec();
