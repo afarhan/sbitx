@@ -67,6 +67,7 @@ struct encoder {
 	int prev_state;
 	int history;
 };
+void tuning_isr(void);
 
 #define COLOR_SELECTED_TEXT 0
 #define COLOR_TEXT 1
@@ -96,7 +97,7 @@ float palette[][3] = {
 	{1,1,0},	//SPECTRUM_PLOT
 	{0.2,0.2,0.2}, 	//SPECTRUM_NEEDLE
 	{0.5,0.5,0.5}, //COLOR_CONTROL_BOX
-	{0.5, 0.5, 0.5} //SPECTRUM_BANDWIDTH
+	{0.2, 0.2, 0.2} //SPECTRUM_BANDWIDTH
 };
 
 char *ui_font = "Sans";
@@ -127,7 +128,7 @@ struct font_style font_table[] = {
 	{FONT_LARGE_FIELD, 0, 1, 1, "Mono", 14, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
 	{FONT_LARGE_VALUE, 1, 1, 1, "Arial", 24, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
 	{FONT_SMALL, 0, 1, 1, "Mono", 10, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
-	{FONT_LOG, 0, 1, 0, "Mono", 14, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
+	{FONT_LOG, 0, 1, 0, "Mono", 12, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
 };
 
 struct encoder enc_a, enc_b;
@@ -247,7 +248,7 @@ void ui_init(int argc, char *argv[]){
   window = gtk_window_new( GTK_WINDOW_TOPLEVEL );
   gtk_window_set_default_size( GTK_WINDOW(window), 800, 480 );
   gtk_window_set_title( GTK_WINDOW(window), "sBITX" );
-  
+ 
   display_area = gtk_drawing_area_new();
 
   gtk_container_add( GTK_CONTAINER(window), display_area );
@@ -368,7 +369,7 @@ char vfo_a_mode[10];
 char vfo_b_mode[10];
 char mycallsign[12];
 char mygrid[12];
-int	cw_delay = 500;
+int	cw_delay = 1000;
 int	data_delay = 700;
 
 #define MAX_RIT 25000
@@ -702,7 +703,7 @@ void draw_log(cairo_t *gfx, struct field *f){
 	int n_lines = f->height / line_height;
 
 	//estimate!
-	int char_width = measure_text(gfx, "01234567890123456789", f->font_index)/20;
+	int char_width = 1 + measure_text(gfx, "01234567890123456789", f->font_index)/20;
 	log_cols = f->width / char_width;
 	int y = f->y + 2; 
 
@@ -717,15 +718,13 @@ void draw_log(cairo_t *gfx, struct field *f){
 		if (i == MAX_LOG_BUFFER)
 			i = 0;
 		//break the line on overflow or newline 
-		if (log_buffer[i] == '\n' || col_count == log_cols){
+		if (log_buffer[i] == '\n' || col_count == log_cols - 2){
 			if (log_buffer[i] != '\n')
 				this_line[col_count++] = log_buffer[i];
 			this_line[col_count] = 0;
 			draw_text(gfx, f->x, y, this_line, f->font_index);
 			//printf("line %d/%d [%s]\n", j++, y, this_line);
 			y += line_height;
-			//draw the line
-			//printf("[%d]\n", i);
 			col_count = 0;
 			//rows--;
 		}
@@ -1177,7 +1176,7 @@ void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
 	// clear the spectrum	
 	fill_rect(gfx, f->x,f->y, f->width, f->height, SPECTRUM_BACKGROUND);
 	cairo_stroke(gfx);
-	fill_rect(gfx, filter_start,f->y,filter_width,f->height,SPECTRUM_BANDWIDTH);  
+	fill_rect(gfx, filter_start,f->y,filter_width,grid_height,SPECTRUM_BANDWIDTH);  
 	cairo_stroke(gfx);
 
 	cairo_set_line_width(gfx, 1);
@@ -1565,8 +1564,6 @@ void band_stack_update_power(int power){
 	} 
 }
 
-
-
 int do_spectrum(struct field *f, cairo_t *gfx, int event, int a, int b){
 	struct field *f_freq, *f_span;
 	int 	span;
@@ -1863,7 +1860,7 @@ static gboolean on_key_press (GtkWidget *widget, GdkEventKey *event, gpointer us
 			}
 			break;
 		case MIN_KEY_DOWN:
-			if (f_focus == NULL && strcmp(f_hover->cmd, "")){
+			if (f_focus == NULL && f_hover && strcmp(f_hover->cmd, "")){
 				hover_field(f_hover + 1);
 				//printf("Down, hover %d\n", f_hover);
 			}
@@ -2070,7 +2067,9 @@ void hw_init(){
 	enc_init(&enc_b, ENC_FAST, ENC2_A, ENC2_B);
 
 	int e = g_timeout_add(10, ui_tick, NULL);
-	printf("g_timeout_add() = %d\n", e);
+
+	wiringPiISR(ENC2_A, INT_EDGE_BOTH, tuning_isr);
+	wiringPiISR(ENC2_B, INT_EDGE_BOTH, tuning_isr);
 }
 
 void hamlib_tx(int tx_input){
@@ -2194,10 +2193,46 @@ void do_keyer(){
 	}	
 }
 
+int tuning_ticks = 0;
+void tuning_isr(void){
+	int tuning = enc_read(&enc_b);
+	if (tuning < 0)
+		tuning_ticks++;
+	if (tuning > 0)
+		tuning_ticks--;	
+}
+
 gboolean ui_tick(gpointer gook){
 	int static ticks = 0;
 
 	ticks++;
+	
+	// check the tuning knob
+	struct field *f = get_field("r1:freq");
+/*
+	int tuning = enc_read(&enc_b);
+	if (tuning != 0){
+		if (tuning < 0)
+			edit_field(f, MIN_KEY_DOWN);	
+		else if (tuning > 0)
+			edit_field(f, MIN_KEY_UP);
+		return TRUE;
+	}
+*/
+
+	if (abs(tuning_ticks) > 5)
+		tuning_ticks *= 4;
+	while (tuning_ticks > 0){
+		edit_field(f, MIN_KEY_DOWN);
+		tuning_ticks--;
+	}
+	while (tuning_ticks < 0){
+		edit_field(f, MIN_KEY_UP);
+		tuning_ticks++;
+	}
+	//tuning_ticks = 0;
+
+
 	if (ticks >= 10){
 		struct field *f = get_field("spectrum");
 		update_field(f);	//move this each time the spectrum watefall index is moved
@@ -2226,15 +2261,6 @@ gboolean ui_tick(gpointer gook){
 	wsjtx_slice();
 	save_user_settings();
 
-	// check the tuning knob
-	struct field *f = get_field("r1:freq");
-	int tuning = enc_read(&enc_b);
-	if (tuning != 0){
-		if (tuning < 0)
-			edit_field(f, MIN_KEY_DOWN);	
-		else if (tuning > 0)
-			edit_field(f, MIN_KEY_UP);
-	}
  
 	f = get_field("r1:mode");
 	//straight key in CW
@@ -2571,7 +2597,7 @@ int main( int argc, char* argv[] ) {
 	
 	f = get_field("spectrum");
 	update_field(f);
-	set_volume(3000000);
+	set_volume(20000000);
 
 
 	set_field("r1:freq", "7000000");

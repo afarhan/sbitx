@@ -46,8 +46,7 @@ fftw_plan plan_fwd, plan_tx;
 int bfo_freq = 40035000;
 int freq_hdr = 7000000;
 
-static double volume 	= 100000.0;
-static double mic_gain = 200000000.0;
+static double volume 	= 100.0;
 static int tx_power_watts = 40;
 static int rx_gain = 100;
 static int rx_vol = 100;
@@ -490,9 +489,9 @@ void tx_process(
 
 	struct rx *r = tx_list;
 
-	printf("txing %d\n", n_samples);
 	//fwrite(input_mic, 4, n_samples, pf_debug);
 
+	printf("%d\n", n_samples);
 	//first add the previous M samples
 	for (i = 0; i < MAX_BINS/2; i++)
 		fft_in[i]  = fft_m[i];
@@ -849,7 +848,7 @@ void sdr_request(char *request, char *response){
 		if (!strcmp(value, "on")){
 			in_tx = 1;
       fft_reset_m_bins();
-			//digitalWrite(TX_LINE, HIGH);
+			digitalWrite(TX_LINE, HIGH);
       delay(50);
 			set_tx_power_levels();
 			strcpy(response, "ok");
@@ -859,7 +858,7 @@ void sdr_request(char *request, char *response){
 			in_tx = 0;
       fft_reset_m_bins();
 			strcpy(response, "ok");
-			//digitalWrite(TX_LINE, LOW);
+			digitalWrite(TX_LINE, LOW);
 			sound_mixer(audio_card, "Master", rx_vol);
 			sound_mixer(audio_card, "Capture", rx_gain);
 			spectrum_reset();

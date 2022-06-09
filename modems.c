@@ -77,6 +77,7 @@ typedef float float32_t;
 
 static long modem_tx_timeout = 0;
 static int modem_input_method = CW_KBD;
+static int modem_pitch = 700;
 
 /*******************************************************
 **********                  FT8                  *******
@@ -251,12 +252,12 @@ struct morse morse_table[] = {
 
 #define FLOAT_SCALE (1073741824.0)
 
-
 int cw_period;
 struct vfo cw_tone, cw_env;
 int keydown_count=0;			//counts down the pause afer a keydown is finished
 int keyup_count = 0;			//counts down to how long a key is held down
 float cw_envelope = 1;
+int cw_pitch = 700;
 
 char cw_text[] = " cq cq dx de vu2ese A k";
 char *tx_next, *cw_next;
@@ -344,13 +345,14 @@ float cw_get_sample(){
 
 	sample = (vfo_read(&cw_tone)/FLOAT_SCALE) * cw_envelope;
 
-	return sample;
+	return sample / 8;
 }
 
 void cw_init(int freq, int wpm, int keyer){
 	vfo_start(&cw_env, 50, 49044); //start in the third quardrant, 270 degree
 	vfo_start(&cw_tone, freq, 0);
 	cw_period = (12 *9600)/ wpm; 		//as dot = 1.2/wpm
+	modem_input_method = keyer;
 	keydown_count = 0;
 	keyup_count = 0;
 	cw_envelope = 0;
@@ -528,7 +530,7 @@ static int sps, deci, s_timer ;
 
 
 void fldigi_read(){
-	char buffer[1000];
+	char buffer[10000];
 	if(!fldigi_call("rx.get_data", "", buffer)){		
 		write_log(buffer);
 		fldigi_retry_at = millis() + 500;
@@ -573,7 +575,7 @@ void modem_init(){
 	ft8_tx_buff_index = 0;
 	ft8_tx_nsamples = 0;
 	pthread_create( &ft8_thread, NULL, ft8_thread_function, (void*)NULL);
-	cw_init(700, 12, CW_KBD);
+	cw_init(cw_pitch, 12, CW_KBD);
 	strcpy(fldigi_mode, "");
 
 	//for now, launch fldigi in the background, if not already running
@@ -596,6 +598,14 @@ int modem_center_freq(int mode){
 	}
 }
 
+//change this as per mode
+int modem_set_pitch(int pitch){
+	modem_pitch = pitch;
+}
+
+//change the settings as per the mode
+int modem_get_pitch(int pitch){
+}
 //this called routinely to check if we should start/stop the transmitting
 //each mode has its peculiarities, like the ft8 will start only on 15th second boundary
 //psk31 will transmit a few spaces after the last character, etc.
@@ -662,6 +672,8 @@ void modem_poll(int mode){
 			else
 				puts("*fldigi rx failed");
 		}
+		else 
+			fldigi_read();		
 	break; 
 	}
 
