@@ -3,5 +3,13 @@ void loop();
 void display();
 void redraw();
 void key_pressed(char c);
-void write_log(char *text);
 extern int display_freq;
+#define FONT_FIELD_LABEL 0
+#define FONT_FIELD_VALUE 1
+#define FONT_LARGE_FIELD 2
+#define FONT_LARGE_VALUE 3
+#define FONT_SMALL 4
+#define FONT_LOG 5
+#define FONT_LOG_RX 6
+#define FONT_LOG_TX 7
+void write_log(int style, char *text);

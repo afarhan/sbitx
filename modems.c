@@ -148,7 +148,7 @@ void *ft8_thread_function(void *ptr){
 
 		while(fgets(buff, sizeof(buff), pf)) {
 			strncpy(buff, time_str, 6);
-			write_log(buff);
+			write_log(FONT_LOG_RX, buff);
 		}
 		fclose(pf);
 	}
@@ -270,7 +270,7 @@ static char cw_get_next_kbd_symbol(){
 		char b[2];
 		b[0]= c;
 		b[1] = 0;
-		write_log(b);
+		write_log(FONT_LOG_TX, b);
 
 		for (int i = 0; i < sizeof(morse_table)/sizeof(struct morse); i++)
 			if (morse_table[i].c == c)
@@ -327,7 +327,7 @@ float cw_get_sample(){
 					else if (c == ' '){
 					//	printf("SP\n");
 						if (get_cw_input_method() == CW_IAMBIC)
-							write_log(" ");
+							write_log(FONT_LOG_RX, " ");
 						cw_key_letter[0] = 0;
 					}
 					else if (c == '/'){
@@ -337,7 +337,7 @@ float cw_get_sample(){
 								char buff[2];
 								buff[0] = morse_table[i].c;
 								buff[1] = 0;
-								write_log(buff);
+								write_log(FONT_LOG_RX, buff);
 								//printf("[%c]\n", morse_table[i].c);
 							}
 						cw_key_letter[0] = 0;
@@ -574,7 +574,7 @@ static int sps, deci, s_timer ;
 void fldigi_read(){
 	char buffer[10000];
 	if(!fldigi_call("rx.get_data", "", buffer)){		
-		write_log(buffer);
+		write_log(FONT_LOG_RX, buffer);
 		fldigi_retry_at = millis() + 500;
 	}
 }
@@ -664,7 +664,7 @@ void modem_poll(int mode){
 		if (now % 15 == 0){
 			if(ft8_tx_nsamples > 0 && !tx_is_on){
 				tx_on();	
-				write_log(ft8_tx_text);
+				write_log(FONT_LOG_TX, ft8_tx_text);
 			}
 			if (tx_is_on && ft8_tx_nsamples == 0)
 				tx_off();
@@ -675,7 +675,7 @@ void modem_poll(int mode){
 		key_status = key_poll();
 		if (!tx_is_on && (bytes_available || key_status) > 0){
 			if (!key_status)
-				write_log("\n<tx>\n");
+				write_log(FONT_LOG, "\n<tx>\n");
 			tx_on();
 			cw_init(700, 12, CW_IAMBIC); 
 			modem_tx_timeout = millis() + get_cw_delay();
@@ -687,7 +687,7 @@ void modem_poll(int mode){
 			else if (modem_tx_timeout < millis()){
 				tx_off();
 				if (!key_status)
-					write_log("\n<rx>\n");
+					write_log(FONT_LOG, "\n<rx>\n");
 			}
 		}
 	break;

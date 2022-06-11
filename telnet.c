@@ -17,8 +17,8 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <pthread.h>
+#include "sdr_ui.h"
 
-extern void write_log(char *text);
 void telnet_open(char *server);
 int telnet_write(char *text);
 void telnet_close();
@@ -84,12 +84,11 @@ void *telnet_thread_function(void *server){
 	char *host_name = strtok((char *)server, ":");
 	char *port = strtok(NULL, "");
 	if(!host_name){
-		write_log("Telnet : specifc host and port ex:'dxc.g3lrs.org.uk:7300'");
+		write_log(FONT_LOG, "Telnet : specifc host and port ex:'dxc.g3lrs.org.uk:7300'");
 		return NULL;
 	}
 	if(!port){
-		sprintf(buff, "Telnet port is missing");
-		write_log(buff);
+		write_log(FONT_LOG, "Telnet port is missing");
 		return NULL;	
 	}	
 
@@ -114,7 +113,7 @@ void *telnet_thread_function(void *server){
 	while((e = recv(telnet_sock, buff, sizeof(buff), 0)) >= 0){
 		if (e > 0){
 			buff[e] = 0;
-			write_log(buff);
+			write_log(FONT_LOG_RX, buff);
 		}
 	}
 	close(telnet_sock);

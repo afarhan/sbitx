@@ -115,12 +115,6 @@ struct font_style {
 
 guint key_modifier = 0;
 
-#define FONT_FIELD_LABEL 0
-#define FONT_FIELD_VALUE 1
-#define FONT_LARGE_FIELD 2
-#define FONT_LARGE_VALUE 3
-#define FONT_SMALL 4
-#define FONT_LOG 5
 
 struct font_style font_table[] = {
 	{FONT_FIELD_LABEL, 0, 1, 1, "Mono", 14, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
@@ -128,10 +122,14 @@ struct font_style font_table[] = {
 	{FONT_LARGE_FIELD, 0, 1, 1, "Mono", 14, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
 	{FONT_LARGE_VALUE, 1, 1, 1, "Arial", 24, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
 	{FONT_SMALL, 0, 1, 1, "Mono", 10, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
-	{FONT_LOG, 0, 1, 0, "Mono", 12, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
+	{FONT_LOG, 1, 1, 1, "Mono", 12, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
+	{FONT_LOG_RX, 0, 1, 0, "Mono", 12, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
+	{FONT_LOG_TX, 0, 1, 1, "Mono", 12, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
 };
 
 struct encoder enc_a, enc_b;
+
+#define MAX_FIELD_LENGTH 128
 
 #define FIELD_NUMBER 0
 #define FIELD_BUTTON 1
@@ -141,12 +139,23 @@ struct encoder enc_a, enc_b;
 #define FIELD_STATIC 5
 #define FIELD_LOG 6
 
-#define MAX_FIELD_LENGTH 128
+// The log is a series of lines
 #define MAX_LOG_BUFFER 10000
+#define MAX_LINE_LENGTH 128
+#define MAX_LOG_LINES 500
+static int 	log_cols = 50;
 
 //we use just one text list in our user interface
-static int 	log_cols = 50;
-static char	log_buffer[MAX_LOG_BUFFER];
+
+struct log_line {
+	char text[MAX_LINE_LENGTH];
+	int style;
+};
+static int log_style = FONT_LOG;
+static struct log_line log_stream[MAX_LOG_LINES];
+int log_current_line = 0;
+
+//static char	log_buffer[MAX_LOG_BUFFER];
 static int	next_log = 0;
 
 // event ids, some of them are mapped from gtk itself
@@ -663,8 +672,8 @@ void update_field(struct field *f);
 void tx_on();
 void tx_off();
 
-#define MAX_LOG_LINES 1000
-char *log_lines[MAX_LOG_LINES];
+//#define MAX_LOG_LINES 1000
+//char *log_lines[MAX_LOG_LINES];
 int last_log = 0;
 
 struct field *get_field(char *cmd){
@@ -737,97 +746,49 @@ void set_field(char *id, char *value){
 
 void log_init(){
 	next_log = 0;
-	memset(log_buffer, ' ', sizeof(log_buffer));
+	for (int i =0;  i < MAX_LOG_LINES; i++){
+		log_stream[i].text[0] = 0;
+		log_stream[i].style = log_style;
+	}
+//	memset(log_buffer, ' ', sizeof(log_buffer));
 }
 
-void write_log(char *text){
+int log_init_next_line(){
+	log_current_line++;
+	if (log_current_line == MAX_LOG_LINES)
+		log_current_line = log_style;
+	log_stream[log_current_line].text[0] = 0;	
+	log_stream[log_current_line].style = log_style;
+	return log_current_line;
+}
+
+void write_log(int style, char *text){
+
+	//move to a new line if the style has changed
+	if (style != log_style){
+		log_style = style;
+		log_init_next_line();	
+	}
 
 	while(*text){
-		if ((*text < 128 & *text >= ' ') || *text == '\n')
-			log_buffer[next_log++] = *text;
+		if (*text == '\n')
+			log_init_next_line();
+		else if (*text < 128 & *text >= ' '){
+			char *p = log_stream[log_current_line].text;
+			int len = strlen(p);
+			if(len >= log_cols){
+				//start a fresh line
+				log_init_next_line();
+				p = log_stream[log_current_line].text;
+				len = 0;
+			}
+			
+			p[len++] = *text;
+			p[len] = 0;
+		}
 		text++;	
-		if (next_log >= MAX_LOG_BUFFER)
-			next_log = 0;
 	}
 	redraw_flag++;
-}
-
-void log_back(){
-	next_log--;
-	if (next_log < 0)
-		next_log = MAX_LOG_BUFFER - 1;
-}
-/*
-	1. count the characters and break on cols count for lines
-	2. break earlier if newline is encountered
-*/
-
-int log_display_start(int rows, int cols){
-	int col_count = 0;
-
-	int i = next_log;	
-	while(rows >= 0){
-		if (log_buffer[i] == '\n'){
-			rows--;
-			col_count = 0;
-		}
-		else
-			col_count++;
-		if (col_count >= cols){
-			col_count = 0;
-			rows--;
-			if (!rows)
-				return i;
-		}
-		//wrap i around the log_buffer
-		if (--i < 0)
-			i = MAX_LOG_BUFFER - 1;
-	}
-	return i;
-}
-
-int list_text_at(int x, int click_y, char *txt){
-	char this_line[1000];
-
-	struct field *f = get_field("#log");
-
-	int line_height = font_table[f->font_index].height; 	
-	int n_lines = f->height / line_height;
-
-	int y = f->y + 2; 
-
-	int i = log_display_start(n_lines, log_cols);
-	int col_count = 0;
-
-	int j = 0;
-
-	while(i != next_log){
-		//wrap i around the buffer
-		if (i == MAX_LOG_BUFFER)
-			i = 0;
-
-		//break the line on overflow or newline 
-		if (log_buffer[i] == '\n' || col_count == log_cols){
-			if (log_buffer[i] != '\n')
-				txt[col_count++] = log_buffer[i];
-			txt[col_count] = 0;
-			y += line_height;
-			if (y > click_y)
-				return 1;
-			col_count = 0;
-		}
-		else{
-			txt[col_count++] = log_buffer[i];
-			//putchar(log_buffer[i]);
-		}
-		i++;
-	}
-	if (col_count > 0){
-		txt[col_count] = 0;
-		if (click_y < y)
-			return 1;
-	}
-	return 0;
 }
 
 void draw_log(cairo_t *gfx, struct field *f){
@@ -836,41 +797,22 @@ void draw_log(cairo_t *gfx, struct field *f){
 	int n_lines = f->height / line_height;
 
 	//estimate!
-	int char_width = 1 + measure_text(gfx, "01234567890123456789", f->font_index)/20;
+	int char_width = 1+measure_text(gfx, "01234567890123456789", f->font_index)/20;
 	log_cols = f->width / char_width;
 	int y = f->y + 2; 
-
-	int i = log_display_start(n_lines, log_cols);
-	int col_count = 0;
-
 	int j = 0;
 
-	//printf("rows %d, col %d\n", n_lines, log_cols);
-	while(i != next_log){
-		//wrap i around the buffer
-		if (i == MAX_LOG_BUFFER)
-			i = 0;
-		//break the line on overflow or newline 
-		if (log_buffer[i] == '\n' || col_count == log_cols - 2){
-			if (log_buffer[i] != '\n')
-				this_line[col_count++] = log_buffer[i];
-			this_line[col_count] = 0;
-			draw_text(gfx, f->x, y, this_line, f->font_index);
-			//printf("line %d/%d [%s]\n", j++, y, this_line);
-			y += line_height;
-			col_count = 0;
-			//rows--;
-		}
-		else{
-			this_line[col_count++] = log_buffer[i];
-			//putchar(log_buffer[i]);
-		}
-		i++;
-	}
-	if (col_count > 0){
-		this_line[col_count] = 0;
-		//printf("last line %d/%d [%s]\n", j++, y, this_line);
-		draw_text(gfx, f->x, y, this_line, f->font_index);
+	int start_line = log_current_line - n_lines;
+	if (start_line < 0)
+		start_line += MAX_LOG_LINES;
+
+ 	for (int i = 0; i < n_lines; i++){
+		struct log_line *log_line = log_stream + start_line;
+		draw_text(gfx, f->x, y, log_line->text, log_line->style);
+		start_line++;
+		y += line_height;
+		if(start_line >= MAX_LOG_LINES)
+			start_line = 0;
 	}
 }
 
@@ -2391,7 +2333,7 @@ gboolean ui_tick(gpointer gook){
 	}
 
   hamlib_slice();
-	wsjtx_slice();
+	//wsjtx_slice();
 	save_user_settings();
 
  
@@ -2445,7 +2387,7 @@ void set_mode(char *mode){
 		update_field(f);
 	}
 	else
-		write_log("%s is not a mode\n");
+		write_log(FONT_LOG, "%s is not a mode\n");
 }
 
 void get_mode(char *mode){
@@ -2664,12 +2606,12 @@ void cmd_line(char *cmd){
 	if (!strcmp(exec, "callsign")){
 		strcpy(mycallsign,args); 
 		sprintf(response, "\n[Your callsign is set to %s]\n", mycallsign);
-		write_log(response);
+		write_log(FONT_LOG, response);
 	}
 	else if (!strcmp(exec, "grid")){
 		strcpy(mygrid, args);
 		sprintf(response, "\n[Your grid is set to %s]\n", mygrid);
-		write_log(response);
+		write_log(FONT_LOG, response);
 	}
 	else if(!strcmp(exec, "freq") || !strcmp(exec, "f")){
 		long freq = atol(args);
@@ -2685,7 +2627,7 @@ void cmd_line(char *cmd){
 			cw_delay = atoi(args);
 		char buff[10];
 		sprintf(buff, "cwdelay: %d msec\n", cw_delay);
-		write_log(buff);
+		write_log(FONT_LOG, buff);
 	}
 	else if (!strcmp(exec, "cwinput")){
 		if (strlen(args)){
@@ -2705,7 +2647,7 @@ void cmd_line(char *cmd){
 			strcpy(buff, "cwinput = keyer [kbd/key/keyer]");
 		else
 			strcpy(buff, "cwinput  = [kbd/key/keyer]");
-		write_log(buff);
+		write_log(FONT_LOG, buff);
 	}
 	else if (!strcmp(exec, "mode") || !strcmp(exec, "m"))
 		set_mode(args);
@@ -2782,11 +2724,11 @@ int main( int argc, char* argv[] ) {
   sprintf(buff, "%d", vfo_a_freq);
   set_field("r1:freq", buff);
 
-	write_log("\nsBITX v0.01 is Ready\n");
+	write_log(FONT_LOG, "sBITX v0.01 is Ready\n");
 
 	sprintf(buff, "\nWelcome %s your grid is %s\n", mycallsign, mygrid);
-	write_log(buff);
-	write_log("To change your callsign, or grid\nenter '\\callsign [yourcallsign]'\n"
+	write_log(FONT_LOG, buff);
+	write_log(FONT_LOG, "To change your callsign, or grid\nenter '\\callsign [yourcallsign]'\n"
 		" or '\\grid [yourgrid]'\n(without the brackets, starting with \\)\n"
 		"For help enter \\help\n");
 	set_field("#text_in", "");
@@ -2794,7 +2736,7 @@ int main( int argc, char* argv[] ) {
 	// you don't want to save the recently loaded settings
 	settings_updated = 0;
   hamlib_start();
-	wsjtx_start();
+	//wsjtx_start();
   gtk_main();
   
   return 0;
