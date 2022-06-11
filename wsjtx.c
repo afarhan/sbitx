@@ -32,7 +32,6 @@ void wsjtx_start(){
 
   /*---- Bind the address struct to the socket ----*/
   int e = bind(udp_socket, (struct sockaddr *) &serverAddr, sizeof(serverAddr));
-	printf("binding returned %d\n", e);
 }
 
 void wsjtx_slice(){

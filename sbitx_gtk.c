@@ -371,6 +371,7 @@ char mycallsign[12];
 char mygrid[12];
 int	cw_delay = 1000;
 int	data_delay = 700;
+int cw_input_method = CW_KBD;
 
 #define MAX_RIT 25000
 //how much to shift on rit
@@ -520,6 +521,138 @@ struct field main_controls[] = {
 	{"#kbd_.", do_kbd, 240, 450, 40, 30, "\"", 1, ".", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
 	{"#kbd_?", do_kbd, 280, 450, 40, 30, "?", 1, "?", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
 	{"#kbd_Enter", do_kbd, 320, 450, 80, 30, "", 1, "Enter", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+
+	//the last control has empty cmd field 
+	{"", NULL, 0, 0 ,0, 0, "#", 1, "Q", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
+};
+
+
+struct field ft8_controls[] = {
+	{ "r1:freq", do_tuning, 600, 0, 150, 49, "", 5, "14000000", FIELD_NUMBER, FONT_LARGE_VALUE, 
+		"", 500000, 30000000, 100},
+
+	// Main RX
+	{ "r1:volume", NULL, 750, 330, 50, 50, "AUDIO", 40, "60", FIELD_NUMBER, FONT_FIELD_VALUE, 
+		"", 0, 1024, 1},
+	{ "r1:mode", NULL, 500, 330, 50, 50, "MODE", 40, "USB", FIELD_SELECTION, FONT_FIELD_VALUE, 
+		"USB/LSB/CW/CWR/FT8/PSK31/RTTY/DIGITAL/2TONE", 0,0, 0},
+	{ "r1:low", NULL, 550, 330, 50, 50, "LOW", 40, "300", FIELD_NUMBER, FONT_FIELD_VALUE, 
+		"", 0,4000, 50},
+	{ "r1:high", NULL, 600, 330, 50, 50, "HIGH", 40, "3000", FIELD_NUMBER, FONT_FIELD_VALUE, 
+		"", 300, 4000, 50},
+
+	{ "r1:agc", NULL, 650, 330, 50, 50, "AGC", 40, "SLOW", FIELD_SELECTION, FONT_FIELD_VALUE, 
+		"OFF/SLOW/FAST", 0, 1024, 1},
+	{ "r1:gain", NULL, 700, 330, 50, 50, "IF", 40, "60", FIELD_NUMBER, FONT_FIELD_VALUE, 
+		"", 0, 100, 1},
+
+	//tx 
+	{ "tx_power", NULL, 600, 380, 50, 50, "WATTS", 40, "40", FIELD_NUMBER, FONT_FIELD_VALUE, 
+		"", 1, 100, 1},
+	{ "tx_gain", NULL, 550, 380, 50, 50, "MIC", 40, "50", FIELD_NUMBER, FONT_FIELD_VALUE, 
+		"", 0, 100, 1},
+
+	{ "#split", NULL, 700, 380, 50, 50, "SPLIT", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, 
+		"ON/OFF", 0,0,0},
+	{ "tx_compress", NULL, 750, 380, 50, 50, "COMP", 40, "0", FIELD_NUMBER, FONT_FIELD_VALUE, 
+		"ON/OFF", 0,100,1},
+	{"#rit", NULL, 550, 0, 50, 50, "RIT", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, 
+		"ON/OFF", 0,0,0},
+	{ "#tx_wpm", NULL, 650, 380, 50, 50, "WPM", 40, "12", FIELD_NUMBER, FONT_FIELD_VALUE, 
+		"", 1, 50, 1},
+/*	{ "#tx_key", NULL, 600, 430, 50, 50, "KEY", 40, "HARD", FIELD_SELECTION, FONT_FIELD_VALUE, 
+		"SOFT/HARD", 0, 0, 0},*/
+	{ "tx_record", NULL, 700, 430, 50, 50, "RECORD", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, 
+		"ON/OFF", 0,0, 0},
+	
+	{ "#tx", NULL, 550, 430, 75, 50, "TX", 40, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+		"RX/TX", 0,0, 0},
+
+	{ "#rx", NULL, 625, 430, 75, 50, "RX", 40, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+		"RX/TX", 0,0, 0},
+	
+	// top row
+	{"#step", NULL, 400, 0 ,50, 50, "STEP", 1, "50Hz", FIELD_SELECTION, FONT_FIELD_VALUE, 
+		"100KHz/10KHz/1KHz/100Hz/10Hz", 0,0,0},
+	{"#vfo", NULL, 450, 0 ,50, 50, "VFO", 1, "A", FIELD_SELECTION, FONT_FIELD_VALUE, 
+		"A/B", 0,0,0},
+	{"#span", NULL, 500, 0 ,50, 50, "SPAN", 1, "25KHz", FIELD_SELECTION, FONT_FIELD_VALUE, 
+		"25KHz/10KHz/2.5KHz", 0,0,0},
+
+	{"spectrum", do_spectrum, 400, 80, 400, 100, "Spectrum ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, 
+		"", 0,0,0},   
+	{"waterfall", do_waterfall, 400, 180 , 400, 150, "Waterfall ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, 
+		"", 0,0,0},
+	{"#log", NULL, 0, 0 , 400, 330, "log", 70, "log box", FIELD_LOG, FONT_LOG, 
+		"nothing valuable", 0,0,0},
+
+	{"#text_in", do_text, 0, 330, 400, 30, "text", 70, "text box", FIELD_TEXT, FONT_LOG, 
+		"nothing valuable", 0,128,0},
+
+
+	{"#close", NULL, 750, 430 ,50, 50, "CLOSE", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+		"", 0,0,0},
+	{"#off", NULL, 750, 0 ,50, 50, "OFF", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+		"", 0,0,0},
+
+	/* band stack registers */
+	{"#10m", NULL, 400, 330, 50, 50, "10 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+		"", 0,0,0},
+	{"#12m", NULL, 450, 330, 50, 50, "12 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+		"", 0,0,0},
+	{"#15m", NULL, 400, 380, 50, 50, "15 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+		"", 0,0,0},
+	{"#17m", NULL, 450, 380, 50, 50, "17 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+		"", 0,0,0},
+	{"#20m", NULL, 500, 380, 50, 50, "20 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+		"", 0,0,0},
+	{"#30m", NULL, 400, 430, 50, 50, "30 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+		"", 0,0,0},
+	{"#40m", NULL, 450, 430, 50, 50, "40 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+		"", 0,0,0},
+	{"#80m", NULL, 500, 430, 50, 50, "80 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+		"", 0,0,0},
+
+	//soft keyboard
+	{"#kbd_q", do_kbd, 0, 360 ,40, 30, "#", 1, "q", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_w", do_kbd, 40, 360, 40, 30, "1", 1, "w", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_e", do_kbd, 80, 360, 40, 30, "2", 1, "e", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_r", do_kbd, 120, 360, 40, 30, "3", 1, "r", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_t", do_kbd, 160, 360, 40, 30, "(", 1, "t", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_y", do_kbd, 200, 360, 40, 30, ")", 1, "y", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_u", do_kbd, 240, 360, 40, 30, "_", 1, "u", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_i", do_kbd, 280, 360, 40, 30, "-", 1, "i", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_o", do_kbd, 320, 360, 40, 30, "+", 1, "o", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+
+	{"#kbd_p", do_kbd, 360, 360, 40, 30, "@", 1, "p", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+
+	{"#kbd_a", do_kbd, 0, 390 ,40, 30, "*", 1, "a", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_s", do_kbd, 40, 390, 40, 30, "4", 1, "s", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_d", do_kbd, 80, 390, 40, 30, "5", 1, "d", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_f", do_kbd, 120, 390, 40, 30, "6", 1, "f", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_g", do_kbd, 160, 390, 40, 30, "/", 1, "g", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_h", do_kbd, 200, 390, 40, 30, ":", 1, "h", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_j", do_kbd, 240, 390, 40, 30, ";", 1, "j", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_k", do_kbd, 280, 390, 40, 30, "'", 1, "k", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_l", do_kbd, 320, 390, 40, 30, "\"", 1, "l", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_bs", do_kbd, 360, 390, 40, 30, "", 1, "DEL", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0},
+ 
+	{"#kbd_alt", do_kbd, 0, 420 ,40, 30, "", 1, "Alt", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_z", do_kbd, 40, 420, 40, 30, "7", 1, "z", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_x", do_kbd, 80, 420, 40, 30, "8", 1, "x", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_c", do_kbd, 120, 420, 40, 30, "9", 1, "c", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_v", do_kbd, 160, 420, 40, 30, "?", 1, "v", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_b", do_kbd, 200, 420, 40, 30, "!", 1, "b", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_n", do_kbd, 240, 420, 40, 30, ",", 1, "n", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_m", do_kbd, 280, 420, 40, 30, ".", 1, "m", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+
+	{"#kbd_cmd", do_kbd, 0, 450, 80, 30, "", 1, "\\cmd", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_0", do_kbd, 80, 450, 40, 30, "", 1, "0", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_ ", do_kbd, 120, 450, 120, 30, "", 1, " SPACE ", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_.", do_kbd, 240, 450, 40, 30, "\"", 1, ".", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_?", do_kbd, 280, 450, 40, 30, "?", 1, "?", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_Enter", do_kbd, 320, 450, 80, 30, "", 1, "Enter", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+
 	//the last control has empty cmd field 
 	{"", NULL, 0, 0 ,0, 0, "#", 1, "Q", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
 };
@@ -885,6 +1018,7 @@ static void save_user_settings(){
 	fprintf(f, "grid=%s\n", mygrid);
 	fprintf(f, "cw_delay=%d\n", cw_delay);
 	fprintf(f, "data_delay=%d\n", data_delay);
+	fprintf(f, "cw_input_method=%d\n", cw_input_method);
 
 	for (int i= 0; i < active_layout[i].cmd[0] > 0; i++)
 		fprintf(f, "%s=%s\n", active_layout[i].cmd, active_layout[i].value);
@@ -934,6 +1068,8 @@ static int user_settings_handler(void* user, const char* section,
 			cw_delay = atoi(value);
 		else if (!strcmp(name, "data_delay"))
 			data_delay = atoi(value);
+		else if (!strcmp(name, "cw_input_method"))
+			cw_input_method = atoi(value);
     // if it is an empty section
     else if (strlen(section) == 0){
       sprintf(cmd, "%s", name);
@@ -1069,7 +1205,6 @@ void init_waterfall(){
 		puts("*Error: malloc failed on waterfall buffer");
 		exit(0);
 	}
-	puts("setting the wf to zero");
 	memset(wf, 0, (MAX_BINS/2) * f->height * sizeof(int));
 
 	//this will store the bitmap pixles, 3 bytes per pixel
@@ -2003,9 +2138,10 @@ int key_poll(){
 	
 	if (digitalRead(PTT) == LOW)
 		key |= CW_DASH;
-//	if (digitalRead(DASH) == LOW)
-//		key |= CW_DOT;
+	if (digitalRead(DASH) == LOW)
+		key |= CW_DOT;
 
+	//printf("key %d\n", key);
 	return key;
 }
 
@@ -2088,9 +2224,14 @@ int get_cw_delay(){
 	return cw_delay;
 }
 
+int get_cw_input_method(){
+	return cw_input_method;
+}
+
 int get_data_delay(){
 	return data_delay;
 }
+/*
 static int keyer_last_was_dash = 0;
 static int keyer_tx_until = 0;
 void do_cw(){
@@ -2118,11 +2259,13 @@ void do_cw(){
 		}
 	} 
 }
-
+*/
 
 /*
 	All timing is in milliseconds, millis() gives the time in milliseconds since program started
 */
+
+/*
 void do_keyer(){
 	static int keydown_until = 0;
 	static int keyup_until = 0;
@@ -2192,6 +2335,7 @@ void do_keyer(){
 		}
 	}	
 }
+*/
 
 int tuning_ticks = 0;
 void tuning_isr(void){
@@ -2209,16 +2353,6 @@ gboolean ui_tick(gpointer gook){
 	
 	// check the tuning knob
 	struct field *f = get_field("r1:freq");
-/*
-	int tuning = enc_read(&enc_b);
-	if (tuning != 0){
-		if (tuning < 0)
-			edit_field(f, MIN_KEY_DOWN);	
-		else if (tuning > 0)
-			edit_field(f, MIN_KEY_UP);
-		return TRUE;
-	}
-*/
 
 	if (abs(tuning_ticks) > 5)
 		tuning_ticks *= 4;
@@ -2230,10 +2364,9 @@ gboolean ui_tick(gpointer gook){
 		edit_field(f, MIN_KEY_UP);
 		tuning_ticks++;
 	}
-	//tuning_ticks = 0;
-
 
 	if (ticks >= 10){
+
 		struct field *f = get_field("spectrum");
 		update_field(f);	//move this each time the spectrum watefall index is moved
 		f = get_field("waterfall");
@@ -2439,7 +2572,6 @@ void do_cmd(char *cmd){
 	else if (!strcmp(request, "#vfo=B")){
 		struct field *f = get_field("r1:freq");
 		struct field *vfo = get_field("#vfo");
-		printf("vfo old %s, new %s\n", vfo->value, request);
 		if (!strcmp(vfo->value, "B")){
 			vfo_a_freq = atoi(f->value);
 			sprintf(buff, "%d", vfo_b_freq);
@@ -2450,7 +2582,7 @@ void do_cmd(char *cmd){
 	else if (!strcmp(request, "#vfo=A")){
 		struct field *f = get_field("r1:freq");
 		struct field *vfo = get_field("#vfo");
-		printf("vfo old %s, new %s\n", vfo->value, request);
+		//printf("vfo old %s, new %s\n", vfo->value, request);
 		if (!strcmp(vfo->value, "A")){
 			vfo_b_freq = atoi(f->value);
 			sprintf(buff, "%d", vfo_a_freq);
@@ -2548,6 +2680,33 @@ void cmd_line(char *cmd){
 		set_field("r1:freq", freq_s);
 		//set_freq(atol(args));
 	}
+	else if (!strcmp(exec, "cwdelay")){
+		if (strlen(args))
+			cw_delay = atoi(args);
+		char buff[10];
+		sprintf(buff, "cwdelay: %d msec\n", cw_delay);
+		write_log(buff);
+	}
+	else if (!strcmp(exec, "cwinput")){
+		if (strlen(args)){
+			if (!strcmp(args, "kbd"))
+				cw_input_method = CW_KBD;
+			else if(!strcmp(args, "key"))
+				cw_input_method = CW_KEY;
+			else if (!strcmp(args, "keyer"))
+				cw_input_method = CW_IAMBIC;
+		}
+		char buff[20];
+		if (cw_input_method == CW_KBD)
+			strcpy(buff, "cwinput = kbd [kbd/key/keyer]");
+		else if (cw_input_method == CW_KEY)
+			strcpy(buff, "cwinput = key [kbd/key/keyer]");
+		else if (cw_input_method == CW_IAMBIC)
+			strcpy(buff, "cwinput = keyer [kbd/key/keyer]");
+		else
+			strcpy(buff, "cwinput  = [kbd/key/keyer]");
+		write_log(buff);
+	}
 	else if (!strcmp(exec, "mode") || !strcmp(exec, "m"))
 		set_mode(args);
 	else if (!strcmp(exec, "t"))
@@ -2560,6 +2719,9 @@ void cmd_line(char *cmd){
 		telnet_close(args);
 	else if (!strcmp(exec, "w"))
 		telnet_write(args);
+//	else if (!strcmp(exec, "key")){
+//		if (!strcmp(args, "kbd") || !strcmp(args, "keyboard"))
+//	}
 	save_user_settings();
 }
 
@@ -2598,7 +2760,6 @@ int main( int argc, char* argv[] ) {
 	f = get_field("spectrum");
 	update_field(f);
 	set_volume(20000000);
-
 
 	set_field("r1:freq", "7000000");
 	set_field("r1:mode", "USB");

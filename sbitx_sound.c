@@ -120,7 +120,7 @@ void sound_mixer(char *card_name, char *element, int make_on)
     	snd_mixer_selem_set_capture_volume_all(elem, volume * max / 100);
     }
 		else if (snd_mixer_selem_is_enumerated(elem)){
-			puts("TBD: this is an enumerated capture element");
+//			puts("TBD: this is an enumerated capture element");
 			snd_mixer_selem_set_enum_item(elem, 0, make_on);
 		}
     snd_mixer_close(handle);
@@ -235,7 +235,7 @@ int sound_start_play(char *device){
 
 	// the buffer size is each periodsize x n_periods
 	snd_pcm_uframes_t  n_frames= (buff_size  * n_periods_per_buffer)/8;
-	printf("trying for buffer size of %ld\n", n_frames);
+	//printf("trying for buffer size of %ld\n", n_frames);
 	e = snd_pcm_hw_params_set_buffer_size_near(pcm_play_handle, hwparams, &n_frames);
 	if (e < 0) {
 		    fprintf(stderr, "*Error setting playback buffersize.\n");
@@ -255,7 +255,7 @@ int sound_start_play(char *device){
 int sound_start_loopback_capture(char *device){
 
 	snd_pcm_hw_params_alloca(&hloop_params);
-	printf ("opening audio tx stream to %s\n", device); 
+	//printf ("opening audio tx stream to %s\n", device); 
 	int e = snd_pcm_open(&loopback_capture_handle, device, capture_stream, 0);
 	
 	if (e < 0) {
@@ -286,14 +286,14 @@ int sound_start_loopback_capture(char *device){
 	/* Set sample rate. If the exact rate is not supported */
 	/* by the hardware, use nearest possible rate.         */ 
 	exact_rate = 48000;
-	printf("Setting loopback capture rate to %d\n", exact_rate);
+	//printf("Setting loopback capture rate to %d\n", exact_rate);
 	e = snd_pcm_hw_params_set_rate_near(loopback_capture_handle, hloop_params, &exact_rate, 0);
 	if ( e< 0) {
 		fprintf(stderr, "*Error setting loopback capture rate.\n");
 		return(-1);
 	}
 
-	if (rate != exact_rate)
+	if (48000 != exact_rate)
 		fprintf(stderr, "#The loopback capture rate set to %d Hz\n", exact_rate);
 
 	/* Set number of channels */
@@ -302,7 +302,7 @@ int sound_start_loopback_capture(char *device){
 		return(-1);
 	}
 
-	printf("%d: set the #channels\n", __LINE__, 2);
+	//printf("%d: set the #channels\n", __LINE__, 2);
 	/* Set number of periods. Periods used to be called fragments. */ 
 	if ((e = snd_pcm_hw_params_set_periods(loopback_capture_handle, hloop_params, n_periods_per_buffer, 0)) < 0) {
 		fprintf(stderr, "*Error setting loopback capture periods.\n");
@@ -311,20 +311,20 @@ int sound_start_loopback_capture(char *device){
 
 	// the buffer size is each periodsize x n_periods
 	snd_pcm_uframes_t  n_frames= (buff_size  * n_periods_per_buffer)/ 8;
-	printf("trying for buffer size of %ld\n", n_frames);
+	//printf("trying for buffer size of %ld\n", n_frames);
 	e = snd_pcm_hw_params_set_buffer_size_near(loopback_capture_handle, hloop_params, &n_frames);
 	if (e < 0) {
 		    fprintf(stderr, "*Error setting loopback capture buffersize.\n");
 		    return(-1);
 	}
 
-	printf("%d: set buffer to \n", __LINE__, n_frames);
+	//printf("%d: set buffer to \n", __LINE__, n_frames);
 	if (snd_pcm_hw_params(loopback_capture_handle, hloop_params) < 0) {
 		fprintf(stderr, "*Error setting capture HW params.\n");
 		return(-1);
 	}
 
-	printf("%d: set  hwparams\n", __LINE__);
+	//printf("%d: set  hwparams\n", __LINE__);
 	/* set some parameters in the driver to handle the latencies */
 	snd_pcm_sw_params_malloc(&sloop_params);
 	if((e = snd_pcm_sw_params_current(loopback_capture_handle, sloop_params)) < 0){
@@ -340,7 +340,6 @@ int sound_start_loopback_capture(char *device){
 
 		fprintf(stderr, "Unable to set stop threshold for loopback  capture\n");
 	}
-	puts("loopback capture initialized");
 	return 0;
 }
 
@@ -393,7 +392,7 @@ int sound_start_capture(char *device){
 	}
 
 	if (rate != exact_rate)
-		printf("#The capture rate %d changed to %d Hz\n", rate, exact_rate);
+		fprintf(stderr, "#The capture rate %d changed to %d Hz\n", rate, exact_rate);
 
 
 	/* Set number of channels */
@@ -432,7 +431,7 @@ int sound_start_loopback_play(char *device){
 
 	snd_pcm_hw_params_alloca(&hwparams);	//more alloc
 
-	printf ("opening audio rx stream to %s\n", device); 
+	//printf ("opening audio rx stream to %s\n", device); 
 	int e = snd_pcm_open(&loopback_play_handle, device, play_stream, SND_PCM_NONBLOCK);
 	
 	if (e < 0) {
@@ -468,10 +467,8 @@ int sound_start_loopback_play(char *device){
 		fprintf(stderr, "Error setting playback rate.\n");
 		return(-1);
 	}
-	if (rate != exact_rate)
+	if (48000 != exact_rate)
 		fprintf(stderr, "*The loopback playback rate %d changed to %d Hz\n", rate, exact_rate);
-	else
-		fprintf(stderr, "Loopback Playback sampling rate is set to %d\n", exact_rate);
 
 
 	/* Set number of channels */
@@ -494,20 +491,19 @@ int sound_start_loopback_play(char *device){
 	snd_pcm_uframes_t  n_frames= (buff_size  * n_periods_per_buffer)/8;
 	//lets pump it up to see if we can reduce the dropped frames
 	n_frames *= 4;
-	printf("trying for loopback buffer size of %ld\n", n_frames);
+	//printf("trying for loopback buffer size of %ld\n", n_frames);
 	e = snd_pcm_hw_params_set_buffer_size_near(loopback_play_handle, hwparams, &n_frames);
 	if (e < 0) {
 		    fprintf(stderr, "*Error setting loopback playback buffersize.\n");
 		    return(-1);
 	}
 
-	printf("loopback playback buffer size is set to %d\n", n_frames);
+	//printf("loopback playback buffer size is set to %d\n", n_frames);
 
 	if (snd_pcm_hw_params(loopback_play_handle, hwparams) < 0) {
 		fprintf(stderr, "*Error setting loopback playback HW params.\n");
 		return(-1);
 	}
-	puts("All hw params set to loop sound");
 
 	return 0;
 }
@@ -720,8 +716,7 @@ void *sound_thread_function(void *ptr){
 	//switch to maximum priority
 	sch.sched_priority = sched_get_priority_max(SCHED_FIFO);
 	pthread_setschedparam(sound_thread, SCHED_FIFO, &sch);
-	printf("sound_thread is %x\n", sound_thread);
- 	printf("opening %s sound card\n", device);	
+ 	//printf("opening %s sound card\n", device);	
 	if (sound_start_play(device)){
 		fprintf(stderr, "*Error opening play device");
 		return NULL;
@@ -732,7 +727,7 @@ void *sound_thread_function(void *ptr){
 		return NULL;
 	}
 
-  printf("opening loopback on plughw:1,0 sound card\n");	
+//  printf("opening loopback on plughw:1,0 sound card\n");	
 	if(sound_start_loopback_play("plughw:1,0")){
 		fprintf(stderr, "*Error opening loopback play device");
 		return NULL;
@@ -748,8 +743,8 @@ void *loopback_thread_function(void *ptr){
 	//switch to maximum priority
 	sch.sched_priority = sched_get_priority_max(SCHED_FIFO);
 	pthread_setschedparam(loopback_thread, SCHED_FIFO, &sch);
-	printf("loopback thread is %x\n", loopback_thread);
-  printf("opening loopback on plughw:1,0 sound card\n");	
+//	printf("loopback thread is %x\n", loopback_thread);
+//  printf("opening loopback on plughw:1,0 sound card\n");	
 
 	if (sound_start_loopback_capture("plughw:2,1")){
 		fprintf(stderr, "*Error opening loopback capture device");

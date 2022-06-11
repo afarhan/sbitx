@@ -199,6 +199,8 @@ void modem_init();
 int get_tx_data_byte(char *c);
 int	get_tx_data_length();
 void modem_poll(int mode);
+
+
 int is_in_tx();
 float modem_next_sample(int mode);
 void ft8_tx(char *message, int freq);
@@ -207,10 +209,17 @@ void tx_off();
 long get_freq();
 void do_cmd(char *cmd);
 
+//cw defines
 #define CW_DASH (1)
 #define CW_DOT (2)
+//straight key, iambic, keyboard
+#define CW_STRAIGHT 0
+#define CW_IAMBIC	1
+#define CW_KBD 2
+
 int key_poll();
 int get_cw_delay();
+int get_cw_input_method();
 int	get_data_delay();
 
 void telnet_open(char *server);

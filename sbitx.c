@@ -89,7 +89,6 @@ void fft_init(){
 	fflush(stdout);
 
 	mem_needed = sizeof(fftw_complex) * MAX_BINS;
-	printf("fft needs %d bytes\n", mem_needed);
 
 	fft_m = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * MAX_BINS/2);
 	fft_in = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * MAX_BINS);
@@ -119,7 +118,6 @@ void fft_reset_m_bins(){
 		__real__ fft_m[i]  = 0.0;
 		__imag__ fft_m[i]  = 0.0;
 	}
-  puts("*flushed the m-bins");
 }
 
 int mag2db(double mag){
@@ -377,7 +375,6 @@ void rx_process(int32_t *input_rx,  int32_t *input_mic,
 	int i, j = 0;
 	double i_sample, q_sample;
 
-
 	//STEP 1: first add the previous M samples to
 	for (i = 0; i < MAX_BINS/2; i++)
 		fft_in[i]  = fft_m[i];
@@ -491,7 +488,6 @@ void tx_process(
 
 	//fwrite(input_mic, 4, n_samples, pf_debug);
 
-	printf("%d\n", n_samples);
 	//first add the previous M samples
 	for (i = 0; i < MAX_BINS/2; i++)
 		fft_in[i]  = fft_m[i];
@@ -677,7 +673,7 @@ struct power_settings band_power[] ={
 };
 
 void set_tx_power_levels(){
-  printf("Setting tx_power to %d, gain to %d\n", tx_power_watts, tx_gain);
+//  printf("Setting tx_power to %d, gain to %d\n", tx_power_watts, tx_gain);
 	int tx_power_gain = 0;
 
 	//search for power in the approved bands
@@ -690,10 +686,9 @@ void set_tx_power_levels(){
 			int attenuation = 
 			(20*log10((1.0*tx_power_watts)/(1.0*band_power[i].max_watts))); 
 			tx_power_gain = band_power[i].tx_scale + attenuation; 
-			printf("Attenuation is set to %d\n", attenuation);
 		}	
 	}
-	printf("tx_power_gain set to %d for %d watts\n", tx_power_gain, tx_power_watts);
+//	printf("tx_power_gain set to %d for %d watts\n", tx_power_gain, tx_power_watts);
 	sound_mixer(audio_card, "Master", tx_power_gain);
 	sound_mixer(audio_card, "Capture", tx_gain);
 }
@@ -906,7 +901,6 @@ void sdr_request(char *request, char *response){
       rx_list->agc_speed = 100;
     else if (!strcmp(value, "FAST"))
       rx_list->agc_speed = 30;
-    printf("AGC set to %d\n", rx_list->agc_speed);
   }
   else if (!strcmp(cmd, "mod")){
     if (!strcmp(value, "MIC"))

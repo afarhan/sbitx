@@ -69,14 +69,9 @@ typedef float float32_t;
 
 */
 
-//this operates in three modes
-//straight key, iambic, keyboard
-#define CW_STRAIGHT 0
-#define CW_IAMBIC	1
-#define CW_KBD 2
 
 static long modem_tx_timeout = 0;
-static int modem_input_method = CW_KBD;
+//static int modem_input_method = CW_STRAIGHT;
 static int modem_pitch = 700;
 
 /*******************************************************
@@ -253,18 +248,19 @@ struct morse morse_table[] = {
 #define FLOAT_SCALE (1073741824.0)
 
 int cw_period;
-struct vfo cw_tone, cw_env;
-int keydown_count=0;			//counts down the pause afer a keydown is finished
-int keyup_count = 0;			//counts down to how long a key is held down
-float cw_envelope = 1;
-int cw_pitch = 700;
+static struct vfo cw_tone, cw_env;
+static int keydown_count=0;			//counts down the pause afer a keydown is finished
+static int keyup_count = 0;			//counts down to how long a key is held down
+static float cw_envelope = 1;
+static int cw_pitch = 700;
 
 char cw_text[] = " cq cq dx de vu2ese A k";
-char *tx_next, *cw_next;
 char *symbol_next = NULL;
+char paddle_next = 0;
+
 
 //when symbol_next is NULL, it reads the next letter from the input
-char cw_get_next_symbol(){
+static char cw_get_next_kbd_symbol(){
 	char c;
 
 	if (!symbol_next){	
@@ -289,37 +285,90 @@ char cw_get_next_symbol(){
 		return *symbol_next++;
 }
 
+#define CW_MAX_SYMBOLS 12
+char cw_key_letter[CW_MAX_SYMBOLS];
+
+//when symbol_next is NULL, it reads the next letter from the input
 float cw_get_sample(){
 	float sample = 0;
+	static char last_symbol = 0;
 
 	//start new symbol, if any
 	if (!keydown_count && !keyup_count){
 
-		if (modem_input_method == CW_KBD){
+		if (modem_input_method == CW_KBD || modem_input_method == CW_IAMBIC){
+			char c;
 
-			char c = cw_get_next_symbol();
+			if (modem_input_method == CW_KBD)
+				c = cw_get_next_kbd_symbol();
+			else if (modem_input_method == CW_IAMBIC){
+				int i = key_poll();
+
+				if (i == 0 && last_symbol == '/')
+					c = ' ';	
+				else if (i == 0)
+					c = '/';
+				else if (last_symbol == '-' && (i & CW_DOT))
+					c = '.';
+				else if (last_symbol == '.' && (i & CW_DASH))
+					c = '-';
+				else if (i & CW_DOT)
+					c = '.';
+				else if (i & CW_DASH)
+					c = '-';
+	
+				//decode iambic letters	
+				if (modem_input_method == CW_IAMBIC){
+					int len = strlen(cw_key_letter);
+					if (len < CW_MAX_SYMBOLS-1 && (c == '.' || c == '-')){
+						cw_key_letter[len++] = c;
+						cw_key_letter[len] = 0;	
+					}		
+					else if (c == ' '){
+					//	printf("SP\n");
+						if (modem_input_method == CW_IAMBIC)
+							write_log(" ");
+						cw_key_letter[0] = 0;
+					}
+					else if (c == '/'){
+						//search for the letter match in cw table and emit it
+						for (int i = 0; i < sizeof(morse_table)/sizeof(struct morse); i++)
+							if (!strcmp(morse_table[i].code, cw_key_letter)){
+								char buff[2];
+								buff[0] = morse_table[i].c;
+								buff[1] = 0;
+								write_log(buff);
+								//printf("[%c]\n", morse_table[i].c);
+							}
+						cw_key_letter[0] = 0;
+					} 
+				}//end of iambic decoding
+			}
 
 			switch(c){
 			case '.':
 				keydown_count = cw_period;
 				keyup_count = cw_period;
+				last_symbol = '.';
 				break;
 			case '-':
 				keydown_count = cw_period * 3;
 				keyup_count = cw_period;
+				last_symbol = '-';
 				break;
 			case '/':
 				keydown_count = 0;
 				keyup_count = cw_period * 2; // 1 (passed) + 2 
+				last_symbol = '/';
 				break;
 			case ' ':
 				keydown_count = 0;
 				keyup_count = cw_period * 2; //3 periods already passed 
+				last_symbol = ' ';
 				break;
 			}
 		}
-
-		if (modem_input_method == CW_STRAIGHT){
+		else if (modem_input_method == CW_STRAIGHT){
 			if (key_poll()){
 				keydown_count = 50; //add a few samples, to debounce 
 				keyup_count = 0;
@@ -353,11 +402,10 @@ void cw_init(int freq, int wpm, int keyer){
 	vfo_start(&cw_tone, freq, 0);
 	cw_period = (12 *9600)/ wpm; 		//as dot = 1.2/wpm
 	modem_input_method = keyer;
+	cw_key_letter[0] = 0;
 	keydown_count = 0;
 	keyup_count = 0;
 	cw_envelope = 0;
-	tx_next = NULL;
-	cw_next = NULL;
 }
 
 
@@ -575,12 +623,11 @@ void modem_init(){
 	ft8_tx_buff_index = 0;
 	ft8_tx_nsamples = 0;
 	pthread_create( &ft8_thread, NULL, ft8_thread_function, (void*)NULL);
-	cw_init(cw_pitch, 12, CW_KBD);
+	cw_init(cw_pitch, 12, CW_IAMBIC);
 	strcpy(fldigi_mode, "");
 
 	//for now, launch fldigi in the background, if not already running
 	int e = system("pidof -x fldigi > /dev/null");
-	printf("pidof returned %d\n", e);
 	if (e == 256)
 		system("fldigi -i &");
 }
@@ -632,20 +679,18 @@ void modem_poll(int mode){
 	case MODE_CW:
 	case MODE_CWR:
 		key_status = key_poll();
-		//if (key_poll())
-		//	modem_input_method = CW_STRAIGHT;
 		if (!tx_is_on && (bytes_available || key_status) > 0){
 			if (!key_status)
 				write_log("\n<tx>\n");
 			tx_on();
-			cw_init(700, 12, CW_STRAIGHT); 
+			cw_init(700, 12, CW_IAMBIC); 
 			modem_tx_timeout = millis() + get_cw_delay();
 		}
 		if (tx_is_on){
 			if (bytes_available > 0 || key_status){
 				modem_tx_timeout = millis() + get_cw_delay();
 			}
-			else if (get_cw_delay() < millis()){
+			else if (modem_tx_timeout < millis()){
 				tx_off();
 				if (!key_status)
 					write_log("\n<rx>\n");
