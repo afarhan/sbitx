@@ -71,7 +71,7 @@ typedef float float32_t;
 
 
 static long modem_tx_timeout = 0;
-//static int modem_input_method = CW_STRAIGHT;
+//static int get_cw_input_method() = CW_STRAIGHT;
 static int modem_pitch = 700;
 
 /*******************************************************
@@ -296,12 +296,12 @@ float cw_get_sample(){
 	//start new symbol, if any
 	if (!keydown_count && !keyup_count){
 
-		if (modem_input_method == CW_KBD || modem_input_method == CW_IAMBIC){
+		if (get_cw_input_method() == CW_KBD || get_cw_input_method() == CW_IAMBIC){
 			char c;
 
-			if (modem_input_method == CW_KBD)
+			if (get_cw_input_method() == CW_KBD)
 				c = cw_get_next_kbd_symbol();
-			else if (modem_input_method == CW_IAMBIC){
+			else if (get_cw_input_method() == CW_IAMBIC){
 				int i = key_poll();
 
 				if (i == 0 && last_symbol == '/')
@@ -318,7 +318,7 @@ float cw_get_sample(){
 					c = '-';
 	
 				//decode iambic letters	
-				if (modem_input_method == CW_IAMBIC){
+				if (get_cw_input_method() == CW_IAMBIC){
 					int len = strlen(cw_key_letter);
 					if (len < CW_MAX_SYMBOLS-1 && (c == '.' || c == '-')){
 						cw_key_letter[len++] = c;
@@ -326,7 +326,7 @@ float cw_get_sample(){
 					}		
 					else if (c == ' '){
 					//	printf("SP\n");
-						if (modem_input_method == CW_IAMBIC)
+						if (get_cw_input_method() == CW_IAMBIC)
 							write_log(" ");
 						cw_key_letter[0] = 0;
 					}
@@ -368,7 +368,7 @@ float cw_get_sample(){
 				break;
 			}
 		}
-		else if (modem_input_method == CW_STRAIGHT){
+		else if (get_cw_input_method() == CW_STRAIGHT){
 			if (key_poll()){
 				keydown_count = 50; //add a few samples, to debounce 
 				keyup_count = 0;
@@ -401,7 +401,6 @@ void cw_init(int freq, int wpm, int keyer){
 	vfo_start(&cw_env, 50, 49044); //start in the third quardrant, 270 degree
 	vfo_start(&cw_tone, freq, 0);
 	cw_period = (12 *9600)/ wpm; 		//as dot = 1.2/wpm
-	modem_input_method = keyer;
 	cw_key_letter[0] = 0;
 	keydown_count = 0;
 	keyup_count = 0;
@@ -568,11 +567,6 @@ int fldigi_call(char *action, char *param, char *result){
 **********      Modem dispatch routines          *******
 ********************************************************/
 int fldigi_in_tx = 0;
-
-void modem_select_input(int key){
-	modem_input_method = key;
-}
-
 static int rx_poll_count = 0;
 static int sps, deci, s_timer ;
 

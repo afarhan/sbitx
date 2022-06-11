@@ -2692,14 +2692,14 @@ void cmd_line(char *cmd){
 			if (!strcmp(args, "kbd"))
 				cw_input_method = CW_KBD;
 			else if(!strcmp(args, "key"))
-				cw_input_method = CW_KEY;
+				cw_input_method = CW_STRAIGHT;
 			else if (!strcmp(args, "keyer"))
 				cw_input_method = CW_IAMBIC;
 		}
-		char buff[20];
+		char buff[40];
 		if (cw_input_method == CW_KBD)
 			strcpy(buff, "cwinput = kbd [kbd/key/keyer]");
-		else if (cw_input_method == CW_KEY)
+		else if (cw_input_method == CW_STRAIGHT)
 			strcpy(buff, "cwinput = key [kbd/key/keyer]");
 		else if (cw_input_method == CW_IAMBIC)
 			strcpy(buff, "cwinput = keyer [kbd/key/keyer]");
