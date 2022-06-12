@@ -579,7 +579,7 @@ void fldigi_read(){
 		return;
 
 	if(!fldigi_call("rx.get_data", "", buffer)){		
-		printf("decoded: [%s]\n", buffer);
+//		printf("decoded: [%s]\n", buffer);
 		if (strlen(buffer))
 			write_log(FONT_LOG_RX, buffer);
 	}

@@ -764,7 +764,6 @@ int log_init_next_line(){
 
 void write_log(int style, char *text){
 
-	puts("start write_log");
 	//move to a new line if the style has changed
 	if (style != log_style){
 		log_style = style;
@@ -787,7 +786,7 @@ void write_log(int style, char *text){
 				len = 0;
 			}
 		
-			printf("Adding %d\n", (int)c);	
+			printf("Adding %c to %d\n", (int)c, log_current_line);	
 			p[len++] = c;
 			p[len] = 0;
 		}
@@ -799,7 +798,6 @@ void write_log(int style, char *text){
 		update_field(get_field("#log"));
 	redraw_flag++;
 */
-	puts("end write_log");
 }
 
 void draw_log(cairo_t *gfx, struct field *f){
@@ -817,14 +815,17 @@ void draw_log(cairo_t *gfx, struct field *f){
 	if (start_line < 0)
 		start_line += MAX_LOG_LINES;
 
- 	for (int i = 0; i < n_lines; i++){
+	puts("draw_log start");
+ 	for (int i = 0; i <= n_lines; i++){
 		struct log_line *l = log_stream + start_line;
+		printf("%d: [%s]\n", start_line, l->text);
 		draw_text(gfx, f->x, y, l->text, l->style);
 		start_line++;
 		y += line_height;
 		if(start_line >= MAX_LOG_LINES)
 			start_line = 0;
 	}
+	puts("draw_log end");
 }
 
 void draw_field(GtkWidget *widget, cairo_t *gfx, struct field *f){
@@ -2320,7 +2321,6 @@ gboolean ui_tick(gpointer gook){
 
 	if (ticks == 10){
 
-		puts("tick!");
 		struct field *f = get_field("spectrum");
 		update_field(f);	//move this each time the spectrum watefall index is moved
 		f = get_field("waterfall");
