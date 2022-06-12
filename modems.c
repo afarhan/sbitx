@@ -573,10 +573,17 @@ static int sps, deci, s_timer ;
 
 void fldigi_read(){
 	char buffer[10000];
+
+	//poll only every 250msec
+	if (fldigi_retry_at > millis())
+		return;
+
 	if(!fldigi_call("rx.get_data", "", buffer)){		
-		write_log(FONT_LOG_RX, buffer);
-		fldigi_retry_at = millis() + 500;
+		printf("decoded: [%s]\n", buffer);
+		if (strlen(buffer))
+			write_log(FONT_LOG_RX, buffer);
 	}
+	fldigi_retry_at = millis() + 250;
 }
 
 void fldigi_set_mode(char *mode){
@@ -606,6 +613,11 @@ void modem_rx(int mode, int32_t *samples, int count){
 		break;
 	case MODE_PSK31:
 		fldigi_set_mode("BPSK31");
+		fldigi_read();
+		break;
+	case MODE_CW:
+	case MODE_CWR:
+		fldigi_set_mode("CW");
 		fldigi_read();
 		break;
 	}

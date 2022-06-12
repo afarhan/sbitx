@@ -411,7 +411,7 @@ struct field main_controls[] = {
 
 	// Main RX
 	{ "r1:volume", NULL, 750, 330, 50, 50, "AUDIO", 40, "60", FIELD_NUMBER, FONT_FIELD_VALUE, 
-		"", 0, 1024, 1},
+		"", 0, 100, 1},
 	{ "r1:mode", NULL, 500, 330, 50, 50, "MODE", 40, "USB", FIELD_SELECTION, FONT_FIELD_VALUE, 
 		"USB/LSB/CW/CWR/FT8/PSK31/RTTY/DIGITAL/2TONE", 0,0, 0},
 	{ "r1:low", NULL, 550, 330, 50, 50, "LOW", 40, "300", FIELD_NUMBER, FONT_FIELD_VALUE, 
@@ -425,28 +425,30 @@ struct field main_controls[] = {
 		"", 0, 100, 1},
 
 	//tx 
-	{ "tx_power", NULL, 600, 380, 50, 50, "WATTS", 40, "40", FIELD_NUMBER, FONT_FIELD_VALUE, 
+	{ "tx_power", NULL, 550, 430, 50, 50, "WATTS", 40, "40", FIELD_NUMBER, FONT_FIELD_VALUE, 
 		"", 1, 100, 1},
 	{ "tx_gain", NULL, 550, 380, 50, 50, "MIC", 40, "50", FIELD_NUMBER, FONT_FIELD_VALUE, 
 		"", 0, 100, 1},
 
-	{ "#split", NULL, 700, 380, 50, 50, "SPLIT", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, 
+	{ "#split", NULL, 750, 380, 50, 50, "SPLIT", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, 
 		"ON/OFF", 0,0,0},
-	{ "tx_compress", NULL, 750, 380, 50, 50, "COMP", 40, "0", FIELD_NUMBER, FONT_FIELD_VALUE, 
+	{ "tx_compress", NULL, 600, 380, 50, 50, "COMP", 40, "0", FIELD_NUMBER, FONT_FIELD_VALUE, 
 		"ON/OFF", 0,100,1},
 	{"#rit", NULL, 550, 0, 50, 50, "RIT", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, 
 		"ON/OFF", 0,0,0},
 	{ "#tx_wpm", NULL, 650, 380, 50, 50, "WPM", 40, "12", FIELD_NUMBER, FONT_FIELD_VALUE, 
 		"", 1, 50, 1},
+	{ "#tx_pitch", NULL, 700, 380, 50, 50, "PITCH", 40, "12", FIELD_NUMBER, FONT_FIELD_VALUE, 
+		"", 100, 3000, 10},
 /*	{ "#tx_key", NULL, 600, 430, 50, 50, "KEY", 40, "HARD", FIELD_SELECTION, FONT_FIELD_VALUE, 
 		"SOFT/HARD", 0, 0, 0},*/
 	{ "tx_record", NULL, 700, 430, 50, 50, "RECORD", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, 
 		"ON/OFF", 0,0, 0},
 	
-	{ "#tx", NULL, 550, 430, 75, 50, "TX", 40, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+	{ "#tx", NULL, 600, 430, 50, 50, "TX", 40, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
 		"RX/TX", 0,0, 0},
 
-	{ "#rx", NULL, 625, 430, 75, 50, "RX", 40, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+	{ "#rx", NULL, 650, 430, 50, 50, "RX", 40, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
 		"RX/TX", 0,0, 0},
 	
 	// top row
@@ -556,21 +558,19 @@ struct field ft8_controls[] = {
 		"", 0, 100, 1},
 
 	//tx 
-	{ "tx_power", NULL, 600, 380, 50, 50, "WATTS", 40, "40", FIELD_NUMBER, FONT_FIELD_VALUE, 
+	{ "tx_power", NULL, 550, 430, 50, 50, "WATTS", 40, "40", FIELD_NUMBER, FONT_FIELD_VALUE, 
 		"", 1, 100, 1},
 	{ "tx_gain", NULL, 550, 380, 50, 50, "MIC", 40, "50", FIELD_NUMBER, FONT_FIELD_VALUE, 
 		"", 0, 100, 1},
 
 	{ "#split", NULL, 700, 380, 50, 50, "SPLIT", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, 
 		"ON/OFF", 0,0,0},
-	{ "tx_compress", NULL, 750, 380, 50, 50, "COMP", 40, "0", FIELD_NUMBER, FONT_FIELD_VALUE, 
+	{ "tx_compress", NULL, 600, 380, 50, 50, "COMP", 40, "0", FIELD_NUMBER, FONT_FIELD_VALUE, 
 		"ON/OFF", 0,100,1},
 	{"#rit", NULL, 550, 0, 50, 50, "RIT", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, 
 		"ON/OFF", 0,0,0},
 	{ "#tx_wpm", NULL, 650, 380, 50, 50, "WPM", 40, "12", FIELD_NUMBER, FONT_FIELD_VALUE, 
 		"", 1, 50, 1},
-/*	{ "#tx_key", NULL, 600, 430, 50, 50, "KEY", 40, "HARD", FIELD_SELECTION, FONT_FIELD_VALUE, 
-		"SOFT/HARD", 0, 0, 0},*/
 	{ "tx_record", NULL, 700, 430, 50, 50, "RECORD", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, 
 		"ON/OFF", 0,0, 0},
 	
@@ -764,6 +764,7 @@ int log_init_next_line(){
 
 void write_log(int style, char *text){
 
+	puts("start write_log");
 	//move to a new line if the style has changed
 	if (style != log_style){
 		log_style = style;
@@ -771,30 +772,40 @@ void write_log(int style, char *text){
 	}
 
 	while(*text){
-		if (*text == '\n')
+		char c = *text;
+		if (c == '\n')
 			log_init_next_line();
-		else if (*text < 128 & *text >= ' '){
+		else {
+			if (c > 128 || c < ' ')
+				c = '?';
 			char *p = log_stream[log_current_line].text;
 			int len = strlen(p);
-			if(len >= log_cols){
+			if(len >= log_cols - 1){
 				//start a fresh line
 				log_init_next_line();
 				p = log_stream[log_current_line].text;
 				len = 0;
 			}
-			
-			p[len++] = *text;
+		
+			printf("Adding %d\n", (int)c);	
+			p[len++] = c;
 			p[len] = 0;
 		}
 		text++;	
 	}
+/*
+	struct field *f = get_field("#log");
+	if (f)
+		update_field(get_field("#log"));
 	redraw_flag++;
+*/
+	puts("end write_log");
 }
 
 void draw_log(cairo_t *gfx, struct field *f){
 	char this_line[1000];
 	int line_height = font_table[f->font_index].height; 	
-	int n_lines = f->height / line_height;
+	int n_lines = (f->height / line_height) - 1;
 
 	//estimate!
 	int char_width = 1+measure_text(gfx, "01234567890123456789", f->font_index)/20;
@@ -807,8 +818,8 @@ void draw_log(cairo_t *gfx, struct field *f){
 		start_line += MAX_LOG_LINES;
 
  	for (int i = 0; i < n_lines; i++){
-		struct log_line *log_line = log_stream + start_line;
-		draw_text(gfx, f->x, y, log_line->text, log_line->style);
+		struct log_line *l = log_stream + start_line;
+		draw_text(gfx, f->x, y, l->text, l->style);
 		start_line++;
 		y += line_height;
 		if(start_line >= MAX_LOG_LINES)
@@ -2307,11 +2318,14 @@ gboolean ui_tick(gpointer gook){
 		tuning_ticks++;
 	}
 
-	if (ticks >= 10){
+	if (ticks == 10){
 
+		puts("tick!");
 		struct field *f = get_field("spectrum");
 		update_field(f);	//move this each time the spectrum watefall index is moved
 		f = get_field("waterfall");
+		update_field(f);
+		f = get_field("#log");
 		update_field(f);
 		redraw_flag = 0;
 		ticks = 0;
