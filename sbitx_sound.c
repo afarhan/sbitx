@@ -681,6 +681,7 @@ int loopback_loop(){
 		//fill up a local buffer, take only the left channel	
 		i = 0; 
 		j = 0;	
+		fwrite(data_in, pcmreturn, 8, pf);
 		for (int i = 0; i < pcmreturn; i++){
 			q_write(&qloop, data_in[j]/16);
 			q_write(&qloop, data_in[j]/16);
@@ -700,7 +701,7 @@ int loopback_loop(){
 		}
 
   }
-	//fclose(pf);
+	fclose(pf);
   printf("********Ending loopback thread\n");
 }
 

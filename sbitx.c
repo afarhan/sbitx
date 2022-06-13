@@ -623,8 +623,6 @@ void loop(){
 }
 
 void setup_audio_codec(){
-
-
 	strcpy(audio_card, "hw:0");
 
 	//configure all the channels of the mixer
@@ -634,7 +632,7 @@ void setup_audio_codec(){
 	sound_mixer(audio_card, "Mic Boost", 0);
 	sound_mixer(audio_card, "Playback Deemphasis", 0);
  
-	sound_mixer(audio_card, "Master", 90);
+	sound_mixer(audio_card, "Master", 10);
 	sound_mixer(audio_card, "Output Mixer HiFi", 1);
 	sound_mixer(audio_card, "Output Mixer Mic Sidetone", 0);
 
