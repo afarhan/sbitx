@@ -11,10 +11,9 @@
 Next thing to try is http://www.saunalahti.fi/~s7l/blog/2005/08/21/Full%20Duplex%20ALSA
 
 	We are using 4 bytes per sample, 
-	each frame is consists of two channels of audio, hene 8 bytes 
-  We are shooting for 2048 samples per period. that is 8K
+	each frame is consists of two channels of audio, hence 8 bytes 
+  We are shooting for 1024x2 = 2048 samples per period. that is 8K
   At two periods in the buffer, the buffer has to be 16K
-
 
 	To simply the work, we are picking up some settings for the Wolfson codec
 	as it connects to a raspberry pi. These values are interdependent

@@ -154,7 +154,7 @@ void spectrum_update(){
 			(spectrum_speed * cabs(fft_spectrum[i]));
 	}
 
-  redraw();
+ // redraw();
 }
 
 void set_lpf_40mhz(int frequency){

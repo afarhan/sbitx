@@ -296,6 +296,8 @@ float cw_get_sample(){
 	//start new symbol, if any
 	if (!keydown_count && !keyup_count){
 
+		vfo_start(&cw_tone, get_cw_tx_pitch(), 0);
+		cw_period = (12 *9600)/ get_wpm(); 		//as dot = 1.2/wpm
 		if (get_cw_input_method() == CW_KBD || get_cw_input_method() == CW_IAMBIC){
 			char c;
 
@@ -494,6 +496,73 @@ long fldigi_retry_at = 0;
 An almost trivial xml, just enough to work fldigi
 */
 
+int fldigi_call_i(char *action, int param, char *result){
+  char buffer[10000], q[10000], xml[1000];
+  struct sockaddr_in serverAddr;
+  struct sockaddr_storage serverStorage;
+  socklen_t addr_size;
+
+  serverAddr.sin_family = AF_INET;
+  serverAddr.sin_port = htons(7362);
+  serverAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
+  memset(serverAddr.sin_zero, '\0', sizeof serverAddr.sin_zero);  
+	
+	int fldigi_socket = socket(AF_INET, SOCK_STREAM, 0);
+  if (connect(fldigi_socket, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0) {
+		//puts("unable to connect to the flidigi\n");        
+		close(fldigi_socket);
+		return -1;
+   }
+
+	sprintf(xml, 
+"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+"<methodCall><methodName>%s</methodName>\n"
+"<params>\n<param><value><i4>%d</i4></value></param> </params></methodCall>\n",
+		action, param);
+
+	sprintf(q, 
+		"POST / HTTP/1.1\n"
+		"Host: 127.0.0.1:7362\n"
+		"User-Agent: sbitx/v0.01\n" 
+		"Accept:\n" 
+		"Content-Length: %d\n"
+		"Content-Type: application/x-www-form-urlencoded\n\n"
+		"%s\n",
+		(int)strlen(xml), xml);
+ 
+  if (send(fldigi_socket, q, strlen(q), 0) < 0) {
+		puts("Unable to request fldigi");
+		close(fldigi_socket);
+		return -1;
+  } 
+	char buff[10000]; //large, large
+	int e = recv(fldigi_socket, buff, sizeof(buff), 0);
+	if(e < 0) {
+		puts("Unable to recv from fldigi");
+		close(fldigi_socket);
+		return -1;
+  }
+	buff[e] = 0;
+	result[0] = 0;
+
+	//now check if we got the data in base64
+	char *p = strstr(buff, "<base64>");
+	if (p){
+		p += strlen("<base64"); //skip past the tag
+		char *r =  strchr(p, '<'); //find the end
+		if (r){
+			*r = 0; //terminate the base64 at the end tag
+			int len =  (strlen(p) * 6)/8;
+			b64_decode(p, result);
+			result[len] = 0;
+		}
+	}
+	else
+		strcpy(result, buff);
+  close(fldigi_socket);
+
+	return 0;
+}
 int fldigi_call(char *action, char *param, char *result){
   char buffer[10000], q[10000], xml[1000];
   struct sockaddr_in serverAddr;
@@ -596,6 +665,24 @@ void fldigi_set_mode(char *mode){
 	}
 }
 
+void fldigi_tx_more_data(){
+	char c;
+	if (get_tx_data_byte(&c)){
+		char buff[10], resp[1000];
+		buff[0] = c;
+		buff[1] = 0;
+		fldigi_call("text.add_tx", buff, resp);
+		write_log(FONT_LOG_TX, buff);
+	}
+}
+	
+void modem_set_pitch(int pitch){
+	char response[1000];
+
+	if(fldigi_call_i("modem.set_carrier", pitch, response))
+		puts("fldigi modem.set_carrier error");
+}
+
 void modem_rx(int mode, int32_t *samples, int count){
 	int i, j, k, l;
 	int32_t *s;
@@ -609,15 +696,18 @@ void modem_rx(int mode, int32_t *samples, int count){
 		break;
 	case MODE_RTTY:
 		fldigi_set_mode("RTTY");
+		modem_set_pitch(get_pitch());
 		fldigi_read();
 		break;
 	case MODE_PSK31:
 		fldigi_set_mode("BPSK31");
+		modem_set_pitch(get_pitch());
 		fldigi_read();
 		break;
 	case MODE_CW:
 	case MODE_CWR:
 		fldigi_set_mode("CW");
+		modem_set_pitch(get_pitch());
 		fldigi_read();
 		break;
 	}
@@ -638,27 +728,6 @@ void modem_init(){
 		system("fldigi -i &");
 }
 
-int modem_center_freq(int mode){
-	switch(mode){
-		case MODE_FT8:
-			return 3000;
-		case MODE_RTTY:
-			return 700;
-		case MODE_PSK31:
-			return 500; 
-		default:
-			return 0;
-	}
-}
-
-//change this as per mode
-int modem_set_pitch(int pitch){
-	modem_pitch = pitch;
-}
-
-//change the settings as per the mode
-int modem_get_pitch(int pitch){
-}
 //this called routinely to check if we should start/stop the transmitting
 //each mode has its peculiarities, like the ft8 will start only on 15th second boundary
 //psk31 will transmit a few spaces after the last character, etc.
@@ -686,8 +755,6 @@ void modem_poll(int mode){
 	case MODE_CWR:
 		key_status = key_poll();
 		if (!tx_is_on && (bytes_available || key_status) > 0){
-			if (!key_status)
-				write_log(FONT_LOG, "\n<tx>\n");
 			tx_on();
 			cw_init(700, 12, CW_IAMBIC); 
 			modem_tx_timeout = millis() + get_cw_delay();
@@ -698,8 +765,6 @@ void modem_poll(int mode){
 			}
 			else if (modem_tx_timeout < millis()){
 				tx_off();
-				if (!key_status)
-					write_log(FONT_LOG, "\n<rx>\n");
 			}
 		}
 	break;
@@ -723,11 +788,12 @@ void modem_poll(int mode){
 			else
 				puts("*fldigi rx failed");
 		}
+		if (tx_is_on && bytes_available > 0)
+			fldigi_tx_more_data();	
 		else 
 			fldigi_read();		
 	break; 
 	}
-
 }
 
 float modem_next_sample(int mode){

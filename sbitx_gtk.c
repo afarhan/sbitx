@@ -82,6 +82,7 @@ void tuning_isr(void);
 #define SPECTRUM_NEEDLE 10
 #define COLOR_CONTROL_BOX 11
 #define SPECTRUM_BANDWIDTH 12
+#define SPECTRUM_PITCH 13
 
 float palette[][3] = {
 	{1,1,1}, 		// COLOR_SELECTED_TEXT
@@ -97,7 +98,8 @@ float palette[][3] = {
 	{1,1,0},	//SPECTRUM_PLOT
 	{0.2,0.2,0.2}, 	//SPECTRUM_NEEDLE
 	{0.5,0.5,0.5}, //COLOR_CONTROL_BOX
-	{0.2, 0.2, 0.2} //SPECTRUM_BANDWIDTH
+	{0.2, 0.2, 0.2}, //SPECTRUM_BANDWIDTH
+	{1,0,0}	//SPECTRUM_PITCH
 };
 
 char *ui_font = "Sans";
@@ -306,6 +308,26 @@ struct field {
 	int	 	min, max, step;
 };
 
+#define STACK_DEPTH 4
+
+struct band {
+	char name[10];
+	int	start;
+	int	stop;
+	int	power;
+	int	max;
+	int drive;
+	int index;
+	int	freq[STACK_DEPTH];
+	int mode[STACK_DEPTH];
+};
+
+struct cmd {
+	char *cmd;
+	int (*fn)(char *args[]);
+};
+
+
 static unsigned long focus_since = 0;
 static struct field *f_focus = NULL;
 static struct field *f_hover = NULL;
@@ -328,6 +350,7 @@ static int xit = 512;
 static int tuning_step = 1000;
 static int tx_mode = MODE_USB;
 
+
 #define BAND80M	0
 #define BAND40M	1
 #define BAND30M 2	
@@ -336,19 +359,6 @@ static int tx_mode = MODE_USB;
 #define BAND15M 5
 #define BAND12M 6 
 #define BAND10M 7 
-
-#define STACK_DEPTH 4
-struct band {
-	char name[10];
-	int	start;
-	int	stop;
-	int	power;
-	int	max;
-	int drive;
-	int index;
-	int	freq[STACK_DEPTH];
-	int mode[STACK_DEPTH];
-};
 
 struct band band_stack[] = {
 	{"80m", 3500000, 4000000, 30, 30, 82, 0, 
@@ -378,9 +388,11 @@ char vfo_a_mode[10];
 char vfo_b_mode[10];
 char mycallsign[12];
 char mygrid[12];
-int	cw_delay = 1000;
 int	data_delay = 700;
+
 int cw_input_method = CW_KBD;
+int	cw_delay = 1000;
+int	cw_tx_pitch = 700;
 
 #define MAX_RIT 25000
 //how much to shift on rit
@@ -398,6 +410,7 @@ int do_spectrum(struct field *f, cairo_t *gfx, int e, int a, int b);
 int do_waterfall(struct field *f, cairo_t *gfx, int event, int a, int b);
 int do_tuning(struct field *f, cairo_t *gfx, int event, int a, int b);
 int do_text(struct field *f, cairo_t *gfx, int event, int a, int b);
+int do_pitch(struct field *f, cairo_t *gfx, int event, int a, int b);
 int do_kbd(struct field *f, cairo_t *gfx, int event, int a, int b);
 int do_mouse_move(struct field *f, cairo_t *gfx, int event, int a, int b);
 
@@ -438,7 +451,7 @@ struct field main_controls[] = {
 		"ON/OFF", 0,0,0},
 	{ "#tx_wpm", NULL, 650, 380, 50, 50, "WPM", 40, "12", FIELD_NUMBER, FONT_FIELD_VALUE, 
 		"", 1, 50, 1},
-	{ "#tx_pitch", NULL, 700, 380, 50, 50, "PITCH", 40, "12", FIELD_NUMBER, FONT_FIELD_VALUE, 
+	{ "#rx_pitch", do_pitch, 700, 380, 50, 50, "PITCH", 40, "12", FIELD_NUMBER, FONT_FIELD_VALUE, 
 		"", 100, 3000, 10},
 /*	{ "#tx_key", NULL, 600, 430, 50, 50, "KEY", 40, "HARD", FIELD_SELECTION, FONT_FIELD_VALUE, 
 		"SOFT/HARD", 0, 0, 0},*/
@@ -770,13 +783,13 @@ void write_log(int style, char *text){
 		log_init_next_line();	
 	}
 
+	if (strlen(text) == 0)
+		return;
 	while(*text){
 		char c = *text;
 		if (c == '\n')
 			log_init_next_line();
-		else {
-			if (c > 128 || c < ' ')
-				c = '?';
+		else if (c < 128 && c >= ' '){
 			char *p = log_stream[log_current_line].text;
 			int len = strlen(p);
 			if(len >= log_cols - 1){
@@ -786,18 +799,13 @@ void write_log(int style, char *text){
 				len = 0;
 			}
 		
-			printf("Adding %c to %d\n", (int)c, log_current_line);	
+			//printf("Adding %c to %d\n", (int)c, log_current_line);	
 			p[len++] = c;
 			p[len] = 0;
 		}
 		text++;	
 	}
-/*
-	struct field *f = get_field("#log");
-	if (f)
-		update_field(get_field("#log"));
 	redraw_flag++;
-*/
 }
 
 void draw_log(cairo_t *gfx, struct field *f){
@@ -815,17 +823,17 @@ void draw_log(cairo_t *gfx, struct field *f){
 	if (start_line < 0)
 		start_line += MAX_LOG_LINES;
 
-	puts("draw_log start");
+//	puts("draw_log start");
  	for (int i = 0; i <= n_lines; i++){
 		struct log_line *l = log_stream + start_line;
-		printf("%d: [%s]\n", start_line, l->text);
+//		printf("%d: [%s]\n", start_line, l->text);
 		draw_text(gfx, f->x, y, l->text, l->style);
 		start_line++;
 		y += line_height;
 		if(start_line >= MAX_LOG_LINES)
 			start_line = 0;
 	}
-	puts("draw_log end");
+//	puts("draw_log end");
 }
 
 void draw_field(GtkWidget *widget, cairo_t *gfx, struct field *f){
@@ -1018,18 +1026,22 @@ static int user_settings_handler(void* user, const char* section,
 			strcpy(mycallsign, value);
 		else if (!strcmp(name, "grid"))
 			strcpy(mygrid, value);
+		//cw 
 		else if (!strcmp(name, "cw_delay"))
 			cw_delay = atoi(value);
-		else if (!strcmp(name, "data_delay"))
-			data_delay = atoi(value);
 		else if (!strcmp(name, "cw_input_method"))
 			cw_input_method = atoi(value);
+		else if(!strcmp(name, "cw_tx_pitch"))
+			cw_tx_pitch = atoi(value);
+		//data
+		else if (!strcmp(name, "data_delay"))
+			data_delay = atoi(value);
     // if it is an empty section
     else if (strlen(section) == 0){
       sprintf(cmd, "%s", name);
       set_field(cmd, new_value); 
     }
-
+		//band stacks
 		int band = -1;
 		if (!strcmp(section, "80m"))
 			band = 0;
@@ -1222,8 +1234,39 @@ void draw_waterfall(struct field *f, cairo_t *gfx){
 	cairo_fill(gfx);
 }
 
+void draw_spectrum_grid(struct field *f_spectrum, cairo_t *gfx){
+	int sub_division, grid_height;
+	struct field *f = f_spectrum;
+
+	sub_division = f->width / 10;
+	grid_height = f->height - 10;
+
+	cairo_set_line_width(gfx, 1);
+	cairo_set_source_rgb(gfx, palette[SPECTRUM_GRID][0], 
+		palette[SPECTRUM_GRID][1], palette[SPECTRUM_GRID][2]);
+
+
+	cairo_set_line_width(gfx, 1);
+	cairo_set_source_rgb(gfx, palette[SPECTRUM_GRID][0], 
+		palette[SPECTRUM_GRID][1], palette[SPECTRUM_GRID][2]);
+
+	//draw the horizontal grid
+	int i;
+	for (i =  0; i <= grid_height; i += grid_height/10){
+		cairo_move_to(gfx, f->x, f->y + i);
+		cairo_line_to(gfx, f->x + f->width, f->y + i); 
+	}
+
+	//draw the vertical grid
+	for (i = 0; i <= f->width; i += f->width/10){
+		cairo_move_to(gfx, f->x + i, f->y);
+		cairo_line_to(gfx, f->x + i, f->y + grid_height); 
+	}
+	cairo_stroke(gfx);
+}
+
 void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
-	int y, sub_division, i, grid_height, span, bw_high, bw_low;
+	int y, sub_division, i, grid_height, span, bw_high, bw_low, pitch;
 	struct field *f;
 	long	freq, freq_div;
 	char	freq_text[20];
@@ -1237,52 +1280,40 @@ void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
 	span = atoi(get_field("#span")->value);
 	bw_high = atoi(get_field("r1:high")->value);
 	bw_low = atoi(get_field("r1:low")->value);
+	grid_height = f_spectrum->height - 10;
+	sub_division = f_spectrum->width / 10;
+	pitch = atoi(get_field("#rx_pitch")->value);
 
 	// the step is in khz, we multiply by 1000 and div 10(divisions) = 100 
 	freq_div = span * 100;  
 
+	//calcualte the position of bandwidth strip
 	struct field *mode_f = get_field("r1:mode");
-	int filter_start;
-	int filter_width;
+	int filter_start, filter_width;
+
 	if(!strcmp(mode_f->value, "CWR") || !strcmp(mode_f->value, "LSB")){
 	 	filter_start = f_spectrum->x + (f_spectrum->width/2) - 
-		((f_spectrum->width * bw_high)/(span * 1000)); 
+			((f_spectrum->width * bw_high)/(span * 1000)); 
 	 	filter_width = (f_spectrum->width * (bw_high -bw_low))/(span * 1000); 
+		pitch = f_spectrum->x + (f_spectrum->width/2) -
+			((f_spectrum->width * pitch)/(span * 1000));
 	}
 	else {
 		filter_start = f_spectrum->x + (f_spectrum->width/2) + 
-		((f_spectrum->width * bw_low)/(span * 1000)); 
+			((f_spectrum->width * bw_low)/(span * 1000)); 
 		filter_width = (f_spectrum->width * (bw_high-bw_low))/(span * 1000); 
+		pitch = f_spectrum->x + (f_spectrum->width/2) + 
+			((f_spectrum->width * pitch)/(span * 1000));
 	}
-
-	f = f_spectrum;
-	sub_division = f->width / 10;
-	grid_height = f->height - 10;
-
-	cairo_set_line_width(gfx, 1);
-	cairo_set_source_rgb(gfx, palette[SPECTRUM_GRID][0], palette[SPECTRUM_GRID][1], palette[SPECTRUM_GRID][2]);
-
 	// clear the spectrum	
+	f = f_spectrum;
 	fill_rect(gfx, f->x,f->y, f->width, f->height, SPECTRUM_BACKGROUND);
 	cairo_stroke(gfx);
 	fill_rect(gfx, filter_start,f->y,filter_width,grid_height,SPECTRUM_BANDWIDTH);  
 	cairo_stroke(gfx);
 
-	cairo_set_line_width(gfx, 1);
-	cairo_set_source_rgb(gfx, palette[SPECTRUM_GRID][0], palette[SPECTRUM_GRID][1], palette[SPECTRUM_GRID][2]);
-
-	//draw the horizontal grid
-	for (i =  0; i <= grid_height; i += grid_height/10){
-		cairo_move_to(gfx, f->x, f->y + i);
-		cairo_line_to(gfx, f->x + f->width, f->y + i); 
-	}
-
-	//draw the vertical grid
-	for (i = 0; i <= f->width; i += f->width/10){
-		cairo_move_to(gfx, f->x + i, f->y);
-		cairo_line_to(gfx, f->x + i, f->y + grid_height); 
-	}
-	cairo_stroke(gfx);
+	draw_spectrum_grid(f_spectrum, gfx);
+	f = f_spectrum;
 
 	//draw the frequency readout at the bottom
 	cairo_set_source_rgb(gfx, palette[COLOR_TEXT_MUTED][0], 
@@ -1294,7 +1325,6 @@ void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
 		draw_text(gfx, f->x + i - off , f->y+grid_height , freq_text, FONT_SMALL);
 		f_start += freq_div;
 	}
-
 
 	//we only plot the second half of the bins (on the lower sideband
 	int last_y = 100;
@@ -1336,6 +1366,13 @@ void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
 			wf[k + f->width - (int)x] = (y * 100)/grid_height;
 		x += x_step;
 	}
+	cairo_stroke(gfx);
+
+	
+	cairo_set_source_rgb(gfx, palette[SPECTRUM_PITCH][0], 
+		palette[SPECTRUM_PITCH][1], palette[SPECTRUM_PITCH][2]);
+	cairo_move_to(gfx, pitch, f->y);
+	cairo_line_to(gfx, pitch, f->y + grid_height); 
 	cairo_stroke(gfx);
 
 	//draw the needle
@@ -1726,6 +1763,27 @@ int do_text(struct field *f, cairo_t *gfx, int event, int a, int b){
 			update_field(f);
 			redraw_flag++;
 		}
+		return 1;
+	}
+	return 0;
+}
+
+
+int do_pitch(struct field *f, cairo_t *gfx, int event, int a, int b){
+
+	int	v = atoi(f->value);
+
+	if (event == FIELD_EDIT){
+		if (a == MIN_KEY_UP && v + f->step <= f->max){
+			v += f->step;
+		}
+		else if (a == MIN_KEY_DOWN && v - f->step >= f->min){
+			v -= f->step;
+		}
+		sprintf(f->value, "%d", v);
+		update_field(f);
+		redraw_flag++;
+		modem_set_pitch(v);
 		return 1;
 	}
 	return 0;
@@ -2182,116 +2240,25 @@ int get_cw_input_method(){
 	return cw_input_method;
 }
 
+int get_pitch(){
+	struct field *f = get_field("#rx_pitch");
+	return atoi(f->value);
+}
+
+int get_cw_tx_pitch(){
+	return cw_tx_pitch;
+}
+
 int get_data_delay(){
 	return data_delay;
 }
-/*
-static int keyer_last_was_dash = 0;
-static int keyer_tx_until = 0;
-void do_cw(){
-	//start txn of cw
-	if (!in_tx && digitalRead(PTT)==LOW){
-		tx_on();
-		cw_key(1);
-		cw_hold_until = millis() + cw_hold_duration;
-	}
-	
-	if (in_tx){
-		int key_state = digitalRead(PTT);
-		if (key_state == LOW){				//key is down
-			if (!cw_keydown)
-				cw_key(1);
-			cw_hold_until = millis() + cw_hold_duration; 
-		}
-		else { 												// the key is up
-			if (cw_keydown)
-				cw_key(0); 
-			if (millis() > cw_hold_until){
-				delay(20);
-				tx_off();
-			}	
-		}
-	} 
+
+int get_wpm(){
+	struct field *f = get_field("#tx_wpm");
+	return atoi(f->value);
 }
-*/
 
-/*
-	All timing is in milliseconds, millis() gives the time in milliseconds since program started
-*/
-
-/*
-void do_keyer(){
-	static int keydown_until = 0;
-	static int keyup_until = 0;
-	static int last_symbol = ' ';
-
-	int is_dot = digitalRead(PTT) == LOW ? 1 : 0;		//the keyer reads low when pressed
-	int is_dash = digitalRead(DASH) == LOW ? 1 : 0;
-	int now = millis();
-	int dot_period = 100; 
-
-
-	//turn it on if something is pressed
-	if (!in_tx){
-		if (is_dot || is_dash){
-			tx_on();
-			last_symbol = ' ';
-			keydown_until = 0;
-			keyup_until = 0;
-			printf("starting cw tx");
-		}
-		else
-			return;
-	}
-
-	if (keydown_until > now)
-		return;
-
-	//we get here only if there is no key down at the moment
-	if (cw_keydown)
-		cw_key(0);
-
-	//wait until the 'off' period is over
-	if (keyup_until > now)
-		return;
-
-	printf("dot %d dash %d dn %d up %d [%c]\r", is_dot, is_dash, 
-		now -keydown_until, now- keyup_until, last_symbol);	
-	//printf("new symbol! %d %d [%c]\n", keydown_until-now, keyup_until-now, last_symbol);
-	if ((is_dot && is_dash && last_symbol != '.') || (is_dot && ! is_dash)){
-		cw_key(1);
-		keydown_until = now + dot_period;
-		keyup_until = keydown_until + dot_period;
-		last_symbol = '.';
-		printf("dot! %d %d [%c]\n", keydown_until-now, keyup_until-now, last_symbol);
-	}  
-	else if ((is_dash && is_dot && last_symbol != '-') || (is_dash && ! is_dot)){
-		cw_key(1);
-		keydown_until = now + (3 * dot_period);
-		keyup_until = keydown_until + dot_period;
-		last_symbol = '-';
-		printf("dash! %d %d [%c]\n", keydown_until-now, keyup_until-now, last_symbol);
-	}
-	else { //we are here after the space since last symbol has elapsed
-		if (last_symbol == 'w'){
-			keyup_until = now + (4 * dot_period);		
-			last_symbol = ' ';
-			printf("beteween words\n");
-		}
-		else if (last_symbol == '.' || last_symbol == '-'){
-			keyup_until = now + (2 * dot_period);
-			last_symbol = 'w';
-			printf("between letters\n");
-		}
-		else if (last_symbol == ' '){
-			tx_off();
-			printf("out of tx!\n");
-		}
-	}	
-}
-*/
-
-int tuning_ticks = 0;
+static int tuning_ticks = 0;
 void tuning_isr(void){
 	int tuning = enc_read(&enc_b);
 	if (tuning < 0)
@@ -2304,6 +2271,13 @@ gboolean ui_tick(gpointer gook){
 	int static ticks = 0;
 
 	ticks++;
+
+	//update all the fields, we should instead mark fields dirty and update only those
+	if (redraw_flag){
+		for (int i = 0; i < sizeof(active_layout)/sizeof(struct field); i++)
+			update_field(active_layout + i); 
+		redraw_flag = 0;
+	}
 	
 	// check the tuning knob
 	struct field *f = get_field("r1:freq");
@@ -2327,7 +2301,6 @@ gboolean ui_tick(gpointer gook){
 		update_field(f);
 		f = get_field("#log");
 		update_field(f);
-		redraw_flag = 0;
 		ticks = 0;
 		update_field(get_field("#log"));
 	
@@ -2424,6 +2397,7 @@ int get_tx_data_byte(char *c){
 	}
 	return length;
 	update_field(f);
+	return *c;
 }
 
 int get_tx_data_length(){
@@ -2590,6 +2564,9 @@ void do_cmd(char *cmd){
 	}
 }
 
+
+
+
 void cmd_line(char *cmd){
 	int i, j;
 	int mode = mode_id(get_field("r1:mode")->value);
@@ -2616,6 +2593,7 @@ void cmd_line(char *cmd){
 
 	printf("exec [%s] for [%s]\n", exec, args);
 
+
 	char response[100];
 	if (!strcmp(exec, "callsign")){
 		strcpy(mycallsign,args); 
@@ -2629,7 +2607,7 @@ void cmd_line(char *cmd){
 	}
 	else if(!strcmp(exec, "freq") || !strcmp(exec, "f")){
 		long freq = atol(args);
-		if (freq < 10000)
+		if (freq < 30000)
 			freq *= 1000;
 		char freq_s[20];
 		sprintf(freq_s, "%ld",freq);
@@ -2637,8 +2615,13 @@ void cmd_line(char *cmd){
 		//set_freq(atol(args));
 	}
 	else if (!strcmp(exec, "cwdelay")){
-		if (strlen(args))
-			cw_delay = atoi(args);
+		if (strlen(args)){
+			int d = atoi(args);
+			if (d < 50 || d > 2000)
+				write_log(FONT_LOG, "cwdelay should be between 100 and 2000 msec");
+			else 
+				cw_delay = d;
+		}	
 		char buff[10];
 		sprintf(buff, "cwdelay: %d msec\n", cw_delay);
 		write_log(FONT_LOG, buff);
@@ -2675,6 +2658,42 @@ void cmd_line(char *cmd){
 		telnet_close(args);
 	else if (!strcmp(exec, "w"))
 		telnet_write(args);
+	else if (!strcmp(exec, "txpitch")){
+		if (strlen(args)){
+			int t = atoi(args);	
+			if (t > 100 && t < 4000)
+				cw_tx_pitch = t;
+			else
+				write_log(FONT_LOG, "cw pitch should be 100-4000");
+		}
+		char buff[100];
+		sprintf(buff, "cw txpitch is set to %d Hz\n", cw_tx_pitch);
+		write_log(FONT_LOG, buff);
+		redraw_flag++;
+	}
+	else {
+		//see if it matches any of the fields of the UI that have FIELD_NUMBER 
+		char field_name[32];
+		struct field *f = get_field(exec);
+		if (f){
+			char buff[100];
+			int v = atoi(args);
+			if (v >= f->min && v <= f->max){
+				sprintf(f->value, "%d", v);
+				update_field(f);
+				sprintf(buff, "%s (%s) is set to %s\n", f->label, f->cmd, f->value);
+				redraw_flag++;
+				write_log(FONT_LOG, buff);
+			}
+			else {
+				sprintf(buff, "%s (%s) is should be set between %d - %d\n", f->label, f->cmd, 
+					f->min, f->max);
+			}
+		}
+		else {
+			write_log(FONT_LOG, "Unknown command\n");
+		}
+	}
 //	else if (!strcmp(exec, "key")){
 //		if (!strcmp(args, "kbd") || !strcmp(args, "keyboard"))
 //	}

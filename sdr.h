@@ -194,7 +194,7 @@ void sdr_modulation_update(int32_t *samples, int count);
 
 /* from modems.c */
 void modem_rx(int mode, int32_t *samples, int count);
-int	modem_center_freq(int mode);
+void	modem_set_pitch(int pitch);
 void modem_init();
 int get_tx_data_byte(char *c);
 int	get_tx_data_length();
@@ -207,6 +207,7 @@ void ft8_tx(char *message, int freq);
 void tx_on();
 void tx_off();
 long get_freq();
+int get_pitch();
 void do_cmd(char *cmd);
 
 //cw defines
@@ -221,6 +222,9 @@ int key_poll();
 int get_cw_delay();
 int get_cw_input_method();
 int	get_data_delay();
+int get_cw_tx_pitch();
+int get_modem_pitch();
+int	get_wpm();
 
 void telnet_open(char *server);
 int telnet_write(char *text);
