@@ -1177,7 +1177,8 @@ void draw_spectrum_grid(struct field *f_spectrum, cairo_t *gfx){
 }
 
 void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
-	int y, sub_division, i, grid_height, span, bw_high, bw_low, pitch;
+	int y, sub_division, i, grid_height, bw_high, bw_low, pitch;
+	float span;
 	struct field *f;
 	long	freq, freq_div;
 	char	freq_text[20];
@@ -1188,7 +1189,7 @@ void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
 	}
 
 	freq = atol(get_field("r1:freq")->value);
-	span = atoi(get_field("#span")->value);
+	span = atof(get_field("#span")->value);
 	bw_high = atoi(get_field("r1:high")->value);
 	bw_low = atoi(get_field("r1:low")->value);
 	grid_height = f_spectrum->height - 10;
@@ -1205,14 +1206,22 @@ void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
 	if(!strcmp(mode_f->value, "CWR") || !strcmp(mode_f->value, "LSB")){
 	 	filter_start = f_spectrum->x + (f_spectrum->width/2) - 
 			((f_spectrum->width * bw_high)/(span * 1000)); 
+		if (filter_start < f_spectrum->x)
+			filter_start = f_spectrum->x;
 	 	filter_width = (f_spectrum->width * (bw_high -bw_low))/(span * 1000); 
+		if (filter_width + filter_start > f_spectrum->x + f_spectrum->width)
+			filter_width = f_spectrum->x + f_spectrum->width - filter_start;
 		pitch = f_spectrum->x + (f_spectrum->width/2) -
 			((f_spectrum->width * pitch)/(span * 1000));
 	}
 	else {
 		filter_start = f_spectrum->x + (f_spectrum->width/2) + 
 			((f_spectrum->width * bw_low)/(span * 1000)); 
+		if (filter_start < f_spectrum->x)
+			filter_start = f_spectrum->x;
 		filter_width = (f_spectrum->width * (bw_high-bw_low))/(span * 1000); 
+		if (filter_width + filter_start > f_spectrum->x + f_spectrum->width)
+			filter_width = f_spectrum->x + f_spectrum->width - filter_start;
 		pitch = f_spectrum->x + (f_spectrum->width/2) + 
 			((f_spectrum->width * pitch)/(span * 1000));
 	}
