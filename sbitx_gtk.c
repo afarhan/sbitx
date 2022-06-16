@@ -117,7 +117,6 @@ struct font_style {
 
 guint key_modifier = 0;
 
-
 struct font_style font_table[] = {
 	{FONT_FIELD_LABEL, 0, 1, 1, "Mono", 14, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
 	{FONT_FIELD_VALUE, 1, 1, 1, "Mono", 14, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
@@ -173,6 +172,22 @@ static int	next_log = 0;
 #define MIN_KEY_BACKSPACE 0xFF08
 #define MIN_KEY_TAB 0xFF09
 #define MIN_KEY_CONTROL 0xFFE3
+#define MIN_KEY_F1 0xFFBE
+#define MIN_KEY_F2 0xFFBF
+#define MIN_KEY_F3 0xFFC0
+#define MIN_KEY_F4 0xFFC1
+#define MIN_KEY_F5 0xFFC2
+#define MIN_KEY_F6 0xFFC3
+#define MIN_KEY_F7 0xFFC4
+#define MIN_KEY_F8 0xFFC5
+#define MIN_KEY_F9 0xFFC6
+#define MIN_KEY_F9 0xFFC6
+#define MIN_KEY_F10 0xFFC7
+#define MIN_KEY_F11 0xFFC8
+#define MIN_KEY_F12 0xFFC9
+
+
+
 
 /* 	the field in focus will be exited when you hit an escape
 		the field in focus will be changeable until it loses focus
@@ -386,10 +401,14 @@ int	vfo_a_freq = 7000000;
 int	vfo_b_freq = 14000000;
 char vfo_a_mode[10];
 char vfo_b_mode[10];
+//usefull data for macros, logging, etc
 char mycallsign[12];
 char mygrid[12];
-int	data_delay = 700;
+char contact_callsign[12];
+int	contact_rst = 599;
+int my_rst = 000;
 
+int	data_delay = 700;
 int cw_input_method = CW_KBD;
 int	cw_delay = 1000;
 int	cw_tx_pitch = 700;
@@ -414,12 +433,10 @@ int do_log(struct field *f, cairo_t *gfx, int event, int a, int b);
 int do_pitch(struct field *f, cairo_t *gfx, int event, int a, int b);
 int do_kbd(struct field *f, cairo_t *gfx, int event, int a, int b);
 int do_mouse_move(struct field *f, cairo_t *gfx, int event, int a, int b);
+int do_macro(struct field *f, cairo_t *gfx, int event, int a, int b);
 
 struct field *active_layout = NULL;
 char settings_updated = 0;
-#define UI_GENERAL 'k'
-#define UI_FT8	'f'
-#define UI_MACROS 'm'
 char ui_option = 'k';
 
 // the cmd fields that have '#' are not to be sent to the sdr
@@ -555,31 +572,32 @@ struct field main_controls[] = {
 	//macros keyboard
 
 	//row 1
-	{"#mf1", NULL, 0, 1360, 80, 40, "F1", 1, "CQ", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#mf1", do_macro, 0, 1360, 80, 40, "F1", 1, "CQ", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
 
-	{"#mf2", NULL, 80, 1360, 80, 40, "F2", 1, "Call", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#mf2", do_macro, 80, 1360, 80, 40, "F2", 1, "Call", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
 
-	{"#mf3", NULL, 160, 1360, 80, 40, "F3", 1, "Reply", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#mf3", do_macro, 160, 1360, 80, 40, "F3", 1, "Reply", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
 
-	{"#mf4", NULL, 240, 1360, 80, 40, "F4", 1, "RRR", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#mf4", do_macro, 240, 1360, 80, 40, "F4", 1, "RRR", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
 
-	{"#mf5", NULL, 320, 1360, 80, 40, "F5", 1, "73", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#mf5", do_macro, 320, 1360, 80, 40, "F5", 1, "73", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+
 
 	//row 2
-	{"#mf6", NULL, 0, 1400, 80, 40, "F6", 1, "Call", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#mf6", do_macro, 0, 1400, 80, 40, "F6", 1, "Call", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
 
-	{"#mf7", NULL, 80, 1400, 80, 40, "F7", 1, "Exch", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#mf7", do_macro, 80, 1400, 80, 40, "F7", 1, "Exch", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
 
-	{"#mf8", NULL, 160, 1400, 80, 40, "F8", 1, "Tu", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#mf8", do_macro, 160, 1400, 80, 40, "F8", 1, "Tu", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
 
-	{"#mf9", NULL, 240, 1400, 80, 40, "F9", 1, "Rpt", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#mf9", do_macro, 240, 1400, 80, 40, "F9", 1, "Rpt", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
 
-	{"#mf10", NULL, 320, 1400, 80, 40, "F10", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#mf10", do_macro, 320, 1400, 80, 40, "F10", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
 
 	//row 3
-	{"#mfesc", NULL, 0, 1440, 80, 40, "Esc", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#mf11", do_macro, 0, 1440, 80, 40, "F11", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
 
-	{"#mfwipe", NULL, 80, 1440, 80, 40, "Wipe", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
+	{"#mf12", do_macro, 80, 1440, 80, 40, "F12", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
 
 	{"#mflog", NULL, 160, 1440, 80, 40, "Log It", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
 
@@ -608,13 +626,13 @@ struct field *get_field(char *cmd){
 }
 
 //set the field directly to a particuarl value, programmatically
-void set_field(char *id, char *value){
+int set_field(char *id, char *value){
 	struct field *f = get_field(id);
 	int v;
 
 	if (!f){
 		printf("*Error: field[%s] not found. Check for typo?\n", id);
-		return;
+		return 1;
 	}
 
 	if (f->value_type == FIELD_NUMBER){
@@ -644,16 +662,20 @@ void set_field(char *id, char *value){
 			if (prev)
 				strcpy(f->value, prev);
 			printf("*Error: setting field[%s] to [%s] not permitted\n", f->cmd, value);
+			return 1;
 		}
 		else
 			strcpy(f->value, value);
 	}
 	else if (f->value_type == FIELD_BUTTON){
-		NULL; // ah, do nothing!
+		strcpy(f->value, value);	
+		return 1;
 	}
 	else if (f->value_type == FIELD_TEXT){
-		if (strlen(value) > f->max || strlen(value) < f->min)
+		if (strlen(value) > f->max || strlen(value) < f->min){
 			printf("*Error: field[%s] can't be set to [%s], improper size.\n", f->cmd, value);
+			return 1;
+		}
 		else
 			strcpy(f->value, value);
 	}
@@ -663,6 +685,7 @@ void set_field(char *id, char *value){
 	sprintf(buff, "%s=%s", f->cmd, f->value);
 	do_cmd(buff);
 	update_field(f);
+	return 0;
 }
 
 // log is a special field that essentially is a like text
@@ -687,15 +710,37 @@ int log_init_next_line(){
 }
 
 void write_log(int style, char *text){
+	char directory[200];	//dangerous, find the MAX_PATH and replace 200 with it
+	char *path = getenv("HOME");
+	strcpy(directory, path);
+	strcat(directory, "/sbitx/data/display_log.txt");
+	FILE *pf = fopen(directory, "a");
 
 	//move to a new line if the style has changed
 	if (style != log_style){
 		log_style = style;
 		log_init_next_line();	
+		switch(style){
+			case_FONT_LOG_RX:
+				fputs("#RX ################################\n", pf);
+				break;
+			case FONT_LOG_TX:
+				fputs("#TX ################################\n", pf);
+				break;
+			default:
+				fputs("#INFO ##############################\n", pf);
+				break;
+				
+		}
 	}
 
 	if (strlen(text) == 0)
 		return;
+
+	//write to the scroll
+	fwrite(text, strlen(text), 1, pf);
+	fclose(pf);
+
 	while(*text){
 		char c = *text;
 		if (c == '\n')
@@ -814,15 +859,19 @@ void draw_field(GtkWidget *widget, cairo_t *gfx, struct field *f){
 				draw_text(gfx, f->x + offset, f->y+13 , f->label , FONT_FIELD_LABEL);
 			else if (f->height <= 30){
 				if (strlen(f->label)){
-					draw_text(gfx, f->x + 5, f->y ,  f->label, FONT_FIELD_LABEL);
+					draw_text(gfx, f->x+5, f->y ,  f->label, FONT_FIELD_LABEL);
 					draw_text(gfx, f->x+18 , f->y+8 , f->value , f->font_index);
 				}
 				else 
 					draw_text(gfx, f->x+10 , f->y+5 , f->value , f->font_index);
 			}
 			else {
-				draw_text(gfx, f->x + offset, f->y+5 ,  f->label, FONT_FIELD_LABEL);
-				draw_text(gfx, f->x+offset , f->y+25 , f->value , f->font_index);
+				if (strlen(f->label)){
+					draw_text(gfx, f->x + offset, f->y+5 ,  f->label, FONT_FIELD_LABEL);
+					draw_text(gfx, f->x+offset , f->y+f->height - 20 , f->value , f->font_index);
+				}
+				else
+					draw_text(gfx, f->x+offset , f->y+15 , f->value , f->font_index);
 			}	
 			break;
 		case FIELD_STATIC:
@@ -1689,8 +1738,8 @@ int do_log(struct field *f, cairo_t *gfx, int event, int a, int b){
 int do_text(struct field *f, cairo_t *gfx, int event, int a, int b){
 
 	if (event == FIELD_EDIT){
-		if ((a == '\n' || a == MIN_KEY_ENTER)&& !strcmp(get_field("r1:mode")->value, "FT8")){
-			ft8_tx(f->value, 1000);
+		if ((a =='\n' || a == MIN_KEY_ENTER) && !strcmp(get_field("r1:mode")->value, "FT8") && f->value[0] != '\\'){
+			ft8_tx(f->value, atoi(get_field("#rx_pitch")->value));
 			f->value[0] = 0;		
 		}
 		else if (a >= ' ' && a <= 127 && strlen(f->value) < f->max-1){
@@ -1796,6 +1845,41 @@ int do_kbd(struct field *f, cairo_t *gfx, int event, int a, int b){
 		return 1;
 	}	
 	return 0;
+}
+
+void macro_get_var(char *var, char *s){
+	*s = 0;
+
+	if(!strcmp(var, "MYCALL"))
+		strcpy(s, mycallsign);
+	else if (!strcmp(var, "CALL"))
+		strcpy(s, contact_callsign);
+	else if (!strcmp(var, "SENTRST"))
+		sprintf(s, "%d", contact_rst);
+	else if (!strcmp(var, "GRID"))
+		strcpy(s, mygrid);
+	else if (!strcmp(var, "GRIDSQUARE")){
+		strcpy(var, mygrid);
+		var[4] = 0;
+		strcpy(s, var);
+	}
+	else
+		*s = 0;
+}
+
+int do_macro(struct field *f, cairo_t *gfx, int event, int a, int b){
+	char buff[256];
+
+	if(event == GDK_BUTTON_PRESS){
+		int fn_key = atoi(f->cmd+3); // skip past the '#mf' and read the function key number
+		macro_exec(fn_key, buff);
+		//we use the setting of the PITCH control for tx freq
+		if (!strcmp(get_field("r1:mode")->value, "FT8")){
+			ft8_tx(buff, atoi(get_field("#rx_pitch")->value));
+			write_log(FONT_LOG_TX, buff);
+		}
+	}
+
 }
 
 void tx_on(){
@@ -1966,8 +2050,8 @@ static gboolean on_key_press (GtkWidget *widget, GdkEventKey *event, gpointer us
 		edit_field(f_focus, event->keyval); 
 		return FALSE;
 	}
-	
-	//printf("keyPress %x %x\n", event->keyval, event->state);
+		
+	printf("keyPress %x %x\n", event->keyval, event->state);
 	//key_modifier = event->keyval;
 	switch(event->keyval){
 		case MIN_KEY_UP:
@@ -1995,6 +2079,12 @@ static gboolean on_key_press (GtkWidget *widget, GdkEventKey *event, gpointer us
 			//by default, all text goes to the text_input control
 			if (event->keyval == MIN_KEY_ENTER)
 				edit_field(get_field("#text_in"), '\n');
+			else if (MIN_KEY_F1 <= event->keyval && event->keyval <= MIN_KEY_F12){
+				int fn_key = event->keyval - MIN_KEY_F1 + 1;
+				char fname[10];
+				sprintf(fname, "#mf%d", fn_key);
+				do_macro(get_field(fname), NULL, GDK_BUTTON_PRESS, 0, 0);
+			} 
 			else
 				edit_field(get_field("#text_in"), event->keyval);
 			//if (f_focus)
@@ -2573,6 +2663,19 @@ void cmd_line(char *cmd){
 		sprintf(response, "\n[Your grid is set to %s]\n", mygrid);
 		write_log(FONT_LOG, response);
 	}
+	else if(!strcmp(exec, "macro")){
+		if (!macro_load(args)){
+			for (int i = 1; i <= 12; i++){
+				char button[32], label[32];
+				macro_label(i, label);
+				sprintf(button, "#mf%d", i);
+				set_field(button, label);
+			}
+			redraw();
+		}
+		else
+			write_log(FONT_LOG, "macro file not loaded\n");
+	}
 	else if(!strcmp(exec, "freq") || !strcmp(exec, "f")){
 		long freq = atol(args);
 		if (freq < 30000)
@@ -2644,22 +2747,8 @@ void cmd_line(char *cmd){
 		char field_name[32];
 		struct field *f = get_field(exec);
 		if (f){
-			char buff[100];
-			int v = atoi(args);
-			if (v >= f->min && v <= f->max){
-				sprintf(f->value, "%d", v);
-				update_field(f);
-				sprintf(buff, "%s (%s) is set to %s\n", f->label, f->cmd, f->value);
-				redraw_flag++;
-				write_log(FONT_LOG, buff);
-			}
-			else {
-				sprintf(buff, "%s (%s) is should be set between %d - %d\n", f->label, f->cmd, 
-					f->min, f->max);
-			}
-		}
-		else {
-			write_log(FONT_LOG, "Unknown command\n");
+			if(set_field(exec, args))
+				write_log(FONT_LOG, "Invalid setting");
 		}
 	}
 //	else if (!strcmp(exec, "key")){

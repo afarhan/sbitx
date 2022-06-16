@@ -13,3 +13,6 @@ extern int display_freq;
 #define FONT_LOG_RX 6
 #define FONT_LOG_TX 7
 void write_log(int style, char *text);
+int macro_load(char *filename);
+int macro_exec(int key, char *dest);
+void macro_label(int fn_key, char *label);

@@ -111,7 +111,6 @@ void ft8_tx(char *message, int freq){
 	ft8_tx_nsamples = fread(ft8_tx_buff, sizeof(float), 180000, pf);
 	fclose(pf);
 	ft8_tx_buff_index = 0;
-	sprintf(ft8_tx_text, ">%s\n", message);
 	printf("ft8 ready to transmit with %d samples\n", ft8_tx_nsamples);
 }
 
@@ -743,10 +742,8 @@ void modem_poll(int mode){
 	case MODE_FT8:
 		now = time(NULL);
 		if (now % 15 == 0){
-			if(ft8_tx_nsamples > 0 && !tx_is_on){
+			if(ft8_tx_nsamples > 0 && !tx_is_on)
 				tx_on();	
-				write_log(FONT_LOG_TX, ft8_tx_text);
-			}
 			if (tx_is_on && ft8_tx_nsamples == 0)
 				tx_off();
 		}

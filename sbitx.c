@@ -500,7 +500,7 @@ void tx_process(
 		if (r->mode == MODE_2TONE)
 			i_sample = (1.0 * (vfo_read(&tone_a) 
 										+ vfo_read(&tone_b))) / 20000000000.0;
-		else if (r->mode == MODE_CW || r->mode == MODE_CWR){
+		else if (r->mode == MODE_CW || r->mode == MODE_CWR || r->mode == MODE_FT8){
 			i_sample = modem_next_sample(r->mode) / 3;
 			output_speaker[j] = i_sample * 100000000.0;
 		}

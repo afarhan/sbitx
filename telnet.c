@@ -65,8 +65,10 @@ long get_address(char *host)
 	*/
 	printf("Looking up %s\n", host);
 	pent = gethostbyname(host);
-	if (!pent)
+	if (!pent){
+		printf("Failed to resolve %d\n", host);	
 		return 0;
+	}
 
 	/* PORTABILITY-ISSUE: replacing a costly memcpy call with a hack, may not work on 
 	some systems.  
