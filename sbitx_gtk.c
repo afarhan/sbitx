@@ -401,6 +401,7 @@ int	vfo_a_freq = 7000000;
 int	vfo_b_freq = 14000000;
 char vfo_a_mode[10];
 char vfo_b_mode[10];
+
 //usefull data for macros, logging, etc
 char mycallsign[12];
 char mygrid[12];
@@ -408,6 +409,8 @@ char contact_callsign[12];
 int	contact_rst = 599;
 int my_rst = 000;
 
+//recording duration in seconds
+time_t record_start = 0;
 int	data_delay = 700;
 int cw_input_method = CW_KBD;
 int	cw_delay = 1000;
@@ -434,6 +437,7 @@ int do_pitch(struct field *f, cairo_t *gfx, int event, int a, int b);
 int do_kbd(struct field *f, cairo_t *gfx, int event, int a, int b);
 int do_mouse_move(struct field *f, cairo_t *gfx, int event, int a, int b);
 int do_macro(struct field *f, cairo_t *gfx, int event, int a, int b);
+int do_record(struct field *f, cairo_t *gfx, int event, int a, int b);
 
 struct field *active_layout = NULL;
 char settings_updated = 0;
@@ -477,7 +481,7 @@ struct field main_controls[] = {
 		"", 100, 3000, 10},
 /*	{ "#tx_key", NULL, 600, 430, 50, 50, "KEY", 40, "HARD", FIELD_SELECTION, FONT_FIELD_VALUE, 
 		"SOFT/HARD", 0, 0, 0},*/
-	{ "tx_record", NULL, 700, 430, 50, 50, "RECORD", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, 
+	{ "#record", do_record, 700, 430, 50, 50, "REC", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, 
 		"ON/OFF", 0,0, 0},
 	
 	{ "#tx", NULL, 600, 430, 50, 50, "TX", 40, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
@@ -1882,6 +1886,29 @@ int do_macro(struct field *f, cairo_t *gfx, int event, int a, int b){
 
 }
 
+int do_record(struct field *f, cairo_t *gfx, int event, int a, int b){
+	if (event == FIELD_DRAW){
+		int width = measure_text(gfx, f->label, FONT_FIELD_LABEL);
+		int offset = f->width/2 - width/2;
+		draw_text(gfx, f->x + offset, f->y+5 , f->label, FONT_FIELD_LABEL);
+		if (record_start){
+			width = measure_text(gfx, f->value, f->font_index);
+			offset = f->width/2 - width/2;
+			time_t duration_seconds = time(NULL) - record_start;
+			int minutes = duration_seconds/60;
+			int seconds = duration_seconds % 60;
+			char duration[12];
+			sprintf(duration, "%d:%02d", minutes, seconds); 	
+			draw_text(gfx, f->x+10 , f->y+25 , duration , f->font_index);
+		}
+		else{
+			draw_text(gfx, f->x+offset , f->y+25 , "OFF" , f->font_index);
+			return 1;
+		}
+	}
+	return 0;
+}
+
 void tx_on(){
 	char response[100];
 
@@ -2158,7 +2185,7 @@ static gboolean on_mouse_press (GtkWidget *widget, GdkEventButton *event, gpoint
 	}
 	else if (event->type == GDK_BUTTON_PRESS && event->button == GDK_BUTTON_PRIMARY){
 
-		//printf("mouse event at %d, %d\n", (int)(event->x), (int)(event->y));
+		printf("mouse event at %d, %d\n", (int)(event->x), (int)(event->y));
 		for (int i = 0; active_layout[i].cmd[0] > 0; i++) {
 			f = active_layout + i;
 			if (f->x < event->x && event->x < f->x + f->width 
@@ -2340,6 +2367,7 @@ gboolean ui_tick(gpointer gook){
 			update_field(f);
 		redraw_flag = 0;
 	}
+
 	
 	// check the tuning knob
 	struct field *f = get_field("r1:freq");
@@ -2366,6 +2394,9 @@ gboolean ui_tick(gpointer gook){
 		ticks = 0;
 		update_field(get_field("#log"));
 	
+		if (record_start)
+			update_field(get_field("#record"));
+
 		// alternate character from the softkeyboard upon long press
 		if (f_focus && focus_since + 500 < millis() 
 						&& !strncmp(f_focus->cmd, "#kbd_", 5) && mouse_down){
@@ -2545,6 +2576,7 @@ void do_cmd(char *cmd){
 		gtk_window_iconify(GTK_WINDOW(window));
 	else if (!strcmp(request, "#off")){
 		tx_off();
+		set_field("#record", "OFF");
 		save_user_settings();
 		exit(0);
 	}
@@ -2612,6 +2644,26 @@ void do_cmd(char *cmd){
 		!strcmp(request, "#12m") || 
 		!strcmp(request, "#10m")){
 		change_band(request);		
+	}
+	else if (!strcmp(request, "#record=ON")){
+		char fullpath[200];	//dangerous, find the MAX_PATH and replace 200 with it
+
+		char *path = getenv("HOME");
+		time(&record_start);
+		struct tm *tmp = gmtime(&record_start);
+		sprintf(fullpath, "%s/sbitx/audio/%04d%02d%02d-%02d%02d-%02d.wav", path, 
+			tmp->tm_year + 1900, tmp->tm_mon + 1, tmp->tm_mday, tmp->tm_hour, tmp->tm_min, tmp->tm_sec); 
+
+		char request[300], response[100];
+		sprintf(request, "record=%s", fullpath);
+		sdr_request(request, response);
+		write_log(FONT_LOG, "Recording ");
+		write_log(FONT_LOG, fullpath);
+	}
+	else if (!strcmp(request, "#record=OFF")){
+		sdr_request("record", "off");
+		write_log(FONT_LOG, "Recording stopped");
+		record_start = 0;
 	}
 	//this needs to directly pass on to the sdr core
 	else if(request[0] != '#'){

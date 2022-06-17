@@ -59,16 +59,9 @@ struct rx *rx_list = NULL;
 struct rx *tx_list = NULL;
 struct filter *tx_filter;	//convolution filter
 
-/* 
-	CW shaping:
-	The CW waveshaping is done with a linear rise of the ampltidue from 0 to 1000
-	and similarly the fall is from 1000 to 0 in cw_shaping steps.
+FILE *pf_record;
+int16_t record_buffer[1024];
 
-*/
-
-int cw_shape = 1; 		//change to 3 for a clickier shaping
-int	cw_amplitude = 0; // this increases to 1000 and falls back to 0
-int cw_keydown = 0;
 
 #define CMD_TX (2)
 #define CMD_RX (3)
@@ -76,6 +69,7 @@ int cw_keydown = 0;
 #define TUNING_SHIFT (0)
 #define MDS_LEVEL (-135)
 int fserial = 0;
+
 
 void radio_tune_to(u_int32_t f){
   si5351bx_setfreq(2, f + bfo_freq - 24000 + TUNING_SHIFT);
@@ -187,13 +181,6 @@ void set_lpf_40mhz(int frequency){
 	prev_lpf = lpf;
 }
 
-/*
-void set_lo(int frequency){
-	freq_hdr = frequency;
-	set_lpf_40mhz(frequency);
-	radio_tune_to(frequency);
-}
-*/
 
 void set_rx1(int frequency){
 	radio_tune_to(frequency);
@@ -205,7 +192,64 @@ void set_volume(double v){
 	volume = v;	
 }
 
-int test_tone = 4000;
+FILE *wav_start_writing(const char* path)
+{
+    char subChunk1ID[4] = { 'f', 'm', 't', ' ' };
+    uint32_t subChunk1Size = 16; // 16 for PCM
+    uint16_t audioFormat = 1; // PCM = 1
+    uint16_t numChannels = 1;
+    uint16_t bitsPerSample = 16;
+    uint32_t sampleRate = 12000;
+    uint16_t blockAlign = numChannels * bitsPerSample / 8;
+    uint32_t byteRate = sampleRate * blockAlign;
+
+    char subChunk2ID[4] = { 'd', 'a', 't', 'a' };
+    uint32_t subChunk2Size = 0Xffffffff; //num_samples * blockAlign;
+
+    char chunkID[4] = { 'R', 'I', 'F', 'F' };
+    uint32_t chunkSize = 4 + (8 + subChunk1Size) + (8 + subChunk2Size);
+    char format[4] = { 'W', 'A', 'V', 'E' };
+
+    FILE* f = fopen(path, "w");
+
+    // NOTE: works only on little-endian architecture
+    fwrite(chunkID, sizeof(chunkID), 1, f);
+    fwrite(&chunkSize, sizeof(chunkSize), 1, f);
+    fwrite(format, sizeof(format), 1, f);
+
+    fwrite(subChunk1ID, sizeof(subChunk1ID), 1, f);
+    fwrite(&subChunk1Size, sizeof(subChunk1Size), 1, f);
+    fwrite(&audioFormat, sizeof(audioFormat), 1, f);
+    fwrite(&numChannels, sizeof(numChannels), 1, f);
+    fwrite(&sampleRate, sizeof(sampleRate), 1, f);
+    fwrite(&byteRate, sizeof(byteRate), 1, f);
+    fwrite(&blockAlign, sizeof(blockAlign), 1, f);
+    fwrite(&bitsPerSample, sizeof(bitsPerSample), 1, f);
+
+    fwrite(subChunk2ID, sizeof(subChunk2ID), 1, f);
+    fwrite(&subChunk2Size, sizeof(subChunk2Size), 1, f);
+		
+		return f;
+}
+
+void wav_record(int32_t *samples, int count){
+	int16_t *w;
+	int32_t *s;
+	int i = 0, j = 0;
+	int decimation_factor = 96000 / 12000; 
+
+	if (!pf_record)
+		return;
+
+	w = record_buffer;
+	while(i < count){
+		*w++ = *samples / 32786;
+		samples += decimation_factor;
+		i += decimation_factor;	
+		j++;
+	}
+	fwrite(record_buffer, j, sizeof(int16_t), pf_record);
+}
 
 /*
 The sound process is called by the duplex sound system for each block of samples
@@ -593,11 +637,13 @@ void sound_process(
 	int n_samples)
 {
 
-	if (in_tx){
+	if (in_tx)
 		tx_process(input_rx, input_mic, output_speaker, output_tx, n_samples);
-	}
 	else
 		rx_process(input_rx, input_mic, output_speaker, output_tx, n_samples);
+
+	if (pf_record)
+		wav_record(in_tx == 0 ? output_speaker : input_mic, n_samples);
 }
 
 
@@ -837,6 +883,14 @@ void sdr_request(char *request, char *response){
 		else
 			filter_tune(tx_filter, (1.0*300)/96000.0, (1.0*3000)/96000.0, 5);
 	}
+	else if(!strcmp(cmd, "record")){
+		if (!strcmp(value, "off")){
+			fclose(pf_record);
+			pf_record = NULL;
+		}
+		else
+			pf_record = wav_start_writing(value);
+	}
 	else if (!strcmp(cmd, "tx")){
 		if (!strcmp(value, "on")){
 			in_tx = 1;
@@ -856,13 +910,6 @@ void sdr_request(char *request, char *response){
 			sound_mixer(audio_card, "Capture", rx_gain);
 			spectrum_reset();
 		}
-	}
-	else if (!strcmp(cmd, "key") & in_tx){
-		if(!strcmp(value, "down"))
-			cw_keydown = 1;
-		else
-			cw_keydown = 0;
-		printf("in_tx = %d key=%d\n", in_tx, cw_keydown);
 	}
 	else if (!strcmp(cmd, "tx_gain")){
 		tx_gain = atoi(value);
@@ -906,12 +953,6 @@ void sdr_request(char *request, char *response){
     else if (!strcmp(value, "LINE"))
       tx_use_line = 1;
   } 
-	else if (!strcmp(cmd, "tx_key")){
-		if (!strcmp(value, "SOFT"))
-			cw_shape = 3;
-		else if (!strcmp(value, "HARD"))
-			cw_shape = 1;
-	}
   /* else
 		printf("*Error request[%s] not accepted\n", request); */
 }
