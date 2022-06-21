@@ -17,7 +17,7 @@
 #include "si5351.h"
 
 char audio_card[32];
-int tx_shift = 512;
+static int tx_shift = 512;
 
 FILE *pf_debug = NULL;
 
@@ -51,8 +51,11 @@ static int tx_power_watts = 40;
 static int rx_gain = 100;
 static int rx_vol = 100;
 static int tx_gain = 100;
+static int tx_compress = 50;
 static double spectrum_speed = 0.1;
 static int in_tx = 0;
+static int rx_tx_ramp = 0;
+static int sidetone = 2000000000.0;
 struct vfo tone_a, tone_b; //these are audio tone generators
 static int tx_use_line = 0;
 struct rx *rx_list = NULL;
@@ -359,59 +362,64 @@ struct rx *add_rx(int frequency, short mode, int bpf_low, int bpf_high){
 
 int count = 0;
 
-/* In our first cut, we will implement a signal strength meter */
-double agc(struct rx *r){
+double agc2(struct rx *r){
 	int i;
   double signal_strength;
 
+	//do nothing if agc is off
   if (r->agc_speed == -1){
 	  for (i=0; i < MAX_BINS/2; i++)
 			__imag__ (r->fft_time[i+(MAX_BINS/2)]) *=10000000;
     return 10000000;
   }
 
-  signal_strength = 0.0;
-
   //find the peak signal amplitude
+  signal_strength = 0.0;
 	for (i=0; i < MAX_BINS/2; i++){
 		double s = cimag(r->fft_time[i+(MAX_BINS/2)]) * 1000;
 		if (signal_strength < s) 
 			signal_strength = s;
 	}
+	//also calculate the moving average of the signal strength
   r->signal_avg = (r->signal_avg * 0.93) + (signal_strength * 0.07);
+  double agc_gain_should_be = 100000000000/signal_strength;
+	r->signal_strength = signal_strength;
 
-  /* climb up the agc quickly if the signal is beyond the threshold */
-  if (signal_strength > r->signal_strength){
-    r->agc_gain = 100000000000/signal_strength;
-    r->signal_strength = signal_strength;
+
+	double agc_ramp = 0.0;
+
+  /* climb up the agc quickly if the signal is louder than before */
+	if (agc_gain_should_be < r->agc_gain){
+  	//printf("Attack! %g, should be %g\n", r->agc_gain, agc_gain_should_be);
+		r->agc_gain = agc_gain_should_be;
+		//reset the agc to hang count down 
     r->agc_loop = r->agc_speed;
-   
-    //scale down the signal accordingly 
-	  for (i=0; i < MAX_BINS/2; i++){
-			__imag__ (r->fft_time[i+(MAX_BINS/2)]) *= r->agc_gain;
-    }
-    //printf("\nAttack!\n");
   }
-  else if (r->agc_loop <= 0 ){
-    //if (signal_strength < 4 * r->signal_strength)
-    //  r->agc_gain = (r->agc_gain * 9)/10;
-    r->signal_strength = signal_strength;
-    double decay_rate = (1.0*(r->agc_gain-r->signal_strength))/(MAX_BINS*30);
-    for (i = 0; i < MAX_BINS/2; i++){
-			  __imag__ (r->fft_time[i+(MAX_BINS/2)]) *= r->agc_gain;
-        r->agc_gain -= decay_rate;
-    }
-    //printf("\nDecay! %d\n", r->agc_gain);
-  }
-  else{
-    for (i = 0; i < MAX_BINS/2; i++)
-		  __imag__ (r->fft_time[i+(MAX_BINS/2)]) *= r->agc_gain;
-    r->agc_loop--;
-  }
+	else if (r->agc_loop <= 0){
+		agc_ramp = (agc_gain_should_be - r->agc_gain) / (MAX_BINS/2);	
+		//printf("Decay new gain %g in step %g\n", agc_gain_should_be,  agc_ramp);
+	}
+	//else if (r->agc_loop > 0)
+	//	printf("Decaying %d\n", r->agc_loop);
+ 
+	if (agc_ramp != 0){
+		//printf("Ramping from %g ", r->agc_gain);
+  	for (i = 0; i < MAX_BINS/2; i++){
+	  	__imag__ (r->fft_time[i+(MAX_BINS/2)]) *= r->agc_gain;
+			r->agc_gain += agc_ramp;
+		}
+		//printf(" by %g to %g\n", agc_ramp, r->agc_gain);
+	}
+	else 
+  	for (i = 0; i < MAX_BINS/2; i++)
+	  	__imag__ (r->fft_time[i+(MAX_BINS/2)]) *= r->agc_gain;
 
-  //printf("s meter: %d %d %d \r", (int)r->agc_gain, (int)r->signal_strength, r->agc_loop);
+  r->agc_loop--;
+
+	//printf("%d:s meter: %d %d %d \n", count++, (int)r->agc_gain, (int)r->signal_strength, r->agc_loop);
   return 100000000000 / r->agc_gain;  
 }
+
 
 void rx_process(int32_t *input_rx,  int32_t *input_mic, 
 	int32_t *output_speaker, int32_t *output_tx, int n_samples)
@@ -501,8 +509,7 @@ void rx_process(int32_t *input_rx,  int32_t *input_mic,
 	fftw_execute(r->plan_rev);
 
 	//STEP 8 : AGC
-  //if (agc != -1)
-	  agc(r);
+	agc2(r);
 	
 	//STEP 9: send the output back to where it needs to go
 	int is_digital = 0;
@@ -515,6 +522,14 @@ void rx_process(int32_t *input_rx,  int32_t *input_mic,
 			output_speaker[i] = sample;
 			output_tx[i] = 0;
 		}
+
+/*
+	if (rx_tx_ramp){
+		memset(output_speaker, 0, sizeof(int32_t) * MAX_BINS/2);
+		printf("Rx muted %d\n", rx_tx_ramp);
+		rx_tx_ramp--;
+	}
+*/
 	//push the data to any potential modem 
 	modem_rx(rx_list->mode, output_speaker, MAX_BINS/2);
 }
@@ -530,7 +545,6 @@ void tx_process(
 
 	struct rx *r = tx_list;
 
-	//fwrite(input_mic, 4, n_samples, pf_debug);
 
 	//first add the previous M samples
 	for (i = 0; i < MAX_BINS/2; i++)
@@ -543,11 +557,9 @@ void tx_process(
 
 		if (r->mode == MODE_2TONE)
 			i_sample = (1.0 * (vfo_read(&tone_a) 
-										+ vfo_read(&tone_b))) / 20000000000.0;
-		else if (r->mode == MODE_CW || r->mode == MODE_CWR || r->mode == MODE_FT8){
+										+ vfo_read(&tone_b))) / 80000000000.0;
+		else if (r->mode == MODE_CW || r->mode == MODE_CWR || r->mode == MODE_FT8)
 			i_sample = modem_next_sample(r->mode) / 3;
-			output_speaker[j] = i_sample * 100000000.0;
-		}
 		else 
 	  	i_sample = (1.0 * input_mic[j]) / 2000000000.0;
 
@@ -556,7 +568,7 @@ void tx_process(
 			|| r->mode == MODE_NBFM)
 			output_speaker[j] = 0;
 		else
-			output_speaker[j] = i_sample * 2000000000.0; 	
+			output_speaker[j] = i_sample * sidetone;
 	  q_sample = 0;
 
 	  j++;
@@ -599,6 +611,9 @@ void tx_process(
 			__imag__ fft_out[i] = 0;	
 		}
 
+//	int compress_on = 0;
+//	if (tx_compress > 0 && (r->mode == MODE_USB || r->mode == MODE_LSB || r->mode == MODE_AM))
+//		compress = 0.1 * tx_compress;
 
 	//now rotate to the tx_bin 
 	for (i = 0; i < MAX_BINS; i++){
@@ -615,13 +630,17 @@ void tx_process(
 	//convert back to time domain	
 	fftw_execute(r->plan_rev);
 
+	float scale = volume;
+
 	//send the output back to where it needs to go
 	for (i= 0; i < MAX_BINS/2; i++){
-		output_tx[i] = creal(r->fft_time[i+(MAX_BINS/2)]) * volume;
-		//the output_speaker has the modulating signal for non-voice modes
+	
+		output_tx[i] = creal(r->fft_time[i+(MAX_BINS/2)]) * scale;
+/*		//the output_speaker has the modulating signal for non-voice modes
 		if (r->mode == MODE_USB || r->mode == MODE_LSB || r->mode == MODE_AM 
 			|| r->mode == MODE_NBFM)
 			output_speaker[i] = 0; 
+*/
 	}
 	sdr_modulation_update(output_tx, MAX_BINS/2);	
 }
@@ -766,12 +785,12 @@ void setup(){
   tx_list->tuned_bin = 512;
 	tx_init(7000000, MODE_LSB, -3000, -300);
 
-	pf_debug = fopen("tx_samples.raw", "w");
 
-	sound_thread_start("plughw:0,0");
 	setup_audio_codec();
+	sound_thread_start("plughw:0,0");
 
-	sleep(1);
+	sleep(1); //why? to allow the aloop to initialize?
+
 	vfo_start(&tone_a, 700, 0);
 	vfo_start(&tone_b, 1900, 0);
 
@@ -900,6 +919,7 @@ void sdr_request(char *request, char *response){
 			set_tx_power_levels();
 			strcpy(response, "ok");
 			spectrum_reset();
+		//	rx_tx_ramp = 1;
 		}
 		else {
 			in_tx = 0;
@@ -909,6 +929,7 @@ void sdr_request(char *request, char *response){
 			sound_mixer(audio_card, "Master", rx_vol);
 			sound_mixer(audio_card, "Capture", rx_gain);
 			spectrum_reset();
+			//rx_tx_ramp = 10;
 		}
 	}
 	else if (!strcmp(cmd, "tx_gain")){
@@ -944,9 +965,16 @@ void sdr_request(char *request, char *response){
       rx_list->agc_speed = -1;
     else if (!strcmp(value, "SLOW"))
       rx_list->agc_speed = 100;
+		else if (!strcmp(value, "MED"))
+			rx_list->agc_speed = 33; 
     else if (!strcmp(value, "FAST"))
-      rx_list->agc_speed = 30;
+      rx_list->agc_speed = 10;
   }
+	else if (!strcmp(cmd, "sidetone")){ //between 100 and 0
+		float t_sidetone = atof(value);
+		if (0 <= t_sidetone && t_sidetone <= 100)
+			sidetone = atof(value) * 20000000;
+	}
   else if (!strcmp(cmd, "mod")){
     if (!strcmp(value, "MIC"))
       tx_use_line = 0;

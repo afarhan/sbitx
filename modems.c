@@ -20,6 +20,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <netinet/in.h>
+#include <ctype.h>
 #include <arpa/inet.h>
 #include "sdr.h"
 #include "sdr_ui.h"
@@ -73,6 +74,7 @@ typedef float float32_t;
 static long modem_tx_timeout = 0;
 //static int get_cw_input_method() = CW_STRAIGHT;
 static int modem_pitch = 700;
+static int current_mode = -1;
 
 /*******************************************************
 **********                  FT8                  *******
@@ -95,6 +97,11 @@ void ft8_tx(char *message, int freq){
 	char cmd[200], buff[1000];
 	FILE	*pf;
 
+
+	for (int i = 0; i < strlen(message); i++)
+		message[i] = toupper(message[i]);
+
+	printf("ft8 tx:[%s]\n", message);
 	//generate the ft8 samples into a temporary file
 
 	sprintf(cmd, "/home/pi/ft8_lib/gen_ft8 \"%s\" /tmp/ft_tx.wav %d", 
@@ -647,7 +654,6 @@ void fldigi_read(){
 		return;
 
 	if(!fldigi_call("rx.get_data", "", buffer)){		
-//		printf("decoded: [%s]\n", buffer);
 		if (strlen(buffer))
 			write_log(FONT_LOG_RX, buffer);
 	}
@@ -736,14 +742,29 @@ void modem_poll(int mode){
 	int tx_is_on = is_in_tx();
 	int key_status;
 	time_t now;
-	char buffer[1000];
+	char buffer[10000];
+
+	if (current_mode != mode){
+		//flush out the past decodes
+		current_mode = mode;
+		int l;
+		do{
+			fldigi_call("rx.get_data", "", buffer);	
+//			printf("flushed [%s]\n", buffer);	
+			l = strlen(buffer);
+		}while(l > 0);
+		
+		printf("cleared fldigi rx widget\n");
+	}
 
 	switch(mode){
 	case MODE_FT8:
 		now = time(NULL);
 		if (now % 15 == 0){
-			if(ft8_tx_nsamples > 0 && !tx_is_on)
+			if(ft8_tx_nsamples > 0 && !tx_is_on){
+				puts("Starting ft8 tx");
 				tx_on();	
+			}
 			if (tx_is_on && ft8_tx_nsamples == 0)
 				tx_off();
 		}
@@ -801,7 +822,7 @@ float modem_next_sample(int mode){
 		// sdr with 96 ksps (eight times as much)
 	case MODE_FT8: 
 		if (ft8_tx_buff_index/8 < ft8_tx_nsamples){
-			sample = ft8_tx_buff[ft8_tx_buff_index/8];
+			sample = ft8_tx_buff[ft8_tx_buff_index/8]/7;
 			ft8_tx_buff_index++;
 		}
 		else //stop transmitting ft8 

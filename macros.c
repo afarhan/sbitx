@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "sdr_ui.h"
 
 int macro_load(char *filename);
 int macro_exec(int key, char *dest);
@@ -21,6 +22,19 @@ static struct macro macro_table[MACRO_MAX];
 static int serial = 1;
 static char macro_v_str[10];
 static char is_running = 0; 
+
+void macro_label(int fn_key, char *label){
+	*label = 0;
+
+	//if running, take the first match, if S&P, take the last match
+	for (int i = 0; i < MACRO_MAX; i++){	
+		if (macro_table[i].fn_key == fn_key){
+			strcpy(label, macro_table[i].label);
+			if (is_running)
+				break;
+		}
+	}
+}
 
 int  macro_load(char *filename){
 	char macro_line[255];
@@ -75,29 +89,16 @@ int  macro_load(char *filename){
 		i++;
 	}
 	fclose(pf);
+
+	for (int i = 1; i <= 12; i++){
+		char button[32], label[32];
+		macro_label(i, label);
+		sprintf(button, "#mf%d", i);
+		set_field(button, label);
+	}
+
 	return 0;
 }
-/*
-void macro_get_var(char *var, char *s){
-	*s = 0;
-
-	if(!strcmp(var, "MYCALL"))
-		strcpy(s, mycallsign);
-	else if (!strcmp(var, "CALL"))
-		strcpy(s, yourcallsign);
-	else if (!strcmp(var, "SENTRST"))
-		sprintf(s, "%d", contact_rst);
-	else if (!strcmp(var, "GRID")){
-		strcpy(s, mygrid);
-	else if (!strcmp(var, "GRIDSQUARE")){
-		strcpy(var, mygrid);
-		var[4] = 0;
-		strcpy(s, var);
-	}
-	else
-		*s = 0;
-}
-*/
 
 static char *macro_expand_var(char *var, char *s){
 	*s = 0;
@@ -145,7 +146,7 @@ int macro_exec(int key, char *dest){
 	for(i = 0; i < MACRO_MAX; i++)
 		if (macro_table[i].fn_key == key){
 			m = macro_table + i; 
-			if(is_running)
+			//if(is_running)
 				break;
 		}
 
@@ -190,18 +191,6 @@ int macro_exec(int key, char *dest){
 	return 0;
 }
 
-void macro_label(int fn_key, char *label){
-	*label = 0;
-
-	//if running, take the first match, if S&P, take the last match
-	for (int i = 0; i < MACRO_MAX; i++){	
-		if (macro_table[i].fn_key == fn_key){
-			strcpy(label, macro_table[i].label);
-			if (is_running)
-				break;
-		}
-	}
-}
 
 /*
 int main(int argc, char *argv[]){
