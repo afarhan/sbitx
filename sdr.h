@@ -199,11 +199,13 @@ void modem_init();
 int get_tx_data_byte(char *c);
 int	get_tx_data_length();
 void modem_poll(int mode);
-
-
-int is_in_tx();
 float modem_next_sample(int mode);
 void ft8_tx(char *message, int freq);
+void modem_abort();
+void ft8_interpret(char *received, char *transmit);
+
+int is_in_tx();
+
 void tx_on();
 void tx_off();
 long get_freq();

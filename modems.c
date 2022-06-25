@@ -27,6 +27,15 @@
 #include "sound.h"
 
 typedef float float32_t;
+extern char mycallsign[];
+extern char contact_callsign[];
+extern char sent_rst[];
+extern char received_rst[];
+extern char sent_exchange[];
+extern char received_exchange[];
+extern char mygrid[];
+extern char contact_grid[];
+
 /*
 	This file implements modems for :
 	1. Fldigi: We use fldigi as a proxy for all the modems that it implements
@@ -91,7 +100,108 @@ int ft8_tx_buff_index = 0;
 int	ft8_tx_nsamples = 0;
 int ft8_do_decode = 0;
 int	ft8_do_tx = 0;
+int	ft8_auto = 0;
 pthread_t ft8_thread;
+
+void ft8_interpret(char *received, char *transmit){
+	char first_word[100];
+	char second_word[100];
+	char third_word[100];
+	char fourth_word[100];
+
+	//reset the transmit buffer
+	transmit[0]= 0;	
+
+	//move past the prefixes	
+	char *q, *p = received + 25;
+	while (*p == ' ')
+		p++;
+
+	//read in four words, max
+	q = first_word;
+	for (int i =0; *p && isalnum(*p) && i < 99; i++)
+		*q++ = *p++;
+	*q = 0;
+
+	while (*p == ' ')
+		p++;
+
+	q = second_word;
+	for (int i =0; *p && isalnum(*p) && i < 99 && *p; i++)
+		*q++ = *p++;
+	*q = 0;
+
+	while(*p == ' ')
+		p++;
+
+	q = third_word;
+	for (int i =0; *p && (isalnum(*p) || *p == '+' || *p == '-') && i < 99 && *p; i++)
+		*q++ = *p++;
+	*q = 0;
+
+	while(*p == ' ')
+		p++;
+
+	q = fourth_word;
+	for (int i =0; *p && isalnum(*p) && i < 99 && *p; i++)
+		*q++ = *p++;
+	*q = 0;
+
+	printf("received: %s|%s|%s|%s\n", first_word, second_word, third_word, fourth_word);
+
+	if (!strcmp(first_word, "CQ")){
+		if (strlen(second_word) == 2 && strlen(fourth_word) > 0){
+			strcpy(contact_callsign, third_word);
+			strcpy(contact_grid, fourth_word);
+		}
+		else{
+			strcpy(contact_callsign, second_word);
+			strcpy(contact_grid, third_word);
+		}
+
+		char grid_square[10];
+		strcpy(grid_square, mygrid);
+		grid_square[4] = 0;
+		received_rst[0] = 0;
+		sprintf(transmit, "%s %s %s", contact_callsign, mycallsign, grid_square);
+	}
+	//this is a station that has replied/called me
+	else if (!strcasecmp(first_word, mycallsign)){
+		strcpy(contact_callsign, second_word);
+		if (!strncmp(third_word, "R-", 2) || !strncmp(third_word, "R+", 2)){
+			strcpy(received_rst, third_word + 1);
+			sprintf(transmit, "%s %s RRR", contact_callsign, mycallsign);
+			if (ft8_auto != 0)
+				write_call_log();
+		}
+		else if (!strcmp(third_word, "RRR")){
+			sprintf(transmit, "%s %s 73", contact_callsign, mycallsign);
+			if(ft8_auto != 0)
+				write_call_log();
+		}
+		else if (third_word[0] == '-' || third_word[0] == '+'){
+			strcpy(received_rst, third_word);
+			sprintf(transmit, "%s %s R-10", contact_callsign, mycallsign);
+			strcpy(sent_rst, "-10");
+		}
+		else if (strlen(third_word) == 4){
+			// this is a fresh call
+			strcpy(contact_callsign, second_word);
+			strcpy(contact_grid, third_word);
+			sprintf(transmit, "%s %s -10", contact_callsign, mycallsign);
+			strcpy(sent_rst, "-10");
+			received_rst[0] = 0;
+		}
+	}
+	else { //i have just picked a station in qso with someone else
+		strcpy(contact_callsign, second_word);
+		sprintf(transmit, "%s %s %s", contact_callsign, mycallsign, mygrid);
+		received_rst[0] = 0;
+		contact_grid[0] = 0;
+	}
+	redraw();
+	update_log_ed();	
+}
 
 void ft8_tx(char *message, int freq){
 	char cmd[200], buff[1000];
@@ -100,6 +210,16 @@ void ft8_tx(char *message, int freq){
 
 	for (int i = 0; i < strlen(message); i++)
 		message[i] = toupper(message[i]);
+
+	//timestamp the packets for display log
+	time_t	rawtime;
+	char time_str[20];
+	time(&rawtime);
+	struct tm *t = gmtime(&rawtime);
+	sprintf(time_str, "%02d%02d%02d                   ", t->tm_hour, t->tm_min, t->tm_sec);
+	write_log(FONT_LOG_TX, time_str);
+	write_log(FONT_LOG_TX, message);
+	write_log(FONT_LOG_TX, "\n");
 
 	printf("ft8 tx:[%s]\n", message);
 	//generate the ft8 samples into a temporary file
@@ -118,12 +238,12 @@ void ft8_tx(char *message, int freq){
 	ft8_tx_nsamples = fread(ft8_tx_buff, sizeof(float), 180000, pf);
 	fclose(pf);
 	ft8_tx_buff_index = 0;
-	printf("ft8 ready to transmit with %d samples\n", ft8_tx_nsamples);
+	//printf("ft8 ready to transmit with %d samples\n", ft8_tx_nsamples);
 }
 
 void *ft8_thread_function(void *ptr){
 	FILE *pf;
-	char buff[1000];
+	char buff[1000], mycallsign_upper[20]; //there are many ways to crash sbitx, bufferoverflow of callsigns is 1
 
 	//wake up every 100 msec to see if there is anything to decode
 	while(1){
@@ -132,7 +252,6 @@ void *ft8_thread_function(void *ptr){
 		if (!ft8_do_decode)
 			continue;
 
-//		puts("Decoding FT8 on cmd line");
 		//create a temporary file of the ft8 samples
 		pf = fopen("/tmp/ftrx.raw", "w");
 		fwrite(ft8_rx_buff, sizeof(ft8_rx_buff), 1, pf);
@@ -147,14 +266,28 @@ void *ft8_thread_function(void *ptr){
 
 		//timestamp the packets
 		time_t	rawtime;
-		char time_str[20];
+		char time_str[20], response[100];
 		time(&rawtime);
-		struct tm *t = gmtime(&rawtime);
+		struct tm *t = localtime(&rawtime);
 		sprintf(time_str, "%02d%02d%02d", t->tm_hour, t->tm_min, t->tm_sec);
 
 		while(fgets(buff, sizeof(buff), pf)) {
 			strncpy(buff, time_str, 6);
 			write_log(FONT_LOG_RX, buff);
+
+			int i;
+			for (i = 0; i < strlen(mycallsign); i++)
+				mycallsign_upper[i] = toupper(mycallsign[i]);
+			mycallsign_upper[i] = 0;	
+
+			//is this interesting?
+			if (strstr(buff, mycallsign_upper)){
+				ft8_interpret(buff, response);
+				if (ft8_auto && strlen(response))
+					ft8_tx(response, get_pitch());
+				else
+					set_field("#text_in", response);
+			}
 		}
 		fclose(pf);
 	}
@@ -279,7 +412,7 @@ static char cw_get_next_kbd_symbol(){
 		write_log(FONT_LOG_TX, b);
 
 		for (int i = 0; i < sizeof(morse_table)/sizeof(struct morse); i++)
-			if (morse_table[i].c == c)
+			if (morse_table[i].c == tolower(c))
 				symbol_next = morse_table[i].code;
 	}
 
@@ -294,24 +427,39 @@ static char cw_get_next_kbd_symbol(){
 #define CW_MAX_SYMBOLS 12
 char cw_key_letter[CW_MAX_SYMBOLS];
 
+
 //when symbol_next is NULL, it reads the next letter from the input
 float cw_get_sample(){
 	float sample = 0;
 	static char last_symbol = 0;
+	static int symbol_memory = 0;
+
 
 	//start new symbol, if any
 	if (!keydown_count && !keyup_count){
 
+		//is text pending in the keyboard?
+		int bytes_available = get_tx_data_length();
+
 		vfo_start(&cw_tone, get_cw_tx_pitch(), 0);
 		cw_period = (12 *9600)/ get_wpm(); 		//as dot = 1.2/wpm
+
 		if (get_cw_input_method() == CW_KBD || get_cw_input_method() == CW_IAMBIC){
 			char c;
 
-			if (get_cw_input_method() == CW_KBD)
+//			if (get_cw_input_method() == CW_KBD)
+			if (bytes_available)
 				c = cw_get_next_kbd_symbol();
 			else if (get_cw_input_method() == CW_IAMBIC){
 				int i = key_poll();
 
+				if ((last_symbol == '/' || last_symbol == ' ') && symbol_memory){
+					if (symbol_memory & CW_DOT)
+						c = '.';
+					else 
+						c = '-';
+					symbol_memory = 0;
+				}
 				if (i == 0 && last_symbol == '/')
 					c = ' ';	
 				else if (i == 0)
@@ -324,7 +472,7 @@ float cw_get_sample(){
 					c = '.';
 				else if (i & CW_DASH)
 					c = '-';
-	
+
 				//decode iambic letters	
 				if (get_cw_input_method() == CW_IAMBIC){
 					int len = strlen(cw_key_letter);
@@ -386,6 +534,10 @@ float cw_get_sample(){
 				keyup_count = 0;
 			}
 		}
+	}
+	else if ((last_symbol == '/' || last_symbol == ' ') && !(keyup_count & 0xFF) && !symbol_memory){
+		//only if symbol_memory not set, checked infrequently using keycount 
+		symbol_memory = key_poll();
 	}
 	
 	if (keydown_count && cw_envelope < 0.999)
@@ -733,6 +885,10 @@ void modem_init(){
 		system("fldigi -i &");
 }
 
+void modem_abort(){
+	ft8_tx_nsamples = 0;
+}
+
 //this called routinely to check if we should start/stop the transmitting
 //each mode has its peculiarities, like the ft8 will start only on 15th second boundary
 //psk31 will transmit a few spaces after the last character, etc.
@@ -754,7 +910,6 @@ void modem_poll(int mode){
 			l = strlen(buffer);
 		}while(l > 0);
 		
-		printf("cleared fldigi rx widget\n");
 	}
 
 	switch(mode){
@@ -778,7 +933,7 @@ void modem_poll(int mode){
 			modem_tx_timeout = millis() + get_cw_delay();
 		}
 		if (tx_is_on){
-			if (bytes_available > 0 || key_status){
+			if (bytes_available > 0 || key_status || keyup_count > 0 || keydown_count > 0){
 				modem_tx_timeout = millis() + get_cw_delay();
 			}
 			else if (modem_tx_timeout < millis()){

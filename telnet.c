@@ -66,7 +66,7 @@ long get_address(char *host)
 	printf("Looking up %s\n", host);
 	pent = gethostbyname(host);
 	if (!pent){
-		printf("Failed to resolve %d\n", host);	
+		printf("Failed to resolve %s\n", host);	
 		return 0;
 	}
 
@@ -86,26 +86,34 @@ void *telnet_thread_function(void *server){
 	char *host_name = strtok((char *)server, ":");
 	char *port = strtok(NULL, "");
 	if(!host_name){
-		write_log(FONT_LOG, "Telnet : specifc host and port ex:'dxc.g3lrs.org.uk:7300'");
+		write_log(FONT_LOG, "Telnet : specify host and port\nex:'\topen dxc.g3lrs.org.uk:7300\n'");
 		return NULL;
 	}
 	if(!port){
-		write_log(FONT_LOG, "Telnet port is missing");
+		write_log(FONT_LOG, "Telnet port is missing\n");
 		return NULL;	
 	}	
 
 	if (telnet_sock >= 0)
 		close(telnet_sock);
 
+
+	sprintf(buff, "Finding %s:%d\n", server, port);
+	write_log(FONT_LOG, buff);
+
   memset(serverAddr.sin_zero, '\0', sizeof serverAddr.sin_zero);  
   serverAddr.sin_family = AF_INET;
   serverAddr.sin_port = htons(atoi(port));
   serverAddr.sin_addr.s_addr = get_address(server); 
-	
+
+	sprintf(buff, "Opening %s:%d\n", server, port);
+	write_log(FONT_LOG, buff);
+
 	telnet_sock = socket(AF_INET, SOCK_STREAM, 0);
   if (connect(telnet_sock, 
 			(struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0) {
 		printf("Telnet: failed to connect to %s\n", server);
+		write_log(FONT_LOG, "Failed to open telnet, check hostname and port?\n");
 		close(telnet_sock);
 		telnet_sock = -1;
 		return NULL;
@@ -115,7 +123,39 @@ void *telnet_thread_function(void *server){
 	while((e = recv(telnet_sock, buff, sizeof(buff), 0)) >= 0){
 		if (e > 0){
 			buff[e] = 0;
-			write_log(FONT_LOG_RX, buff);
+			
+			//here we will try stripping too many spaces
+			char *p, *q, buff2[201]; // bigger than the original buff
+			int n_spaces = 0;
+			int tab_space = 3;	
+			p = buff; q = buff2;
+			for (p = buff;*p;p++){
+				if (*p != ' '){ 
+					//add spaces for a shorter tab
+					if (n_spaces > tab_space){
+						int l = strlen(buff2);
+						int next_tab = (l/tab_space + 1)* tab_space;
+						for (int i = 0; i < next_tab - l; i++){
+							*q++ = ' ';
+							*q = 0;
+						}
+					}
+					*q++ = *p;
+					*q = 0;
+					n_spaces = 0;
+				}
+				else { // *p is a space
+					if (n_spaces < tab_space){
+						*q++ = *p;
+						*q = 0;
+					}
+					n_spaces++;
+				}
+			}
+			*q = 0;	
+
+//			printf("compressed [%s] to [%s]\n", buff, buff2);
+			write_log(FONT_LOG, buff2);
 		}
 	}
 	close(telnet_sock);
@@ -134,10 +174,12 @@ int telnet_write(char *text){
 void telnet_close(){
 	puts("Tenet socket is closing");
 	close(telnet_sock);
+	telnet_sock = 0;
 }
 
 char telnet_server_name[100];
 void telnet_open(char *server){
+	
 	strcpy(telnet_server_name, server);
  	pthread_create( &telnet_thread, NULL, telnet_thread_function, 
 		(void*)telnet_server_name);

@@ -611,10 +611,6 @@ void tx_process(
 			__imag__ fft_out[i] = 0;	
 		}
 
-//	int compress_on = 0;
-//	if (tx_compress > 0 && (r->mode == MODE_USB || r->mode == MODE_LSB || r->mode == MODE_AM))
-//		compress = 0.1 * tx_compress;
-
 	//now rotate to the tx_bin 
 	for (i = 0; i < MAX_BINS; i++){
 		int b = i + tx_shift;
@@ -626,7 +622,8 @@ void tx_process(
 	}
 
 	// the spectrum display is updated
-	spectrum_update();
+	//spectrum_update();
+
 	//convert back to time domain	
 	fftw_execute(r->plan_rev);
 
@@ -634,13 +631,7 @@ void tx_process(
 
 	//send the output back to where it needs to go
 	for (i= 0; i < MAX_BINS/2; i++){
-	
 		output_tx[i] = creal(r->fft_time[i+(MAX_BINS/2)]) * scale;
-/*		//the output_speaker has the modulating signal for non-voice modes
-		if (r->mode == MODE_USB || r->mode == MODE_LSB || r->mode == MODE_AM 
-			|| r->mode == MODE_NBFM)
-			output_speaker[i] = 0; 
-*/
 	}
 	sdr_modulation_update(output_tx, MAX_BINS/2);	
 }

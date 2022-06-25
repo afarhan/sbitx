@@ -19,3 +19,6 @@ void write_log(int style, char *text);
 int macro_load(char *filename);
 int macro_exec(int key, char *dest);
 void macro_label(int fn_key, char *label);
+void update_log_ed();
+void write_call_log();
+

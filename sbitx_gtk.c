@@ -83,6 +83,7 @@ void tuning_isr(void);
 #define COLOR_CONTROL_BOX 11
 #define SPECTRUM_BANDWIDTH 12
 #define SPECTRUM_PITCH 13
+#define SELECTED_LINE 14
 
 float palette[][3] = {
 	{1,1,1}, 		// COLOR_SELECTED_TEXT
@@ -99,7 +100,8 @@ float palette[][3] = {
 	{0.2,0.2,0.2}, 	//SPECTRUM_NEEDLE
 	{0.5,0.5,0.5}, //COLOR_CONTROL_BOX
 	{0.2, 0.2, 0.2}, //SPECTRUM_BANDWIDTH
-	{1,0,0}	//SPECTRUM_PITCH
+	{1,0,0},	//SPECTRUM_PITCH
+	{0.1, 0.1, 0.2} //SELECTED_LINE
 };
 
 char *ui_font = "Sans";
@@ -155,6 +157,7 @@ struct log_line {
 static int log_style = FONT_LOG;
 static struct log_line log_stream[MAX_LOG_LINES];
 int log_current_line = 0;
+int	log_selected_line = -1;
 
 //static char	log_buffer[MAX_LOG_BUFFER];
 static int	next_log = 0;
@@ -185,6 +188,7 @@ static int	next_log = 0;
 #define MIN_KEY_F10 0xFFC7
 #define MIN_KEY_F11 0xFFC8
 #define MIN_KEY_F12 0xFFC9
+#define COMMAND_ESCAPE '\\'
 
 void set_ui(int id);
 
@@ -411,6 +415,8 @@ char sent_rst[10];
 char received_rst[10];
 char sent_exchange[10];
 char received_exchange[10];
+int	contest_serial = 0;
+
 int	tx_id = 0;
 
 //recording duration in seconds
@@ -512,7 +518,7 @@ struct field main_controls[] = {
 		"", 0,0,0},
 	{"#log", do_log, 0, 0 , 400, 320, "log", 70, "log box", FIELD_LOG, FONT_LOG, 
 		"nothing valuable", 0,0,0},
-	{"#macro_ed", NULL, 0, 320, 400, 20, ":", 70, "", FIELD_STATIC, FONT_LOG, 
+	{"#log_ed", NULL, 0, 320, 400, 20, "", 70, "", FIELD_STATIC, FONT_LOG, 
 		"nothing valuable", 0,128,0},
 	{"#text_in", do_text, 0, 340, 400, 20, "text", 70, "text box", FIELD_TEXT, FONT_LOG, 
 		"nothing valuable", 0,128,0},
@@ -804,17 +810,16 @@ void draw_log(cairo_t *gfx, struct field *f){
 	if (start_line < 0)
 		start_line += MAX_LOG_LINES;
 
-//	puts("draw_log start");
  	for (int i = 0; i <= n_lines; i++){
 		struct log_line *l = log_stream + start_line;
-//		printf("%d: [%s]\n", start_line, l->text);
+		if (start_line == log_selected_line)
+			fill_rect(gfx, f->x, y+1, f->width, font_table[l->style].height+1, SELECTED_LINE);
 		draw_text(gfx, f->x, y, l->text, l->style);
 		start_line++;
 		y += line_height;
 		if(start_line >= MAX_LOG_LINES)
 			start_line = 0;
 	}
-//	puts("draw_log end");
 }
 
 void draw_field(GtkWidget *widget, cairo_t *gfx, struct field *f){
@@ -1748,128 +1753,59 @@ void call_wipe(){
 	contact_grid[0] = 0;
 	received_rst[0] = 0;
 	sent_rst[0] = 0;
+	set_field("#log_ed", "");
+	redraw_flag++;
 }
 
 void update_log_ed(){
-	struct field *f = get_field("#macro_ed");
-	char *macro_info = f->label;
+	struct field *f = get_field("#log_ed");
+	char *log_info = f->label;
 
-	*macro_info = 0;
+	*log_info = 0;
 	if (strlen(contact_callsign)){
-			strcat(macro_info, contact_callsign);
+		strcat(log_info, contact_callsign);
 	}
 	else 
 		return;
 
 	if (strlen(contact_grid)){
-		strcat(macro_info, ":");
-		strcat(macro_info, contact_grid);
+		strcat(log_info, " Grid:");
+		strcat(log_info, contact_grid);
 	}
 
 	if (strlen(sent_rst)){	
-				strcat(macro_info, "Sent:");
-				strcat(macro_info, sent_rst);
+				strcat(log_info, " Sent:");
+				strcat(log_info, sent_rst);
 	}
 
+	if (strlen(sent_exchange) || contest_serial > 0){
+		strcat(log_info, "|");
+		if (contest_serial > 0){
+			char buff[10];
+			sprintf(buff, "%03d", contest_serial);
+			strcat(log_info, buff);
+		}
+		else
+			strcat(log_info, sent_exchange);
+	}
 
 	if (strlen(received_rst)){
-		strcat(macro_info, "My:");
-		strcat(macro_info, received_rst);
+		strcat(log_info, " My:");
+		strcat(log_info, received_rst);
 	}
 
-	printf("macroed is set to [%s]\n", macro_info);
+	if (strlen(received_exchange)){
+		strcat(log_info, "|");
+		strcat(log_info, received_exchange);
+	}
+
+	printf("macroed is set to [%s]\n", log_info);
+	write_log(FONT_LOG, "QSO:");
+	write_log(FONT_LOG, log_info);
+	write_log(FONT_LOG, "\n");
 	redraw_flag++;
 }
 
-void ft8_interpret(char *received, char *transmit){
-	char first_word[100];
-	char second_word[100];
-	char third_word[100];
-	char fourth_word[100];
-	
-	//move past the prefixes	
-	char *q, *p = received + 25;
-	while (*p == ' ')
-		p++;
-
-	//read in four words, max
-	q = first_word;
-	for (int i =0; *p && isalnum(*p) && i < 99; i++)
-		*q++ = *p++;
-	*q = 0;
-
-	while (*p == ' ')
-		p++;
-
-	q = second_word;
-	for (int i =0; *p && isalnum(*p) && i < 99 && *p; i++)
-		*q++ = *p++;
-	*q = 0;
-
-	while(*p == ' ')
-		p++;
-
-	q = third_word;
-	for (int i =0; *p && (isalnum(*p) || *p == '+' || *p == '-') && i < 99 && *p; i++)
-		*q++ = *p++;
-	*q = 0;
-
-	while(*p == ' ')
-		p++;
-
-	q = fourth_word;
-	for (int i =0; *p && isalnum(*p) && i < 99 && *p; i++)
-		*q++ = *p++;
-	*q = 0;
-
-	printf("received: %s|%s|%s|%s\n", first_word, second_word, third_word, fourth_word);
-
-	if (!strcmp(first_word, "CQ")){
-		if (strlen(second_word) == 2 && strlen(fourth_word) > 0){
-			strcpy(contact_callsign, third_word);
-			strcpy(contact_grid, fourth_word);
-		}
-		else{
-			strcpy(contact_callsign, second_word);
-			strcpy(contact_grid, third_word);
-		}
-
-		char grid_square[10];
-		strcpy(grid_square, mygrid);
-		grid_square[4] = 0;
-		received_rst[0] = 0;
-		sprintf(transmit, "%s %s %s", contact_callsign, mycallsign, grid_square);
-	}
-	//this is a station that has replied/called me
-	else if (!strcasecmp(first_word, mycallsign)){
-		strcpy(contact_callsign, second_word);
-		if (!strncmp(third_word, "R-", 2) || !strncmp(third_word, "R+", 2)){
-			strcpy(received_rst, third_word + 1);
-			sprintf(transmit, "%s %s RRR", contact_callsign, mycallsign);
-		}
-		else if (!strcmp(third_word, "RRR")){
-			sprintf(transmit, "%s %s 73", contact_callsign, mycallsign);
-		}
-		else if (third_word[0] == '-' || third_word[0] == '+'){
-			strcpy(received_rst, third_word);
-			sprintf(transmit, "%s %s R-10", contact_callsign, mycallsign);
-		}
-		else if (strlen(third_word) == 4){
-			// this is a fresh call
-			strcpy(contact_callsign, second_word);
-			strcpy(contact_grid, third_word);
-			sprintf(transmit, "%s %s -10", contact_callsign, mycallsign);
-			received_rst[0] = 0;
-		}
-	}
-	else { //i have just picked a station in qso with someone else
-		strcpy(contact_callsign, third_word);
-		sprintf(transmit, "%s %s %s", contact_callsign, mycallsign, mygrid);
-		received_rst[0] = 0;
-		contact_grid[0] = 0;
-	}
-	update_log_ed();	
-}
 
 int do_log(struct field *f, cairo_t *gfx, int event, int a, int b){
 	char buff[100], *p, *q;
@@ -1887,14 +1823,17 @@ int do_log(struct field *f, cairo_t *gfx, int event, int a, int b){
 			l = log_current_line - ((f->y + f->height - b)/line_height);
 			if (l < 0)
 				l += MAX_LOG_LINES;
+			log_selected_line = l;
 			if (!strcmp(get_field("r1:mode")->value, "FT8")){
 				char ft8_response[100];
 				ft8_interpret(log_stream[l].text, ft8_response);
 				if (ft8_response[0] != 0){
 					set_field("#text_in", ft8_response);
+					update_log_ed();
 				}
 			}
-			printf("chosen line is %di[%s]\n", l, log_stream[l].text);
+			printf("chosen line is %d[%s]\n", l, log_stream[l].text);
+			redraw_flag++;
 			return 1;
 		break;
 	}
@@ -1907,12 +1846,12 @@ int do_status(struct field *f, cairo_t *gfx, int event, int a, int b){
 	if (event == FIELD_DRAW){
 		time_t now;
 		time(&now);
-		struct tm *tmp = gmtime(&now);
+		struct tm *tmp = localtime(&now);
 
 		sprintf(buff, "%s | %s", mycallsign, mygrid);
 		draw_text(gfx, f->x+1, f->y+2 , buff, FONT_FIELD_LABEL);
 		
-		sprintf(buff, "%04d/%02d/%02d GMT:%02d:%02d:%02d",  
+		sprintf(buff, "%04d/%02d/%02d %02d:%02d:%02d",  
 			tmp->tm_year + 1900, tmp->tm_mon + 1, tmp->tm_mday, tmp->tm_hour, tmp->tm_min, tmp->tm_sec); 
 		int width = measure_text(gfx, buff, FONT_FIELD_LABEL);
 		draw_text(gfx, f->x + f->width - width - 1, f->y + 2, buff, FONT_FIELD_LABEL);
@@ -1927,9 +1866,17 @@ int do_text(struct field *f, cairo_t *gfx, int event, int a, int b){
 	int text_line_width = 0;
 
 	if (event == FIELD_EDIT){
-		if ((a =='\n' || a == MIN_KEY_ENTER) && !strcmp(get_field("r1:mode")->value, "FT8") && f->value[0] != '\\'){
+		//if it is a command, then execute it and clear the field
+		if (f->value[0] == COMMAND_ESCAPE &&  strlen(f->value) > 1 && (a == '\n' || a == MIN_KEY_ENTER)){
+			cmd_line(f->value + 1);
+			f->value[0] = 0;
+			update_field(f);
+			redraw_flag++;
+		}
+		else if ((a =='\n' || a == MIN_KEY_ENTER) && !strcmp(get_field("r1:mode")->value, "FT8") 
+			&& f->value[0] != COMMAND_ESCAPE){
 			ft8_tx(f->value, atoi(get_field("#rx_pitch")->value));
-			write_log(FONT_LOG_TX, f->value);
+			//write_log(FONT_LOG_TX, f->value);
 			f->value[0] = 0;		
 		}
 		else if (a >= ' ' && a <= 127 && strlen(f->value) < f->max-1){
@@ -1942,13 +1889,6 @@ int do_text(struct field *f, cairo_t *gfx, int event, int a, int b){
 			f->value[l] = 0;
 		}
 		
-		//if it is a command, then execute it and clear the field
-		if (f->value[0] == '\\' &&  strlen(f->value) > 1 && (a == '\n' || a == MIN_KEY_ENTER)){
-			cmd_line(f->value + 1);
-			f->value[0] = 0;
-			update_field(f);
-			redraw_flag++;
-		}
 		return 1;
 	}
 	else if (event == FIELD_DRAW){
@@ -2074,7 +2014,7 @@ void write_call_log(){
 
 	time_t log_time;
 	time(&log_time);
-	struct tm *tmp = gmtime(&record_start);
+	struct tm *tmp = localtime(&log_time);
 			//tmp->tm_year + 1900, tmp->tm_mon + 1, tmp->tm_mday, tmp->tm_hour, tmp->tm_min, tmp->tm_sec); 
 	
 	char *p, mode[10];
@@ -2091,7 +2031,7 @@ void write_call_log(){
 		strcpy(mode, "DG");
 
 	FILE *pf = fopen(fullpath, "a");
-	fprintf(pf, "QSO: %d %s %04-%02-%02d %02d%02d %02d%02d %-13s %3s %-11s %-13s %3s %-11s %c\n",
+	fprintf(pf, "QSO: %d %s %04d-%02d-%02d %02d%02d %-13s %3s %-11s %-13s %3s %-11s %c\n",
 		atoi(get_field("r1:freq")->value)/1000, mode, 
 			tmp->tm_year + 1900, tmp->tm_mon + 1, tmp->tm_mday,
 			tmp->tm_hour, tmp->tm_min,
@@ -2099,6 +2039,81 @@ void write_call_log(){
 			mycallsign, received_rst, received_exchange, 
 			tx_id + '0');			
 	fclose(pf);
+
+	write_log(FONT_LOG, "QSO logged with ");
+	write_log(FONT_LOG, contact_callsign);
+	write_log(FONT_LOG, "\n");
+	//wipe it clean
+	call_wipe();
+	redraw_flag++;
+}
+
+
+//this interprets the log being filled in bits and pieces in the following order
+// callsign, sent rst, received rst and exchange
+void interpret_log(char *text){
+	int i, j;
+	char *p, *q;
+	int mode = mode_id(get_field("r1:mode")->value);
+
+	p = text;
+	while(*p == ' ')
+		p++;
+	
+	if (contact_callsign[0] == 0){
+		for (i = 0; *p && i < sizeof(contact_callsign) && *p > ' '; i++)
+			contact_callsign[i] = *p++;
+		contact_callsign[i] = 0;
+	}
+
+	while(*p == ' ')
+		p++;
+
+	if (sent_rst[0] == 0){
+		//the first must be something between 1 and 5
+		if ((mode == MODE_CW|| mode == MODE_CWR) && p[0] >= '1' && p[0] <= '5'){
+			sent_rst[0] = p[0];
+			sent_rst[1] = p[1];
+			sent_rst[2] = p[2];
+			sent_rst[3] = 0;
+			p += 3;
+		} 
+		else if (p[0] >= '1' && p[0] <= '5' && (toupper(p[1]) == 'N' || isdigit(p[1]))){ //none cw modes
+			sent_rst[0] = p[0];
+			sent_rst[1] = p[1];
+			sent_rst[2] = 0; 
+			p += 2;
+		}
+	}
+
+	while(*p == ' ')
+		p++;
+
+	if (received_rst[0] == 0){
+		//the first must be something between 1 and 5
+		if ((mode == MODE_CW|| mode == MODE_CWR) && p[0] >= '1' && p[0] <= '5'){
+			received_rst[0] = p[0];
+			received_rst[1] = p[1];
+			received_rst[2] = p[2];
+			received_rst[3] = 0;
+			p += 3;
+		} 
+		else if (p[0] >= '1' && p[0] <= '5' && (toupper(p[1]) == 'N' || isdigit(p[1]))){ //none cw modes
+			received_rst[0] = p[0];
+			received_rst[1] = p[1];
+			received_rst[2] = 0; 
+			p += 2;
+		}
+	}
+
+	while(*p == ' ')
+		p++;
+
+	//the rest is exchange received
+	for (i = 0; i < sizeof(received_exchange) && *p > ' '; i++)
+		received_exchange[i] = *p++;
+
+	received_exchange[i] = 0;
 }
 
 void macro_get_var(char *var, char *s){
@@ -2117,6 +2132,14 @@ void macro_get_var(char *var, char *s){
 		var[4] = 0;
 		strcpy(s, var);
 	}
+	else if (!strcmp(var, "EXCHANGE")){
+		if (contest_serial > 0)
+			sprintf(var, "%03d", contest_serial);
+		else
+			strcpy(var, sent_exchange);
+	}
+	else if (!strcmp(var, "WIPE"))
+		call_wipe();
 	else if (!strcmp(var, "LOG")){
 		write_call_log();
 	}
@@ -2134,24 +2157,21 @@ int do_macro(struct field *f, cairo_t *gfx, int event, int a, int b){
 			set_ui(LAYOUT_KBD);
 			return 1;
 		}
-		else if (!strcmp(f->cmd, "#mkwipe")){
-			contact_callsign[0] = 0;
-			contact_grid[0]=0;
-			sent_rst[0]=0;
-			received_rst[0]=0;
-			sent_exchange[0]=0;
-			received_exchange[0]=0;
-			redraw_flag++;
-			set_field("#macro_ed", "");
-		}
+		else if (!strcmp(f->cmd, "#mfwipe"))
+			call_wipe();
+		else if (!strcmp(f->cmd, "#mflog"))
+			write_call_log();
 		else 
 		 	macro_exec(fn_key, buff);
 
-		printf("Macro [%s]\n", buff);	
 		if (!strcmp(get_field("r1:mode")->value, "FT8") && strlen(buff)){
 			//we use the setting of the PITCH control for tx freq
 			ft8_tx(buff, atoi(get_field("#rx_pitch")->value));
-			write_log(FONT_LOG_TX, buff);
+			//write_log(FONT_LOG_TX, buff);
+		}
+		else if (strlen(buff)){
+			set_field("#text_in", buff);
+			//put it in the text buffer and hope it gets transmitted!
 		}
 		return 1;
 	}
@@ -2248,6 +2268,8 @@ void tx_on(){
 void tx_off(){
 	char response[100];
 
+	modem_abort();
+
 	if (in_tx == 1){
 		//the tx_line on/off is done by the sbitx.c
 		//digitalWrite(TX_LINE, LOW);
@@ -2289,8 +2311,6 @@ void swap_ui(int id){
 
 void set_ui(int id){
 	struct field *f = get_field("#kbd_q");
-
-	printf("chaing ui to %d\n", id);
 
 	if (id == LAYOUT_KBD){
 		// the "#kbd" is out of screen, get it up and "#mf" down
@@ -2377,6 +2397,9 @@ static gboolean on_key_press (GtkWidget *widget, GdkEventKey *event, gpointer us
 				clip = gtk_clipboard_get(GDK_SELECTION_CLIPBOARD);
 				gtk_clipboard_set_text(clip, f->value, strlen(f->value));
 				break; 
+			case 'l':
+				write_call_log();
+				break;
 			case 'v':
 				clip = gtk_clipboard_get(GDK_SELECTION_CLIPBOARD);
 				if (clip){
@@ -2405,9 +2428,16 @@ static gboolean on_key_press (GtkWidget *widget, GdkEventKey *event, gpointer us
 		return FALSE;
 	}
 		
-	//printf("keyPress %x %x\n", event->keyval, event->state);
+//	printf("keyPress %x %x\n", event->keyval, event->state);
 	//key_modifier = event->keyval;
 	switch(event->keyval){
+		case MIN_KEY_ESC:
+			modem_abort();
+			tx_off();
+			call_wipe();
+			update_log_ed();
+			redraw_flag++;
+			break;
 		case MIN_KEY_UP:
 			if (f_focus == NULL && f_hover > active_layout){
 				hover_field(f_hover - 1);
@@ -2830,7 +2860,7 @@ int get_tx_data_length(){
 	if (strlen(f->value) == 0)
 		return 0;
 
-	if (f->value[0] != '\\')
+	if (f->value[0] != COMMAND_ESCAPE)
 		return strlen(get_field("#text_in")->value);
 	else
 		return 0;
@@ -2896,6 +2926,22 @@ void change_band(char *request){
 	//do_cmd(buff);
 	//set_mode(mode_name[band_stack[new_band].mode[stack]]);
 	//set_freq(band_stack[new_band].freq[stack]);
+}
+
+void execute_app(char *app){
+	int pid = fork();
+	if (!pid){
+		system(app);
+		exit(0);	
+	}
+}
+
+void qrz(char *callsign){
+	char 	bash_line[1000];
+	sprintf(bash_line, "Querying qrz.com for %s\n", callsign);
+	write_log(FONT_LOG, bash_line);
+	sprintf(bash_line, "chromium-browser https://qrz.com/DB/%s &", callsign);
+	execute_app(bash_line);
 }
 
 void do_cmd(char *cmd){	
@@ -2981,7 +3027,7 @@ void do_cmd(char *cmd){
 
 		char *path = getenv("HOME");
 		time(&record_start);
-		struct tm *tmp = gmtime(&record_start);
+		struct tm *tmp = localtime(&record_start);
 		sprintf(fullpath, "%s/sbitx/audio/%04d%02d%02d-%02d%02d-%02d.wav", path, 
 			tmp->tm_year + 1900, tmp->tm_mon + 1, tmp->tm_mday, tmp->tm_hour, tmp->tm_min, tmp->tm_sec); 
 
@@ -2990,17 +3036,15 @@ void do_cmd(char *cmd){
 		sdr_request(request, response);
 		write_log(FONT_LOG, "Recording ");
 		write_log(FONT_LOG, fullpath);
+		write_log(FONT_LOG, "\n");
 	}
 	else if (!strcmp(request, "#record=OFF")){
 		sdr_request("record", "off");
-		write_log(FONT_LOG, "Recording stopped");
+		write_log(FONT_LOG, "Recording stopped\n");
 		record_start = 0;
 	}
-	else if (!strcmp(request, "#mfqrz") && strlen(contact_callsign) > 0){
-		char 	cmd_line[1000];
-		sprintf(cmd_line, "chromium-browser https://qrz.com/DB/%s &", contact_callsign);
-		system(cmd_line);
-	}
+	else if (!strcmp(request, "#mfqrz") && strlen(contact_callsign) > 0)
+		qrz(contact_callsign);
 	//this needs to directly pass on to the sdr core
 	else if(request[0] != '#'){
 		//translate the frequency of operating depending upon rit, split, etc.
@@ -3013,7 +3057,6 @@ void do_cmd(char *cmd){
 		}
 	}
 }
-
 
 
 void cmd_line(char *cmd){
@@ -3051,6 +3094,10 @@ void cmd_line(char *cmd){
 		sprintf(response, "\n[Your grid is set to %s]\n", mygrid);
 		write_log(FONT_LOG, response);
 	}
+	else if (!strcmp(exec, "l")){
+		interpret_log(args);
+		update_log_ed();
+	}
 	else if(!strcmp(exec, "macro")){
 		if (!macro_load(args)){
 			set_ui(LAYOUT_MACROS);
@@ -3058,8 +3105,22 @@ void cmd_line(char *cmd){
 			settings_updated++;
 			redraw_flag++;
 		}
+		else if (strlen(current_macro)){
+			write_log(FONT_LOG, "current macro is ");
+			write_log(FONT_LOG, current_macro);
+			write_log(FONT_LOG, "\n");
+		}
 		else
 			write_log(FONT_LOG, "macro file not loaded\n");
+	}
+	else if (!strcmp(exec, "exchange")){
+		sent_exchange[0] = 0;
+		if (atoi(args) == 1)
+			contest_serial = 1;
+		else if (strlen(args) > 1)
+			strcpy(sent_exchange, args);
+		else
+			sent_exchange[0] = 0;
 	}
 	else if(!strcmp(exec, "freq") || !strcmp(exec, "f")){
 		long freq = atol(args);
@@ -3116,17 +3177,25 @@ void cmd_line(char *cmd){
 			strcpy(buff, "cwinput  = [kbd/key/keyer]");
 		write_log(FONT_LOG, buff);
 	}
+	else if (!strcmp(exec, "qrz")){
+		if(strlen(args))
+			qrz(args);
+		else if (strlen(contact_callsign))
+			qrz(contact_callsign);
+		else
+			write_log(FONT_LOG, "/qrz [callsign]\n");
+	}
 	else if (!strcmp(exec, "mode") || !strcmp(exec, "m"))
 		set_mode(args);
 	else if (!strcmp(exec, "t"))
 		tx_on();
 	else if (!strcmp(exec, "r"))
 		tx_off();
-	else if (!strcmp(exec, "topen"))
+	else if (!strcmp(exec, "telnet"))
 		telnet_open(args);
 	else if (!strcmp(exec, "tclose"))
 		telnet_close(args);
-	else if (!strcmp(exec, "w"))
+	else if (!strcmp(exec, "tel"))
 		telnet_write(args);
 	else if (!strcmp(exec, "txpitch")){
 		if (strlen(args)){
@@ -3163,10 +3232,8 @@ int main( int argc, char* argv[] ) {
 
 	//unlink any pending ft8 transmission
 	unlink("/home/pi/sbitx/ft8tx_float.raw");
-	contact_callsign[0] = 0;
-	contact_grid[0] = 0;
-	received_rst[0] = 0;
-	sent_rst[0] = 0;
+	call_wipe();
+	strcpy(sent_exchange, "");
 
 	ui_init(argc, argv);
 	hw_init();
