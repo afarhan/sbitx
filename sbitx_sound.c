@@ -656,13 +656,8 @@ int loopback_loop(){
 
 	//we allocate enough for two channels of int32_t sized samples	
   data_in = (int32_t *)malloc(buff_size * 2);
-
   frames = buff_size / 8;
-	
   snd_pcm_prepare(loopback_capture_handle);
-
-
-	FILE *pf = fopen("loopback.raw", "w");	
 
   while(sound_thread_continue) {
 
@@ -678,10 +673,10 @@ int loopback_loop(){
 		i = 0; 
 		j = 0;
 		int ret_card = pcmreturn;
+
 		//fill up a local buffer, take only the left channel	
 		i = 0; 
 		j = 0;	
-		fwrite(data_in, pcmreturn, 8, pf);
 		for (int i = 0; i < pcmreturn; i++){
 			q_write(&qloop, data_in[j]/16);
 			q_write(&qloop, data_in[j]/16);
@@ -689,11 +684,10 @@ int loopback_loop(){
 		}
 		nsamples += j;
 
-		//puts("burp!");
 		clock_gettime(CLOCK_MONOTONIC, &gettime_now);
 		if (gettime_now.tv_sec != last_sec){
 			if(use_virtual_cable)
-			printf("######sampling rate %d/%d\n", played_samples, nsamples);
+//			printf("######sampling rate %d/%d\n", played_samples, nsamples);
 			last_sec = gettime_now.tv_sec;
 			nsamples = 0;
 			played_samples = 0;
@@ -701,7 +695,6 @@ int loopback_loop(){
 		}
 
   }
-	fclose(pf);
   printf("********Ending loopback thread\n");
 }
 

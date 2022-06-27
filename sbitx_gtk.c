@@ -939,14 +939,14 @@ static int mode_id(char *mode_str){
 	return -1;
 }
 
-static void save_user_settings(){
+static void save_user_settings(int forced){
 	static int last_save_at = 0;
 	char file_path[200];	//dangerous, find the MAX_PATH and replace 200 with it
 
 	//attempt to save settings only if it has been 30 seconds since the 
 	//last time the settings were saved
 	int now = millis();
-	if (now < last_save_at + 30000 ||  !settings_updated)
+	if ((now < last_save_at + 30000 ||  !settings_updated) && forced == 0)
 		return;
 
 	char *path = getenv("HOME");
@@ -973,6 +973,8 @@ static void save_user_settings(){
 	fprintf(f, "cw_input_method=%d\n", cw_input_method);
 	fprintf(f, "current_macro=%s\n", current_macro);
 	fprintf(f, "sidetone=%d\n", sidetone);
+	fprintf(f, "contest_serial=%d\n", contest_serial);
+	fprintf(f, "sent_exchange=%s\n", sent_exchange);
 
 	for (int i= 0; i < active_layout[i].cmd[0] > 0; i++)
 		fprintf(f, "%s=%s\n", active_layout[i].cmd, active_layout[i].value);
@@ -1032,6 +1034,11 @@ static int user_settings_handler(void* user, const char* section,
 			sprintf(request, "sidetone=%d",sidetone);  
 			sdr_request(request, response);
 		}
+		//contesting
+		else if (!strcmp(name, "sent_exchange"))
+			strcpy(sent_exchange, value);
+		else if (!strcmp(name, "contest_serial"))
+			contest_serial = atoi(value);
 		//data
 		else if (!strcmp(name, "data_delay"))
 			data_delay = atoi(value);
@@ -1042,6 +1049,7 @@ static int user_settings_handler(void* user, const char* section,
       sprintf(cmd, "%s", name);
       set_field(cmd, new_value); 
     }
+
 		//band stacks
 		int band = -1;
 		if (!strcmp(section, "80m"))
@@ -1412,6 +1420,12 @@ void draw_dial(struct field *f, cairo_t *gfx){
 
 	fill_rect(gfx, f->x+1, f->y+1, f->width-2,f->height-2, COLOR_BACKGROUND);
 
+	//update the vfos
+	if (vfo->value[0] == 'A')
+		vfo_a_freq = atoi(f->value);
+	else
+		vfo_b_freq = atoi(f->value);
+
 	int width, offset;	
 	
 	width = measure_text(gfx, f->label, FONT_FIELD_LABEL);
@@ -1422,29 +1436,29 @@ void draw_dial(struct field *f, cairo_t *gfx){
 	if (!strcmp(rit->value, "ON")){
 		if (!in_tx){
 			sprintf(buff, "TX:%s", f->value);
-			draw_text(gfx, f->x+15 , f->y+6 , buff , FONT_LARGE_FIELD);
+			draw_text(gfx, f->x+5 , f->y+6 , buff , FONT_LARGE_FIELD);
 			sprintf(buff, "RX:%d", atoi(f->value) + rit_delta);
-			draw_text(gfx, f->x+15 , f->y+25 , buff , FONT_LARGE_VALUE);
+			draw_text(gfx, f->x+5 , f->y+25 , buff , FONT_LARGE_VALUE);
 		}
 		else {
 			sprintf(buff, "TX:%s", f->value);
-			draw_text(gfx, f->x+15 , f->y+25 , buff , FONT_LARGE_VALUE);
+			draw_text(gfx, f->x+5 , f->y+25 , buff , FONT_LARGE_VALUE);
 			sprintf(buff, "RX:%d", atoi(f->value) + rit_delta);
-			draw_text(gfx, f->x+15 , f->y+6 , buff , FONT_LARGE_FIELD);
+			draw_text(gfx, f->x+5 , f->y+6 , buff , FONT_LARGE_FIELD);
 		}	
 	}
 	else if (!strcmp(split->value, "ON")){
 		if (!in_tx){
 			sprintf(buff, "TX:%d", vfo_b_freq);
-			draw_text(gfx, f->x+15 , f->y+6 , buff , FONT_LARGE_FIELD);
+			draw_text(gfx, f->x+5 , f->y+6 , buff , FONT_LARGE_FIELD);
 			sprintf(buff, "RX:%d", atoi(f->value));
-			draw_text(gfx, f->x+15 , f->y+25 , buff , FONT_LARGE_VALUE);
+			draw_text(gfx, f->x+5 , f->y+25 , buff , FONT_LARGE_VALUE);
 		}
 		else {
 			sprintf(buff, "TX:%d", vfo_b_freq);
-			draw_text(gfx, f->x+15 , f->y+25 , buff , FONT_LARGE_VALUE);
+			draw_text(gfx, f->x+5 , f->y+25 , buff , FONT_LARGE_VALUE);
 			sprintf(buff, "RX:%d", atoi(f->value) + rit_delta);
-			draw_text(gfx, f->x+15 , f->y+6 , buff , FONT_LARGE_FIELD);
+			draw_text(gfx, f->x+5 , f->y+6 , buff , FONT_LARGE_FIELD);
 		}	
 	}
 	else if (!strcmp(vfo->value, "A")){
@@ -1452,25 +1466,25 @@ void draw_dial(struct field *f, cairo_t *gfx){
 			sprintf(buff, "B:%d", vfo_b_freq);
 			draw_text(gfx, f->x+15 , f->y+6 , buff , FONT_LARGE_FIELD);
 			sprintf(buff, "A:%s", f->value);
-			draw_text(gfx, f->x+15 , f->y+25 , buff , FONT_LARGE_VALUE);
+			draw_text(gfx, f->x+5 , f->y+25 , buff , FONT_LARGE_VALUE);
 		} else {
 			sprintf(buff, "B:%d", vfo_b_freq);
-			draw_text(gfx, f->x+15 , f->y+6 , buff , FONT_LARGE_FIELD);
+			draw_text(gfx, f->x+5 , f->y+6 , buff , FONT_LARGE_FIELD);
 			sprintf(buff, "TX:%s", f->value);
-			draw_text(gfx, f->x+15 , f->y+25 , buff , FONT_LARGE_VALUE);
+			draw_text(gfx, f->x+5 , f->y+25 , buff , FONT_LARGE_VALUE);
 		}	
 	}
 	else{ 
 		if (!in_tx){
 			sprintf(buff, "A:%d", vfo_a_freq);
-			draw_text(gfx, f->x+15 , f->y+6 , buff , FONT_LARGE_FIELD);
+			draw_text(gfx, f->x+5 , f->y+6 , buff , FONT_LARGE_FIELD);
 			sprintf(buff, "B:%s", f->value);
-			draw_text(gfx, f->x+15 , f->y+25 , buff , FONT_LARGE_VALUE);
+			draw_text(gfx, f->x+5 , f->y+25 , buff , FONT_LARGE_VALUE);
 		}else {
 			sprintf(buff, "A:%d", vfo_a_freq);
-			draw_text(gfx, f->x+15 , f->y+6 , buff , FONT_LARGE_FIELD);
+			draw_text(gfx, f->x+5 , f->y+6 , buff , FONT_LARGE_FIELD);
 			sprintf(buff, "TX:%s", f->value);
-			draw_text(gfx, f->x+15 , f->y+25 , buff , FONT_LARGE_VALUE);
+			draw_text(gfx, f->x+5 , f->y+25 , buff , FONT_LARGE_VALUE);
 		}
 	} 
 }
@@ -1685,6 +1699,10 @@ void set_operating_freq(int dial_freq, char *response){
 	sdr_request(freq_request, response);
 }
 
+void clear_tx_text_buffer(){
+	set_field("#text_in", "");
+}
+
 void band_stack_update_power(int power){
 	struct field *f = get_field("r1:freq");
 	long freq = atol(f->value);
@@ -1754,6 +1772,7 @@ void call_wipe(){
 	received_rst[0] = 0;
 	sent_rst[0] = 0;
 	set_field("#log_ed", "");
+	update_log_ed();
 	redraw_flag++;
 }
 
@@ -1761,48 +1780,47 @@ void update_log_ed(){
 	struct field *f = get_field("#log_ed");
 	char *log_info = f->label;
 
-	*log_info = 0;
-	if (strlen(contact_callsign)){
+	strcpy(log_info, "Log:");
+	if (strlen(contact_callsign))
 		strcat(log_info, contact_callsign);
-	}
-	else 
+	else {
+		redraw_flag++;
 		return;
+	}
 
 	if (strlen(contact_grid)){
 		strcat(log_info, " Grid:");
 		strcat(log_info, contact_grid);
 	}
 
+	strcat(log_info, " Sent:");
 	if (strlen(sent_rst)){	
-				strcat(log_info, " Sent:");
 				strcat(log_info, sent_rst);
-	}
-
-	if (strlen(sent_exchange) || contest_serial > 0){
-		strcat(log_info, "|");
-		if (contest_serial > 0){
-			char buff[10];
-			sprintf(buff, "%03d", contest_serial);
-			strcat(log_info, buff);
-		}
-		else
+		if (strlen(sent_exchange)){
+			strcat(log_info, " ");
 			strcat(log_info, sent_exchange);
+		}
 	}
+	else	
+		strcat(log_info, "-");
 
+
+	strcat(log_info, " My:");
 	if (strlen(received_rst)){
-		strcat(log_info, " My:");
 		strcat(log_info, received_rst);
-	}
-
 	if (strlen(received_exchange)){
-		strcat(log_info, "|");
+		strcat(log_info, " ");
 		strcat(log_info, received_exchange);
 	}
+	}
+	else
+		strcat(log_info, "-");
+
 
 	printf("macroed is set to [%s]\n", log_info);
-	write_log(FONT_LOG, "QSO:");
-	write_log(FONT_LOG, log_info);
-	write_log(FONT_LOG, "\n");
+//	write_log(FONT_LOG, "QSO:");
+//	write_log(FONT_LOG, log_info);
+//	write_log(FONT_LOG, "\n");
 	redraw_flag++;
 }
 
@@ -1968,6 +1986,7 @@ int do_tuning(struct field *f, cairo_t *gfx, int event, int a, int b){
 			}
 			else
 				v = (v / tuning_step - 1)*tuning_step;
+			clear_tx_text_buffer();
 		}
 		
 		sprintf(f->value, "%d",  v);
@@ -1980,10 +1999,12 @@ int do_tuning(struct field *f, cairo_t *gfx, int event, int a, int b){
 		update_field(f);
 		settings_updated++;
 		//leave it to us, we have handled it
+
 		return 1;
 	}
 	else if (event == FIELD_DRAW){
 			draw_dial(f, gfx);
+
 			return 1; 
 	}
 	return 0;	
@@ -2031,18 +2052,36 @@ void write_call_log(){
 		strcpy(mode, "DG");
 
 	FILE *pf = fopen(fullpath, "a");
-	fprintf(pf, "QSO: %d %s %04d-%02d-%02d %02d%02d %-13s %3s %-11s %-13s %3s %-11s %c\n",
+	
+	fprintf(pf, "QSO: %7d %s %04d-%02d-%02d %02d%02d %s", 
 		atoi(get_field("r1:freq")->value)/1000, mode, 
 			tmp->tm_year + 1900, tmp->tm_mon + 1, tmp->tm_mday,
 			tmp->tm_hour, tmp->tm_min,
-			contact_callsign, sent_rst, sent_exchange, 
-			mycallsign, received_rst, received_exchange, 
-			tx_id + '0');			
+			mycallsign);
+
+	int padding = 10 - strlen(mycallsign);
+	for (int i = 0; i < padding; i++)
+			fputc(' ', pf);
+
+	fprintf(pf, "%3s %5s ", sent_rst, sent_exchange);
+	padding = 10 - strlen(contact_callsign);
+	fprintf(pf, contact_callsign);
+	for(int i = 0; i < padding; i++)
+		fputc(' ', pf);
+	fprintf(pf, "%3s %5s %d\n", received_rst, received_exchange, tx_id+0); 
+
 	fclose(pf);
 
-	write_log(FONT_LOG, "QSO logged with ");
+	write_log(FONT_LOG, "\nQSO logged with ");
 	write_log(FONT_LOG, contact_callsign);
+	write_log(FONT_LOG, " ");
+	write_log(FONT_LOG, sent_exchange); 
 	write_log(FONT_LOG, "\n");
+
+	if (contest_serial > 0){
+		contest_serial++;
+		sprintf(sent_exchange, "%04d", contest_serial);
+	}
 	//wipe it clean
 	call_wipe();
 	redraw_flag++;
@@ -2132,11 +2171,8 @@ void macro_get_var(char *var, char *s){
 		var[4] = 0;
 		strcpy(s, var);
 	}
-	else if (!strcmp(var, "EXCHANGE")){
-		if (contest_serial > 0)
-			sprintf(var, "%03d", contest_serial);
-		else
-			strcpy(var, sent_exchange);
+	else if (!strcmp(var, "EXCH")){
+		strcpy(s, sent_exchange);
 	}
 	else if (!strcmp(var, "WIPE"))
 		call_wipe();
@@ -2389,7 +2425,9 @@ static gboolean on_key_press (GtkWidget *widget, GdkEventKey *event, gpointer us
 					set_ui(LAYOUT_MACROS);
 				break;
 			case 'q':
-				save_user_settings();
+				tx_off();
+				set_field("#record", "OFF");
+				save_user_settings(1);
 				exit(0);
 				break;
 			case 'c':
@@ -2775,7 +2813,7 @@ gboolean ui_tick(gpointer gook){
 
   hamlib_slice();
 	//wsjtx_slice();
-	save_user_settings();
+	save_user_settings(0);
 
  
 	f = get_field("r1:mode");
@@ -2908,24 +2946,30 @@ void change_band(char *request){
 		if (stack >= 0 && stack < STACK_DEPTH){
 				band_stack[old_band].freq[stack] = old_freq;
 				band_stack[old_band].mode[stack] = old_mode;
+//				printf("bandstack, old band %s / stack %d being saved as  %ld / mode %d\n", 
+//					band_stack[old_band].name, stack, old_freq, old_mode);
 		}
 	}
 
 	//if we are still in the same band, move to the next position
 	if (new_band == old_band){
-		stack++;
+		stack = ++band_stack[new_band].index;
 		//move the stack and wrap the band around
 		if (stack >= STACK_DEPTH)
 			stack = 0;
 		band_stack[new_band].index = stack;
+//		printf("Band stack moved to %s, stack %d\n", band_stack[new_band].name, stack);
 	}
+	stack = band_stack[new_band].index;
+//	printf("Band stack changed to %s, stack %d : %d / mode %d\n", band_stack[new_band].name, stack,
+//			band_stack[new_band].freq[stack], band_stack[new_band].mode[stack]);
 	sprintf(buff, "%d", band_stack[new_band].freq[stack]);
+	char resp[100];
+	set_operating_freq(band_stack[new_band].freq[stack], resp);
 	set_field("r1:freq", buff);	
 	set_field("r1:mode", mode_name[band_stack[new_band].mode[stack]]);	
-	//sprintf(buff, "r1:freq=%d", band_stack[new_band].freq[stack]);
-	//do_cmd(buff);
-	//set_mode(mode_name[band_stack[new_band].mode[stack]]);
-	//set_freq(band_stack[new_band].freq[stack]);
+
+	clear_tx_text_buffer();
 }
 
 void execute_app(char *app){
@@ -2944,6 +2988,7 @@ void qrz(char *callsign){
 	execute_app(bash_line);
 }
 
+
 void do_cmd(char *cmd){	
 	char request[1000], response[1000], buff[100];
 	
@@ -2954,7 +2999,7 @@ void do_cmd(char *cmd){
 	else if (!strcmp(request, "#off")){
 		tx_off();
 		set_field("#record", "OFF");
-		save_user_settings();
+		save_user_settings(1);
 		exit(0);
 	}
 	else if (!strcmp(request, "#tx")){	
@@ -3098,6 +3143,12 @@ void cmd_line(char *cmd){
 		interpret_log(args);
 		update_log_ed();
 	}
+	else if (!strcmp(exec, "logbook")){
+		char fullpath[200];	//dangerous, find the MAX_PATH and replace 200 with it
+		char *path = getenv("HOME");
+		sprintf(fullpath, "mousepad %s/sbitx/data/logbook.txt", path); 
+		execute_app(fullpath);
+	}
 	else if(!strcmp(exec, "macro")){
 		if (!macro_load(args)){
 			set_ui(LAYOUT_MACROS);
@@ -3115,12 +3166,20 @@ void cmd_line(char *cmd){
 	}
 	else if (!strcmp(exec, "exchange")){
 		sent_exchange[0] = 0;
+		contest_serial = 0;
+
 		if (atoi(args) == 1)
 			contest_serial = 1;
 		else if (strlen(args) > 1)
 			strcpy(sent_exchange, args);
 		else
 			sent_exchange[0] = 0;
+		write_log(FONT_LOG, "Exchange set to [");
+		if (contest_serial > 0){
+			sprintf(sent_exchange, "%04d", contest_serial);
+		}
+		write_log(FONT_LOG, sent_exchange);
+		write_log(FONT_LOG, "]\n");
 	}
 	else if(!strcmp(exec, "freq") || !strcmp(exec, "f")){
 		long freq = atol(args);
@@ -3219,10 +3278,7 @@ void cmd_line(char *cmd){
 				write_log(FONT_LOG, "Invalid setting");
 		}
 	}
-//	else if (!strcmp(exec, "key")){
-//		if (!strcmp(args, "kbd") || !strcmp(args, "keyboard"))
-//	}
-	save_user_settings();
+	save_user_settings(0);
 }
 
 int main( int argc, char* argv[] ) {

@@ -115,8 +115,8 @@ static char *macro_expand_var(char *var, char *s){
 		strcpy(s, "5NN");
 	else if (!strcmp(var, "SENTRST"))
 		macro_get_var(var, s);
-	else if (!strcmp(var, "EXCH"))
-		sprintf(s, "%03d", serial);
+	else if (!strcmp(var, "EXCH") || !strcmp(var, "EXCHANGE"))
+		macro_get_var("EXCH", s);
 	else if (!strcmp(var, "GRID"))
 		macro_get_var(var, s);
 	else if (!strcmp(var, "GRIDSQUARE"))

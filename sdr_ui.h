@@ -4,6 +4,7 @@ void display();
 void redraw();
 void key_pressed(char c);
 int set_field(char *id, char *value);
+void clear_tx_text_buffer();
 extern int display_freq;
 
 #define FONT_FIELD_LABEL 0
