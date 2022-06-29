@@ -227,6 +227,10 @@ int	get_data_delay();
 int get_cw_tx_pitch();
 int get_modem_pitch();
 int	get_wpm();
+#define FT8_AUTO 2
+#define FT8_SEMI 1
+#define FT8_MANUAL 0
+void ft8_setmode(int config);
 
 void telnet_open(char *server);
 int telnet_write(char *text);

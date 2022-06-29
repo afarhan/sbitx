@@ -3202,6 +3202,20 @@ void cmd_line(char *cmd){
 		sprintf(buff, "cwdelay: %d msec\n", cw_delay);
 		write_log(FONT_LOG, buff);
 	}
+	else if (!strcmp(exec, "ft8mode")){
+		switch(args[0]){
+			case 'a':
+			case 'A':
+				ft8_setmode(FT8_AUTO);
+				break;
+			case 's':
+			case 'S':
+				ft8_setmode(FT8_SEMI);
+				break;
+			default:
+				ft8_setmode(FT8_MANUAL);
+		}
+	}
 	else if (!strcmp(exec, "sidetone")){
 		char buff[50];
 		if (strlen(args)){

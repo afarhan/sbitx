@@ -742,7 +742,7 @@ void set_tx_power_levels(){
 			tx_power_gain = band_power[i].tx_scale + attenuation; 
 		}	
 	}
-//	printf("tx_power_gain set to %d for %d watts\n", tx_power_gain, tx_power_watts);
+	printf("tx_power_gain set to %d for %d watts\n", tx_power_gain, tx_power_watts);
 	sound_mixer(audio_card, "Master", tx_power_gain);
 	sound_mixer(audio_card, "Capture", tx_gain);
 }

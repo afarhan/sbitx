@@ -81,10 +81,15 @@ void *telnet_thread_function(void *server){
   struct sockaddr_storage serverStorage;
   socklen_t addr_size;
 	struct sockaddr_in serverAddr;
-	char buff[200];
+	char buff[200], s_name[100];
 
-	char *host_name = strtok((char *)server, ":");
+	if (strlen(server) > sizeof(s_name) - 1)
+		return NULL;
+
+	strcpy(s_name, server); 
+	char *host_name = strtok((char *)s_name, ":");
 	char *port = strtok(NULL, "");
+
 	if(!host_name){
 		write_log(FONT_LOG, "Telnet : specify host and port\nex:'\topen dxc.g3lrs.org.uk:7300\n'");
 		return NULL;

@@ -97,8 +97,25 @@ int ft8_tx_buff_index = 0;
 int	ft8_tx_nsamples = 0;
 int ft8_do_decode = 0;
 int	ft8_do_tx = 0;
-int	ft8_auto = 0;
+int	ft8_mode = FT8_SEMI;
 pthread_t ft8_thread;
+
+void ft8_setmode(int config){
+	switch(config){
+		case FT8_MANUAL:
+			ft8_mode = FT8_MANUAL;
+			write_log(FONT_LOG, "FT8 is manual now. Send messages through the keyboard\n");
+			break;
+		case FT8_SEMI:
+			write_log(FONT_LOG, "FT8 is semi-automatic. Click on the callsign to start the QSO\n");
+			ft8_mode = FT8_SEMI;
+			break;
+		case FT8_AUTO:
+			write_log(FONT_LOG, "FT8 is automatic. It will call CQ and QSO with the first reply.\n");
+			ft8_mode = FT8_AUTO;
+			break;
+	}
+}
 
 void ft8_interpret(char *received, char *transmit){
 	char first_word[100];
@@ -144,7 +161,6 @@ void ft8_interpret(char *received, char *transmit){
 		*q++ = *p++;
 	*q = 0;
 
-	printf("received: %s|%s|%s|%s\n", first_word, second_word, third_word, fourth_word);
 
 	if (!strcmp(first_word, "CQ")){
 		if (strlen(second_word) == 2 && strlen(fourth_word) > 0){
@@ -168,12 +184,12 @@ void ft8_interpret(char *received, char *transmit){
 		if (!strncmp(third_word, "R-", 2) || !strncmp(third_word, "R+", 2)){
 			strcpy(received_rst, third_word + 1);
 			sprintf(transmit, "%s %s RRR", contact_callsign, mycallsign);
-			if (ft8_auto != 0)
+			if (ft8_mode != 0)
 				write_call_log();
 		}
 		else if (!strcmp(third_word, "RRR")){
 			sprintf(transmit, "%s %s 73", contact_callsign, mycallsign);
-			if(ft8_auto != 0)
+			if(ft8_mode != 0)
 				write_call_log();
 		}
 		else if (third_word[0] == '-' || third_word[0] == '+'){
@@ -218,7 +234,7 @@ void ft8_tx(char *message, int freq){
 	write_log(FONT_LOG_TX, message);
 	write_log(FONT_LOG_TX, "\n");
 
-	printf("ft8 tx:[%s]\n", message);
+	//printf("ft8 tx:[%s]\n", message);
 	//generate the ft8 samples into a temporary file
 
 	sprintf(cmd, "/home/pi/ft8_lib/gen_ft8 \"%s\" /tmp/ft_tx.wav %d", 
@@ -278,9 +294,9 @@ void *ft8_thread_function(void *ptr){
 			mycallsign_upper[i] = 0;	
 
 			//is this interesting?
-			if (strstr(buff, mycallsign_upper)){
+			if (ft8_mode != FT8_MANUAL && strstr(buff, mycallsign_upper)){
 				ft8_interpret(buff, response);
-				if (ft8_auto && strlen(response))
+				if (ft8_mode && strlen(response))
 					ft8_tx(response, get_pitch());
 				else
 					set_field("#text_in", response);
@@ -402,7 +418,6 @@ static char cw_get_next_kbd_symbol(){
 
 	if (!symbol_next){	
 		if(!get_tx_data_byte(&c)){
-			printf("\nchar_get_next_kbd_symbol returning NULL\n");
 			return 0;
 		}
 		symbol_next = morse_table->code; // point to the first symbol, by default
@@ -415,17 +430,15 @@ static char cw_get_next_kbd_symbol(){
 		for (int i = 0; i < sizeof(morse_table)/sizeof(struct morse); i++)
 			if (morse_table[i].c == tolower(c))
 				symbol_next = morse_table[i].code;
-
-		printf("kbd symbol %s\n", symbol_next);
 	}
 
 	if (!*symbol_next){ 		//send the letter seperator
 		symbol_next = NULL;
-		printf("symbol_next set to NULL, returning / \n");
+//		printf("symbol_next set to NULL, returning / \n");
 		return '/';
 	}
 	else{
-		printf("cw_kbd_read returning %c\n", *symbol_next);
+//		printf("cw_kbd_read returning %c\n", *symbol_next);
 		return *symbol_next++;
 	}
 }
@@ -444,61 +457,48 @@ float cw_get_sample(){
 	//start new symbol, if any
 	if (!keydown_count && !keyup_count){
 
-		printf("Starting with poll last_symbol [%c] and symbol_memory %d, ", last_symbol, symbol_memory);
-		vfo_start(&cw_tone, get_cw_tx_pitch(), 0);
-		cw_period = (12 *9600)/ get_wpm(); 		//as dot = 1.2/wpm
+		if (cw_tone.freq_hz != get_cw_tx_pitch())
+			vfo_start(&cw_tone, get_cw_tx_pitch(), 0);
 
 		if (get_cw_input_method() == CW_KBD || get_cw_input_method() == CW_IAMBIC){
 			char c, key;
-			
+			cw_period = (12 *9600)/ get_wpm(); 		//as dot = 1.2/wpm
+
 			//check if we have a symbol coming in from the keyboard
 			c = cw_get_next_kbd_symbol();
 			key = key_poll();
-			printf("{kbd = %c}", c);
 
 			if ((key || symbol_memory) && !c){
-
-				printf(" now = %d, chose ", key);
 			
 				if (last_symbol == '-' && (symbol_memory & CW_DOT)){
 					c = '.';	
-					printf("dot %d\n", __LINE__);	
 				}
 				else if (last_symbol == '.' && (symbol_memory & CW_DASH)){
 					c = '-'; 
-					printf("dash %d\n", __LINE__);	
 				} 
 				else if ((last_symbol == '/' || last_symbol == ' ') && (symbol_memory & CW_DOT)){
 					c = '.';
-					printf("dot %d\n", __LINE__);	
 				}
 				else if ((last_symbol == '/' || last_symbol == ' ') && (symbol_memory & CW_DASH)){
 					c = '-';
-					printf("dash %d\n", __LINE__);	
 				}
 				else if (key == 0 && last_symbol == '/'){
 					c = ' ';	
-					printf("SP %d\n", __LINE__);	
 				}
 				else if (key == 0){
 					c = '/';
-					printf("/ %d\n", __LINE__);	
 				}
 				else if (last_symbol == '-' && (key & CW_DOT)){
 					c = '.';
-					printf("dot %d\n", __LINE__);	
 				}
 				else if (last_symbol == '.' && (key & CW_DASH)){
 					c = '-';
-					printf("dash %d\n", __LINE__);	
 				}
 				else if (key & CW_DOT){
 					c = '.';
-					printf("dot %d\n", __LINE__);	
 				}
 				else if (key & CW_DASH){
 					c = '-';
-					printf("dash %d\n", __LINE__);	
 				}
 
 				symbol_memory = 0; //clean out the last symbol memory
@@ -506,11 +506,9 @@ float cw_get_sample(){
 			else if (!c){ //no activty on the keyer and no symbol from the keyboard either
 				if (last_symbol == '/'){
 					 c = ' ';
-					printf("ku SP %d\n", __LINE__);	
 				}
 				else {
 					c = '/';
-					printf("ku / %d", __LINE__);	
 				}
 			}
 
@@ -519,32 +517,27 @@ float cw_get_sample(){
 				keydown_count = cw_period;
 				keyup_count = cw_period;
 				last_symbol = '.';
-				printf("now dot %d, ", __LINE__);	
 
 				break;
 			case '-':
 				keydown_count = cw_period * 3;
 				keyup_count = cw_period;
 				last_symbol = '-';
-				printf("now dash %d, ", __LINE__);	
 				break;
 			case '/':
 				keydown_count = 0;
 				keyup_count = cw_period * 2; // 1 (passed) + 2 
 				last_symbol = '/';
-				printf("now / %d, ", __LINE__);	
 				break;
 			case ' ':
 				keydown_count = 0;
 				keyup_count = cw_period * 2; //3 periods already passed 
 				last_symbol = ' ';
-				printf("now SP %d, ", __LINE__);	
 				break;
 			}
 
 			//decode iambic letters	
 			int len = strlen(cw_key_letter);
-			printf ("now [%c] ", c);
 			if (len < CW_MAX_SYMBOLS-1 && (c == '.' || c == '-')){
 				cw_key_letter[len++] = c;
 				cw_key_letter[len] = 0;	
@@ -561,15 +554,13 @@ float cw_get_sample(){
 						buff[0] = morse_table[i].c;
 						buff[1] = 0;
 						write_log(FONT_LOG_TX, buff);
-						//printf("[%c]\n", morse_table[i].c);
 					}
 				cw_key_letter[0] = 0;
 			} 
-			printf("cw_letter = [%s]\n", cw_key_letter);
 		}
 		else if (get_cw_input_method() == CW_STRAIGHT){
 			if (key_poll()){
-				keydown_count = 50; //add a few samples, to debounce 
+				keydown_count = 2000; //add a few samples, to debounce 
 				keyup_count = 0;
 			}
 			else {
@@ -580,23 +571,21 @@ float cw_get_sample(){
 
 		//we are converrting the keyup and keydwon counts to millis
 		if (keydown_count){
-		//	printf("setting cw_tx_until : %ld, %d %d\n", millis(), keydown_count, get_cw_delay());
 			cw_tx_until = millis() + ((keydown_count * 1000)/96000) + get_cw_delay();
 		}
-	} 
+	}
+	else if ((!(keydown_count + keyup_count) & 0xFF) && get_cw_input_method() == CW_STRAIGHT){
+		if (key_poll())
+			keydown_count += 1000;
+	}
 	//infrequently poll to see if the keyer has sent a new symbol while we were stil txing the last symbol
-	else if ((keydown_count > 0 || keyup_count) > 0 && !((keyup_count + keydown_count) & 0xFF)){
+	else if ((keydown_count > 0 || keyup_count) > 0 && !((keyup_count + keydown_count) & 0xFF) 
+			&& get_cw_input_method() == CW_IAMBIC){
 		char key = key_poll();
 		if (last_symbol == '-' && (key & CW_DOT))
 				symbol_memory = CW_DOT;
 		if (last_symbol == '.' && (key & CW_DASH))
 			symbol_memory = CW_DASH;
-			
-		//only if symbol_memory not already set 
-//		symbol_memory = key_poll();
-//		if (symbol_memory)
-//			printf("**************** symb = %d\n", symbol_memory);
-
 	}
 	
 	if (keydown_count && cw_envelope < 0.999)
@@ -611,6 +600,7 @@ float cw_get_sample(){
 	if (keyup_count > 0 && keydown_count == 0)
 		keyup_count--;
 
+//	printf("keydown %d keyup %d \n", keydown_count, keyup_count);
 	sample = (vfo_read(&cw_tone)/FLOAT_SCALE) * cw_envelope;
 
 	return sample / 8;
@@ -978,7 +968,7 @@ void modem_poll(int mode){
 		now = time(NULL);
 		if (now % 15 == 0){
 			if(ft8_tx_nsamples > 0 && !tx_is_on){
-				puts("Starting ft8 tx");
+//				puts("Starting ft8 tx");
 				tx_on();	
 			}
 			if (tx_is_on && ft8_tx_nsamples == 0)
@@ -998,7 +988,6 @@ void modem_poll(int mode){
 		else if (tx_is_on && cw_tx_until < millis()){
 				tx_off();
 		}
-		//printf("dn %d, up %d, until %d\n", keydown_count, keyup_count, cw_tx_until);
 	break;
 
 	case MODE_RTTY:
