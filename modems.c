@@ -104,14 +104,14 @@ void ft8_setmode(int config){
 	switch(config){
 		case FT8_MANUAL:
 			ft8_mode = FT8_MANUAL;
-			write_log(FONT_LOG, "FT8 is manual now. Send messages through the keyboard\n");
+			write_log(FONT_LOG, "FT8 is manual now.\nSend messages through the keyboard\n");
 			break;
 		case FT8_SEMI:
-			write_log(FONT_LOG, "FT8 is semi-automatic. Click on the callsign to start the QSO\n");
+			write_log(FONT_LOG, "FT8 is semi-automatic.\nClick on the callsign to start the QSO\n");
 			ft8_mode = FT8_SEMI;
 			break;
 		case FT8_AUTO:
-			write_log(FONT_LOG, "FT8 is automatic. It will call CQ and QSO with the first reply.\n");
+			write_log(FONT_LOG, "FT8 is automatic.\nIt will call CQ and QSO with the first reply.\n");
 			ft8_mode = FT8_AUTO;
 			break;
 	}
@@ -281,7 +281,7 @@ void *ft8_thread_function(void *ptr){
 		time_t	rawtime;
 		char time_str[20], response[100];
 		time(&rawtime);
-		struct tm *t = localtime(&rawtime);
+		struct tm *t = gmtime(&rawtime);
 		sprintf(time_str, "%02d%02d%02d", t->tm_hour, t->tm_min, t->tm_sec);
 
 		while(fgets(buff, sizeof(buff), pf)) {

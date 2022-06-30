@@ -23,6 +23,36 @@ static int serial = 1;
 static char macro_v_str[10];
 static char is_running = 0; 
 
+/*
+void macro_list(){
+	char full_path[200];	//dangerous, find the MAX_PATH and replace 200 with it
+
+	char *home_path = getenv("HOME");
+	strcpy(full_path, home_path);
+	strcat(full_path, "/sbitx/data/");
+	DIR *d = opendir(full_path);
+	DIR *d;
+  struct dirent *dir;
+
+	write_log(FONT_LOG, "Available macros:\n");
+	col = 0;
+  if (d) {
+    while ((dir = readdir(d)) != NULL) {
+			char *p = dir->d_name;
+			int len = strlen(p);
+			if (p[len-3] == '.' && p[len-2] == 'm' && p[lne-1] == 'c'){
+				p[len-3] = 0;
+				write_log(p);
+				col += strlen(p);
+				if (col 
+				write	
+      	printf("%s\n", dir->d_name);
+			}
+    }
+    closedir(d);
+}
+*/
+
 void macro_label(int fn_key, char *label){
 	*label = 0;
 

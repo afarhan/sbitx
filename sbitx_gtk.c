@@ -1864,12 +1864,12 @@ int do_status(struct field *f, cairo_t *gfx, int event, int a, int b){
 	if (event == FIELD_DRAW){
 		time_t now;
 		time(&now);
-		struct tm *tmp = localtime(&now);
+		struct tm *tmp = gmtime(&now);
 
 		sprintf(buff, "%s | %s", mycallsign, mygrid);
 		draw_text(gfx, f->x+1, f->y+2 , buff, FONT_FIELD_LABEL);
 		
-		sprintf(buff, "%04d/%02d/%02d %02d:%02d:%02d",  
+		sprintf(buff, "UTC:%04d/%02d/%02d %02d:%02d:%02d",  
 			tmp->tm_year + 1900, tmp->tm_mon + 1, tmp->tm_mday, tmp->tm_hour, tmp->tm_min, tmp->tm_sec); 
 		int width = measure_text(gfx, buff, FONT_FIELD_LABEL);
 		draw_text(gfx, f->x + f->width - width - 1, f->y + 2, buff, FONT_FIELD_LABEL);
@@ -2035,7 +2035,7 @@ void write_call_log(){
 
 	time_t log_time;
 	time(&log_time);
-	struct tm *tmp = localtime(&log_time);
+	struct tm *tmp = gmtime(&log_time);
 			//tmp->tm_year + 1900, tmp->tm_mon + 1, tmp->tm_mday, tmp->tm_hour, tmp->tm_min, tmp->tm_sec); 
 	
 	char *p, mode[10];
@@ -3207,13 +3207,21 @@ void cmd_line(char *cmd){
 			case 'a':
 			case 'A':
 				ft8_setmode(FT8_AUTO);
+				write_log(FONT_LOG, "\ft8mode set to auto\n");
 				break;
 			case 's':
 			case 'S':
 				ft8_setmode(FT8_SEMI);
+				write_log(FONT_LOG, "\ft8mode set to semiauto\n");
+				break;
+			case 'm':
+			case 'M':
+				ft8_setmode(FT8_MANUAL);
+				write_log(FONT_LOG, "\ft8mode set to manual\n");
 				break;
 			default:
-				ft8_setmode(FT8_MANUAL);
+				write_log(FONT_LOG, "Usage: \ft8mode auto or semi or manual\n");
+				break;
 		}
 	}
 	else if (!strcmp(exec, "sidetone")){
