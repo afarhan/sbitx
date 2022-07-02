@@ -483,7 +483,7 @@ struct field main_controls[] = {
 	{ "#split", NULL, 750, 380, 50, 50, "SPLIT", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, 
 		"ON/OFF", 0,0,0},
 	{ "tx_compress", NULL, 600, 380, 50, 50, "COMP", 40, "0", FIELD_NUMBER, FONT_FIELD_VALUE, 
-		"ON/OFF", 0,100,1},
+		"ON/OFF", 0,100,10},
 	{"#rit", NULL, 550, 0, 50, 50, "RIT", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, 
 		"ON/OFF", 0,0,0},
 	{ "#tx_wpm", NULL, 650, 380, 50, 50, "WPM", 40, "12", FIELD_NUMBER, FONT_FIELD_VALUE, 
@@ -1094,15 +1094,15 @@ static int user_settings_handler(void* user, const char* section,
 int mod_display[MOD_MAX];
 int mod_display_index = 0;
 
-void sdr_modulation_update(int32_t *samples, int count){
+void sdr_modulation_update(int32_t *samples, int count, double scale_up){
 	int min=0, max=0;
 
 	for (int i = 0; i < count; i++){
 		if (i % 48 == 0){
 			if (mod_display_index >= MOD_MAX)
 				mod_display_index = 0;
-			mod_display[mod_display_index++] = min / 50000000;
-			mod_display[mod_display_index++] = max / 50000000;
+			mod_display[mod_display_index++] = (min / 20000000) / scale_up;
+			mod_display[mod_display_index++] = (max / 20000000) / scale_up;
 			min = 0x7fffffff;
 			max = -0x7fffffff;
 		}
@@ -1150,13 +1150,13 @@ void draw_modulation(struct field *f, cairo_t *gfx){
 
 
 	int n_env_samples = sizeof(mod_display)/sizeof(int32_t);		
-	int h_center = f->y + f->height / 2;
+	int h_center = f->y + grid_height / 2;
 	for (i = 0; i < f->width; i++){
 		int index = (i * n_env_samples)/f->width;
 		int min = mod_display[index++];
 		int max = mod_display[index++]; 
 		cairo_move_to(gfx, f->x + i ,  min + h_center);
-		cairo_line_to(gfx, f->x + i,   max + h_center);
+		cairo_line_to(gfx, f->x + i,   max + h_center + 1);
 	}
 	cairo_stroke(gfx);
 }

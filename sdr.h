@@ -190,7 +190,7 @@ void set_lo(int frequency);
 void set_volume(double v);
 void sdr_request(char *request, char *response);
 
-void sdr_modulation_update(int32_t *samples, int count);
+void sdr_modulation_update(int32_t *samples, int count, double scale_up);
 
 /* from modems.c */
 void modem_rx(int mode, int32_t *samples, int count);
