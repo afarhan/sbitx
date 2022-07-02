@@ -34,7 +34,7 @@ void macro_list(){
 	DIR *d;
   struct dirent *dir;
 
-	write_log(FONT_LOG, "Available macros:\n");
+	write_console(FONT_LOG, "Available macros:\n");
 	col = 0;
   if (d) {
     while ((dir = readdir(d)) != NULL) {
@@ -42,7 +42,7 @@ void macro_list(){
 			int len = strlen(p);
 			if (p[len-3] == '.' && p[len-2] == 'm' && p[lne-1] == 'c'){
 				p[len-3] = 0;
-				write_log(p);
+				write_console(p);
 				col += strlen(p);
 				if (col 
 				write	

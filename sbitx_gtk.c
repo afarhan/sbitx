@@ -140,27 +140,25 @@ struct encoder enc_a, enc_b;
 #define FIELD_SELECTION 3
 #define FIELD_TEXT 4
 #define FIELD_STATIC 5
-#define FIELD_LOG 6
+#define FIELD_CONSOLE 6
 
 // The log is a series of lines
-#define MAX_LOG_BUFFER 10000
+#define MAX_CONSOLE_BUFFER 10000
 #define MAX_LINE_LENGTH 128
-#define MAX_LOG_LINES 500
-static int 	log_cols = 50;
+#define MAX_CONSOLE_LINES 500
+static int 	console_cols = 50;
 
 //we use just one text list in our user interface
 
-struct log_line {
+struct console_line {
 	char text[MAX_LINE_LENGTH];
 	int style;
 };
-static int log_style = FONT_LOG;
-static struct log_line log_stream[MAX_LOG_LINES];
-int log_current_line = 0;
-int	log_selected_line = -1;
+static int console_style = FONT_LOG;
+static struct console_line console_stream[MAX_CONSOLE_LINES];
+int console_current_line = 0;
+int	console_selected_line = -1;
 
-//static char	log_buffer[MAX_LOG_BUFFER];
-static int	next_log = 0;
 
 // event ids, some of them are mapped from gtk itself
 #define FIELD_DRAW 0
@@ -334,7 +332,6 @@ struct band {
 	int	stop;
 	int	power;
 	int	max;
-	int drive;
 	int index;
 	int	freq[STACK_DEPTH];
 	int mode[STACK_DEPTH];
@@ -379,21 +376,21 @@ static int tx_mode = MODE_USB;
 #define BAND10M 7 
 
 struct band band_stack[] = {
-	{"80m", 3500000, 4000000, 30, 30, 82, 0, 
+	{"80m", 3500000, 4000000, 40, 40, 0, 
 		{3500000,3574000,3600000,3700000},{MODE_CW, MODE_USB, MODE_CW,MODE_LSB}},
-	{"40m", 7000000,7300000, 40, 40, 84, 0,
+	{"40m", 7000000,7300000, 40, 40, 0,
 		{7000000,7040000,7074000,7150000},{MODE_CW, MODE_CW, MODE_USB, MODE_LSB}},
-	{"30m", 10100000, 1015000, 30, 30, 85, 0,
+	{"30m", 10100000, 10150000, 30, 30, 0,
 		{10100000, 10100000, 10136000, 10150000}, {MODE_CW, MODE_CW, MODE_USB, MODE_USB}},
-	{"20m", 14000000, 14400000, 25,25,92, 0,
+	{"20m", 14000000, 14400000, 30,30, 0,
 		{14010000, 14040000, 14074000, 14200000}, {MODE_CW, MODE_CW, MODE_USB, MODE_USB}},
-	{"17m", 18068000, 18168000, 25,25,94, 0,
+	{"17m", 18068000, 18168000, 25,25, 0,
 		{18068000, 18100000, 18110000, 18160000}, {MODE_CW, MODE_CW, MODE_USB, MODE_USB}},
-	{"15m", 21000000, 21500000, 20,20,96, 0,
+	{"15m", 21000000, 21500000, 20,20, 0,
 		{21010000, 21040000, 21074000, 21250000}, {MODE_CW, MODE_CW, MODE_USB, MODE_USB}},
-	{"12m", 24890000, 24990000, 10, 10, 96, 0,
+	{"12m", 24890000, 24990000, 10, 10, 0,
 		{24890000, 24910000, 24950000, 24990000}, {MODE_CW, MODE_CW, MODE_USB, MODE_USB}},
-	{"10m", 28000000, 29700000, 6, 6, 96, 0,
+	{"10m", 28000000, 29700000, 6, 6, 0,
 		{28000000, 28040000, 28074000, 28250000}, {MODE_CW, MODE_CW, MODE_USB, MODE_USB}},
 };
 
@@ -516,7 +513,7 @@ struct field main_controls[] = {
 		"status", 0,0,0},  
 	{"waterfall", do_waterfall, 400, 180 , 400, 150, "Waterfall ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, 
 		"", 0,0,0},
-	{"#log", do_log, 0, 0 , 400, 320, "log", 70, "log box", FIELD_LOG, FONT_LOG, 
+	{"#console", do_log, 0, 0 , 400, 320, "log", 70, "log box", FIELD_CONSOLE, FONT_LOG, 
 		"nothing valuable", 0,0,0},
 	{"#log_ed", NULL, 0, 320, 400, 20, "", 70, "", FIELD_STATIC, FONT_LOG, 
 		"nothing valuable", 0,128,0},
@@ -644,8 +641,8 @@ void update_field(struct field *f);
 void tx_on();
 void tx_off();
 
-//#define MAX_LOG_LINES 1000
-//char *log_lines[MAX_LOG_LINES];
+//#define MAX_CONSOLE_LINES 1000
+//char *console_lines[MAX_CONSOLE_LINES];
 int last_log = 0;
 
 struct field *get_field(char *cmd){
@@ -721,25 +718,23 @@ int set_field(char *id, char *value){
 // log is a special field that essentially is a like text
 // on a terminal
 
-void log_init(){
-	next_log = 0;
-	for (int i =0;  i < MAX_LOG_LINES; i++){
-		log_stream[i].text[0] = 0;
-		log_stream[i].style = log_style;
+void console_init(){
+	for (int i =0;  i < MAX_CONSOLE_LINES; i++){
+		console_stream[i].text[0] = 0;
+		console_stream[i].style = console_style;
 	}
-//	memset(log_buffer, ' ', sizeof(log_buffer));
 }
 
-int log_init_next_line(){
-	log_current_line++;
-	if (log_current_line == MAX_LOG_LINES)
-		log_current_line = log_style;
-	log_stream[log_current_line].text[0] = 0;	
-	log_stream[log_current_line].style = log_style;
-	return log_current_line;
+int console_init_next_line(){
+	console_current_line++;
+	if (console_current_line == MAX_CONSOLE_LINES)
+		console_current_line = console_style;
+	console_stream[console_current_line].text[0] = 0;	
+	console_stream[console_current_line].style = console_style;
+	return console_current_line;
 }
 
-void write_log(int style, char *text){
+void write_console(int style, char *text){
 	char directory[200];	//dangerous, find the MAX_PATH and replace 200 with it
 	char *path = getenv("HOME");
 	strcpy(directory, path);
@@ -747,11 +742,11 @@ void write_log(int style, char *text){
 	FILE *pf = fopen(directory, "a");
 
 	//move to a new line if the style has changed
-	if (style != log_style){
-		log_style = style;
-		if (strlen(log_stream[log_current_line].text)> 0)
-			log_init_next_line();	
-		log_stream[log_current_line].style = style;
+	if (style != console_style){
+		console_style = style;
+		if (strlen(console_stream[console_current_line].text)> 0)
+			console_init_next_line();	
+		console_stream[console_current_line].style = style;
 		switch(style){
 			case_FONT_LOG_RX:
 				fputs("#RX ################################\n", pf);
@@ -775,18 +770,18 @@ void write_log(int style, char *text){
 	while(*text){
 		char c = *text;
 		if (c == '\n')
-			log_init_next_line();
+			console_init_next_line();
 		else if (c < 128 && c >= ' '){
-			char *p = log_stream[log_current_line].text;
+			char *p = console_stream[console_current_line].text;
 			int len = strlen(p);
-			if(len >= log_cols - 1){
+			if(len >= console_cols - 1){
 				//start a fresh line
-				log_init_next_line();
-				p = log_stream[log_current_line].text;
+				console_init_next_line();
+				p = console_stream[console_current_line].text;
 				len = 0;
 			}
 		
-			//printf("Adding %c to %d\n", (int)c, log_current_line);	
+			//printf("Adding %c to %d\n", (int)c, console_current_line);	
 			p[len++] = c & 0x7f;
 			p[len] = 0;
 		}
@@ -802,22 +797,22 @@ void draw_log(cairo_t *gfx, struct field *f){
 
 	//estimate!
 	int char_width = 1+measure_text(gfx, "01234567890123456789", f->font_index)/20;
-	log_cols = f->width / char_width;
+	console_cols = f->width / char_width;
 	int y = f->y + 2; 
 	int j = 0;
 
-	int start_line = log_current_line - n_lines;
+	int start_line = console_current_line - n_lines;
 	if (start_line < 0)
-		start_line += MAX_LOG_LINES;
+		start_line += MAX_CONSOLE_LINES;
 
  	for (int i = 0; i <= n_lines; i++){
-		struct log_line *l = log_stream + start_line;
-		if (start_line == log_selected_line)
+		struct console_line *l = console_stream + start_line;
+		if (start_line == console_selected_line)
 			fill_rect(gfx, f->x, y+1, f->width, font_table[l->style].height+1, SELECTED_LINE);
 		draw_text(gfx, f->x, y, l->text, l->style);
 		start_line++;
 		y += line_height;
-		if(start_line >= MAX_LOG_LINES)
+		if(start_line >= MAX_CONSOLE_LINES)
 			start_line = 0;
 	}
 }
@@ -851,17 +846,17 @@ void draw_field(GtkWidget *widget, cairo_t *gfx, struct field *f){
 			y = f->y + 2;
 			text_line_width = 0;
 			while(text_length > 0){
-				if (text_length > log_cols){
-					strncpy(this_line, f->value + line_start, log_cols);
-					this_line[log_cols] = 0;
+				if (text_length > console_cols){
+					strncpy(this_line, f->value + line_start, console_cols);
+					this_line[console_cols] = 0;
 				}
 				else
 					strcpy(this_line, f->value + line_start);		
 				draw_text(gfx, f->x + 2, y, this_line, f->font_index);
 				text_line_width= measure_text(gfx, this_line, f->font_index);
 				y += 14;
-				line_start += log_cols;
-				text_length -= log_cols;
+				line_start += console_cols;
+				text_length -= console_cols;
 			}
 			//draw the text cursor, if there is no text, the text baseline is zero
 			if (strlen(f->value))
@@ -907,7 +902,7 @@ void draw_field(GtkWidget *widget, cairo_t *gfx, struct field *f){
 		case FIELD_STATIC:
 			draw_text(gfx, f->x, f->y, f->label, FONT_FIELD_LABEL);
 			break;
-		case FIELD_LOG:
+		case FIELD_CONSOLE:
 			//draw_log(gfx, f);
 			break;
 	}
@@ -1818,9 +1813,9 @@ void update_log_ed(){
 
 
 	printf("macroed is set to [%s]\n", log_info);
-//	write_log(FONT_LOG, "QSO:");
-//	write_log(FONT_LOG, log_info);
-//	write_log(FONT_LOG, "\n");
+//	write_console(FONT_LOG, "QSO:");
+//	write_console(FONT_LOG, log_info);
+//	write_console(FONT_LOG, "\n");
 	redraw_flag++;
 }
 
@@ -1838,19 +1833,19 @@ int do_log(struct field *f, cairo_t *gfx, int event, int a, int b){
 			return 1;
 		break;
 		case GDK_BUTTON_PRESS:
-			l = log_current_line - ((f->y + f->height - b)/line_height);
+			l = console_current_line - ((f->y + f->height - b)/line_height);
 			if (l < 0)
-				l += MAX_LOG_LINES;
-			log_selected_line = l;
+				l += MAX_CONSOLE_LINES;
+			console_selected_line = l;
 			if (!strcmp(get_field("r1:mode")->value, "FT8")){
 				char ft8_response[100];
-				ft8_interpret(log_stream[l].text, ft8_response);
+				ft8_interpret(console_stream[l].text, ft8_response);
 				if (ft8_response[0] != 0){
 					set_field("#text_in", ft8_response);
 					update_log_ed();
 				}
 			}
-			printf("chosen line is %d[%s]\n", l, log_stream[l].text);
+			printf("chosen line is %d[%s]\n", l, console_stream[l].text);
 			redraw_flag++;
 			return 1;
 		break;
@@ -1894,7 +1889,7 @@ int do_text(struct field *f, cairo_t *gfx, int event, int a, int b){
 		else if ((a =='\n' || a == MIN_KEY_ENTER) && !strcmp(get_field("r1:mode")->value, "FT8") 
 			&& f->value[0] != COMMAND_ESCAPE){
 			ft8_tx(f->value, atoi(get_field("#rx_pitch")->value));
-			//write_log(FONT_LOG_TX, f->value);
+			//write_console(FONT_LOG_TX, f->value);
 			f->value[0] = 0;		
 		}
 		else if (a >= ' ' && a <= 127 && strlen(f->value) < f->max-1){
@@ -1918,17 +1913,17 @@ int do_text(struct field *f, cairo_t *gfx, int event, int a, int b){
 		text_line_width = 0;
 
 		while(text_length > 0){
-			if (text_length > log_cols){
-				strncpy(this_line, f->value + line_start, log_cols);
-				this_line[log_cols] = 0;
+			if (text_length > console_cols){
+				strncpy(this_line, f->value + line_start, console_cols);
+				this_line[console_cols] = 0;
 			}
 			else
 				strcpy(this_line, f->value + line_start);		
 			draw_text(gfx, f->x + 2, y, this_line, f->font_index);
 			text_line_width= measure_text(gfx, this_line, f->font_index);
 			y += 14;
-			line_start += log_cols;
-			text_length -= log_cols;
+			line_start += console_cols;
+			text_length -= console_cols;
 		}
 		//draw the text cursor, if there is no text, the text baseline is zero
 		if (strlen(f->value))
@@ -2072,11 +2067,11 @@ void write_call_log(){
 
 	fclose(pf);
 
-	write_log(FONT_LOG, "\nQSO logged with ");
-	write_log(FONT_LOG, contact_callsign);
-	write_log(FONT_LOG, " ");
-	write_log(FONT_LOG, sent_exchange); 
-	write_log(FONT_LOG, "\n");
+	write_console(FONT_LOG, "\nQSO logged with ");
+	write_console(FONT_LOG, contact_callsign);
+	write_console(FONT_LOG, " ");
+	write_console(FONT_LOG, sent_exchange); 
+	write_console(FONT_LOG, "\n");
 
 	if (contest_serial > 0){
 		contest_serial++;
@@ -2203,7 +2198,7 @@ int do_macro(struct field *f, cairo_t *gfx, int event, int a, int b){
 		if (!strcmp(get_field("r1:mode")->value, "FT8") && strlen(buff)){
 			//we use the setting of the PITCH control for tx freq
 			ft8_tx(buff, atoi(get_field("#rx_pitch")->value));
-			//write_log(FONT_LOG_TX, buff);
+			//write_console(FONT_LOG_TX, buff);
 		}
 		else if (strlen(buff)){
 			set_field("#text_in", buff);
@@ -2787,10 +2782,10 @@ gboolean ui_tick(gpointer gook){
 		update_field(f);	//move this each time the spectrum watefall index is moved
 		f = get_field("waterfall");
 		update_field(f);
-		f = get_field("#log");
+		f = get_field("#console");
 		update_field(f);
 		ticks = 0;
-		update_field(get_field("#log"));
+		update_field(get_field("#console"));
 		update_field(get_field("#status"));
 	
 		if (record_start)
@@ -2866,7 +2861,7 @@ void set_mode(char *mode){
 		update_field(f);
 	}
 	else
-		write_log(FONT_LOG, "%s is not a mode\n");
+		write_console(FONT_LOG, "%s is not a mode\n");
 }
 
 void get_mode(char *mode){
@@ -2983,7 +2978,7 @@ void execute_app(char *app){
 void qrz(char *callsign){
 	char 	bash_line[1000];
 	sprintf(bash_line, "Querying qrz.com for %s\n", callsign);
-	write_log(FONT_LOG, bash_line);
+	write_console(FONT_LOG, bash_line);
 	sprintf(bash_line, "chromium-browser https://qrz.com/DB/%s &", callsign);
 	execute_app(bash_line);
 }
@@ -3079,13 +3074,13 @@ void do_cmd(char *cmd){
 		char request[300], response[100];
 		sprintf(request, "record=%s", fullpath);
 		sdr_request(request, response);
-		write_log(FONT_LOG, "Recording ");
-		write_log(FONT_LOG, fullpath);
-		write_log(FONT_LOG, "\n");
+		write_console(FONT_LOG, "Recording ");
+		write_console(FONT_LOG, fullpath);
+		write_console(FONT_LOG, "\n");
 	}
 	else if (!strcmp(request, "#record=OFF")){
 		sdr_request("record", "off");
-		write_log(FONT_LOG, "Recording stopped\n");
+		write_console(FONT_LOG, "Recording stopped\n");
 		record_start = 0;
 	}
 	else if (!strcmp(request, "#mfqrz") && strlen(contact_callsign) > 0)
@@ -3132,12 +3127,12 @@ void cmd_line(char *cmd){
 	if (!strcmp(exec, "callsign")){
 		strcpy(mycallsign,args); 
 		sprintf(response, "\n[Your callsign is set to %s]\n", mycallsign);
-		write_log(FONT_LOG, response);
+		write_console(FONT_LOG, response);
 	}
 	else if (!strcmp(exec, "grid")){
 		strcpy(mygrid, args);
 		sprintf(response, "\n[Your grid is set to %s]\n", mygrid);
-		write_log(FONT_LOG, response);
+		write_console(FONT_LOG, response);
 	}
 	else if (!strcmp(exec, "l")){
 		interpret_log(args);
@@ -3157,12 +3152,12 @@ void cmd_line(char *cmd){
 			redraw_flag++;
 		}
 		else if (strlen(current_macro)){
-			write_log(FONT_LOG, "current macro is ");
-			write_log(FONT_LOG, current_macro);
-			write_log(FONT_LOG, "\n");
+			write_console(FONT_LOG, "current macro is ");
+			write_console(FONT_LOG, current_macro);
+			write_console(FONT_LOG, "\n");
 		}
 		else
-			write_log(FONT_LOG, "macro file not loaded\n");
+			write_console(FONT_LOG, "macro file not loaded\n");
 	}
 	else if (!strcmp(exec, "exchange")){
 		sent_exchange[0] = 0;
@@ -3174,12 +3169,12 @@ void cmd_line(char *cmd){
 			strcpy(sent_exchange, args);
 		else
 			sent_exchange[0] = 0;
-		write_log(FONT_LOG, "Exchange set to [");
+		write_console(FONT_LOG, "Exchange set to [");
 		if (contest_serial > 0){
 			sprintf(sent_exchange, "%04d", contest_serial);
 		}
-		write_log(FONT_LOG, sent_exchange);
-		write_log(FONT_LOG, "]\n");
+		write_console(FONT_LOG, sent_exchange);
+		write_console(FONT_LOG, "]\n");
 	}
 	else if(!strcmp(exec, "freq") || !strcmp(exec, "f")){
 		long freq = atol(args);
@@ -3194,33 +3189,33 @@ void cmd_line(char *cmd){
 		if (strlen(args)){
 			int d = atoi(args);
 			if (d < 50 || d > 2000)
-				write_log(FONT_LOG, "cwdelay should be between 100 and 2000 msec");
+				write_console(FONT_LOG, "cwdelay should be between 100 and 2000 msec");
 			else 
 				cw_delay = d;
 		}	
 		char buff[10];
 		sprintf(buff, "cwdelay: %d msec\n", cw_delay);
-		write_log(FONT_LOG, buff);
+		write_console(FONT_LOG, buff);
 	}
 	else if (!strcmp(exec, "ft8mode")){
 		switch(args[0]){
 			case 'a':
 			case 'A':
 				ft8_setmode(FT8_AUTO);
-				write_log(FONT_LOG, "\ft8mode set to auto\n");
+				write_console(FONT_LOG, "\ft8mode set to auto\n");
 				break;
 			case 's':
 			case 'S':
 				ft8_setmode(FT8_SEMI);
-				write_log(FONT_LOG, "\ft8mode set to semiauto\n");
+				write_console(FONT_LOG, "\ft8mode set to semiauto\n");
 				break;
 			case 'm':
 			case 'M':
 				ft8_setmode(FT8_MANUAL);
-				write_log(FONT_LOG, "\ft8mode set to manual\n");
+				write_console(FONT_LOG, "\ft8mode set to manual\n");
 				break;
 			default:
-				write_log(FONT_LOG, "Usage: \ft8mode auto or semi or manual\n");
+				write_console(FONT_LOG, "Usage: \ft8mode auto or semi or manual\n");
 				break;
 		}
 	}
@@ -3236,7 +3231,7 @@ void cmd_line(char *cmd){
 			}
 		}
 		sprintf(buff, "sidetone: set to %d/100\n", sidetone);
-		write_log(FONT_LOG, buff);
+		write_console(FONT_LOG, buff);
 	}
 	else if (!strcmp(exec, "cwinput")){
 		if (strlen(args)){
@@ -3256,7 +3251,7 @@ void cmd_line(char *cmd){
 			strcpy(buff, "cwinput = keyer [kbd/key/keyer]");
 		else
 			strcpy(buff, "cwinput  = [kbd/key/keyer]");
-		write_log(FONT_LOG, buff);
+		write_console(FONT_LOG, buff);
 	}
 	else if (!strcmp(exec, "qrz")){
 		if(strlen(args))
@@ -3264,7 +3259,7 @@ void cmd_line(char *cmd){
 		else if (strlen(contact_callsign))
 			qrz(contact_callsign);
 		else
-			write_log(FONT_LOG, "/qrz [callsign]\n");
+			write_console(FONT_LOG, "/qrz [callsign]\n");
 	}
 	else if (!strcmp(exec, "mode") || !strcmp(exec, "m"))
 		set_mode(args);
@@ -3284,11 +3279,11 @@ void cmd_line(char *cmd){
 			if (t > 100 && t < 4000)
 				cw_tx_pitch = t;
 			else
-				write_log(FONT_LOG, "cw pitch should be 100-4000");
+				write_console(FONT_LOG, "cw pitch should be 100-4000");
 		}
 		char buff[100];
 		sprintf(buff, "cw txpitch is set to %d Hz\n", cw_tx_pitch);
-		write_log(FONT_LOG, buff);
+		write_console(FONT_LOG, buff);
 		redraw_flag++;
 	}
 	else {
@@ -3297,7 +3292,7 @@ void cmd_line(char *cmd){
 		struct field *f = get_field(exec);
 		if (f){
 			if(set_field(exec, args))
-				write_log(FONT_LOG, "Invalid setting");
+				write_console(FONT_LOG, "Invalid setting");
 		}
 	}
 	save_user_settings(0);
@@ -3315,7 +3310,7 @@ int main( int argc, char* argv[] ) {
 
 	ui_init(argc, argv);
 	hw_init();
-	log_init();
+	console_init();
 
 	setup();
 	struct field *f;
@@ -3369,11 +3364,11 @@ int main( int argc, char* argv[] ) {
   sprintf(buff, "%d", vfo_a_freq);
   set_field("r1:freq", buff);
 
-	write_log(FONT_LOG, "sBITX v0.01 is Ready\n");
+	write_console(FONT_LOG, "sBITX v0.01 is Ready\n");
 
 	sprintf(buff, "\nWelcome %s your grid is %s\n", mycallsign, mygrid);
-	write_log(FONT_LOG, buff);
-	write_log(FONT_LOG, "To change your callsign, or grid\nenter '\\callsign [yourcallsign]'\n"
+	write_console(FONT_LOG, buff);
+	write_console(FONT_LOG, "To change your callsign, or grid\nenter '\\callsign [yourcallsign]'\n"
 		" or '\\grid [yourgrid]'\n(without the brackets, starting with \\)\n"
 		"For help enter \\help\n");
 	set_field("#text_in", "");

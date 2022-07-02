@@ -61,6 +61,7 @@ static int tx_use_line = 0;
 struct rx *rx_list = NULL;
 struct rx *tx_list = NULL;
 struct filter *tx_filter;	//convolution filter
+static double tx_amp = 0.0;
 
 FILE *pf_record;
 int16_t record_buffer[1024];
@@ -631,6 +632,108 @@ void tx_process(
 
 	//send the output back to where it needs to go
 	for (i= 0; i < MAX_BINS/2; i++){
+		output_tx[i] = creal(r->fft_time[i+(MAX_BINS/2)]) 
+			* scale * tx_amp;
+	}
+	sdr_modulation_update(output_tx, MAX_BINS/2);	
+}
+
+void tx_process_old(
+	int32_t *input_rx, int32_t *input_mic, 
+	int32_t *output_speaker, int32_t *output_tx, 
+	int n_samples)
+{
+	int i;
+	double i_sample, q_sample;
+
+	struct rx *r = tx_list;
+
+
+	//first add the previous M samples
+	for (i = 0; i < MAX_BINS/2; i++)
+		fft_in[i]  = fft_m[i];
+
+	int m = 0;
+	int j = 0;
+	//gather the samples into a time domain array 
+	for (i= MAX_BINS/2; i < MAX_BINS; i++){
+
+		if (r->mode == MODE_2TONE)
+			i_sample = (1.0 * (vfo_read(&tone_a) 
+										+ vfo_read(&tone_b))) / 80000000000.0;
+		else if (r->mode == MODE_CW || r->mode == MODE_CWR || r->mode == MODE_FT8)
+			i_sample = modem_next_sample(r->mode) / 3;
+		else 
+	  	i_sample = (1.0 * input_mic[j]) / 2000000000.0;
+
+		//don't echo the voice modes
+		if (r->mode == MODE_USB || r->mode == MODE_LSB || r->mode == MODE_AM 
+			|| r->mode == MODE_NBFM)
+			output_speaker[j] = 0;
+		else
+			output_speaker[j] = i_sample * sidetone;
+	  q_sample = 0;
+
+	  j++;
+
+	  __real__ fft_m[m] = i_sample;
+	  __imag__ fft_m[m] = q_sample;
+
+	  __real__ fft_in[i]  = i_sample;
+	  __imag__ fft_in[i]  = q_sample;
+	  m++;
+	}
+
+	//convert to frequency
+	fftw_execute(plan_fwd);
+
+	// NOTE: fft_out holds the fft output (in freq domain) of the 
+	// incoming mic samples 
+	// the naming is unfortunate
+
+	// apply the filter
+	for (i = 0; i < MAX_BINS; i++)
+		fft_out[i] *= tx_filter->fir_coeff[i];
+
+	// the usb extends from 0 to MAX_BINS/2 - 1, 
+	// the lsb extends from MAX_BINS - 1 to MAX_BINS/2 (reverse direction)
+	// zero out the other sideband
+
+	// TBD: Something strange is going on, this should have been the otherway
+
+	if (r->mode == MODE_LSB || r->mode == MODE_CWR)
+		// zero out the LSB
+		for (i = 0; i < MAX_BINS/2; i++){
+			__real__ fft_out[i] = 0;
+			__imag__ fft_out[i] = 0;	
+		}
+	else
+		// zero out the USB
+		for (i = MAX_BINS/2; i < MAX_BINS; i++){
+			__real__ fft_out[i] = 0;
+			__imag__ fft_out[i] = 0;	
+		}
+
+	//now rotate to the tx_bin 
+	for (i = 0; i < MAX_BINS; i++){
+		int b = i + tx_shift;
+		if (b >= MAX_BINS)
+			b = b - MAX_BINS;
+		if (b < 0)
+			b = b + MAX_BINS;
+		r->fft_freq[b] = fft_out[i];
+	}
+
+	// the spectrum display is updated
+	//spectrum_update();
+
+	//convert back to time domain	
+	fftw_execute(r->plan_rev);
+
+	float scale = volume;
+
+	//send the output back to where it needs to go
+	for (i= 0; i < MAX_BINS/2; i++){
 		output_tx[i] = creal(r->fft_time[i+(MAX_BINS/2)]) * scale;
 	}
 	sdr_modulation_update(output_tx, MAX_BINS/2);	
@@ -713,20 +816,46 @@ struct power_settings {
 	int f_stop;
 	int	max_watts;
 	int tx_scale;
+	double scale;
 };
 
 struct power_settings band_power[] ={
-	{ 3500000,  4000000, 40, 80},
-	{ 7000000,  7300000, 40, 82},
-	{10000000, 10200000, 30, 81},
-	{14000000, 14300000, 30, 91},
-	{18000000, 18200000, 25, 93},
-	{21000000, 21450000, 20, 93},
-	{24800000, 25000000, 10, 94},
-	{28000000, 29700000,  6, 95}  
+	{ 3500000,  4000000, 40, 80, 0.005},
+	{ 7000000,  7300000, 40,82, 0.006},
+	{10000000, 10200000, 30, 81, 0.008},
+	{14000000, 14300000, 30, 91, 0.022},
+	{18000000, 18200000, 25, 93, 0.03},
+	{21000000, 21450000, 20, 93, 0.05},
+	{24800000, 25000000, 10, 94, 0.1},
+	{28000000, 29700000,  10, 95, 0.1}  
 };
 
+/*
+	 the PA gain varies across the band from 3.5 MHz to 30 MHz
+ 	here we adjust the drive levels to keep it up, almost level
+*/
 void set_tx_power_levels(){
+  printf("Setting tx_power to %d, gain to %d\n", tx_power_watts, tx_gain);
+	int tx_power_gain = 0;
+
+	//search for power in the approved bands
+	for (int i = 0; i < sizeof(band_power)/sizeof(struct power_settings); i++){
+		if (band_power[i].f_start <= freq_hdr && freq_hdr <= band_power[i].f_stop){
+			if (tx_power_watts > band_power[i].max_watts)
+				tx_power_watts = band_power[i].max_watts;
+		
+			//next we do a decimal coversion of the power reduction needed
+			tx_amp = (1.0 * tx_power_watts * band_power[i].scale);  
+		}	
+	}
+	printf("tx_gain_compensation is set to %g for %d watts\n", tx_amp, tx_power_watts);
+	//we keep the audio card output 'volume' constant'
+	sound_mixer(audio_card, "Master", 95);
+	sound_mixer(audio_card, "Capture", tx_gain);
+}
+
+
+void set_tx_power_levels_old(){
 //  printf("Setting tx_power to %d, gain to %d\n", tx_power_watts, tx_gain);
 	int tx_power_gain = 0;
 

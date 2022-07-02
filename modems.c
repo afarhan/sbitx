@@ -52,7 +52,7 @@ extern char contact_grid[];
 		 changeover is needed, etc.
 	3. On receive, each time a block of samples is received, modem_rx() is called and 
 		 it despatches the block of samples to the currently selected modem. 
-		 The demodulators call write_log() to call the routines to display the decoded text.
+		 The demodulators call write_console() to call the routines to display the decoded text.
 	4. During transmit, modem_next_sample() is repeatedly called by the sdr to accumulate
 		 samples. In turn the sample generation routines call get_tx_data_byte() to read the next
 		 text/ascii byte to encode.
@@ -104,14 +104,14 @@ void ft8_setmode(int config){
 	switch(config){
 		case FT8_MANUAL:
 			ft8_mode = FT8_MANUAL;
-			write_log(FONT_LOG, "FT8 is manual now.\nSend messages through the keyboard\n");
+			write_console(FONT_LOG, "FT8 is manual now.\nSend messages through the keyboard\n");
 			break;
 		case FT8_SEMI:
-			write_log(FONT_LOG, "FT8 is semi-automatic.\nClick on the callsign to start the QSO\n");
+			write_console(FONT_LOG, "FT8 is semi-automatic.\nClick on the callsign to start the QSO\n");
 			ft8_mode = FT8_SEMI;
 			break;
 		case FT8_AUTO:
-			write_log(FONT_LOG, "FT8 is automatic.\nIt will call CQ and QSO with the first reply.\n");
+			write_console(FONT_LOG, "FT8 is automatic.\nIt will call CQ and QSO with the first reply.\n");
 			ft8_mode = FT8_AUTO;
 			break;
 	}
@@ -230,9 +230,9 @@ void ft8_tx(char *message, int freq){
 	time(&rawtime);
 	struct tm *t = gmtime(&rawtime);
 	sprintf(time_str, "%02d%02d%02d                   ", t->tm_hour, t->tm_min, t->tm_sec);
-	write_log(FONT_LOG_TX, time_str);
-	write_log(FONT_LOG_TX, message);
-	write_log(FONT_LOG_TX, "\n");
+	write_console(FONT_LOG_TX, time_str);
+	write_console(FONT_LOG_TX, message);
+	write_console(FONT_LOG_TX, "\n");
 
 	//printf("ft8 tx:[%s]\n", message);
 	//generate the ft8 samples into a temporary file
@@ -286,7 +286,7 @@ void *ft8_thread_function(void *ptr){
 
 		while(fgets(buff, sizeof(buff), pf)) {
 			strncpy(buff, time_str, 6);
-			write_log(FONT_LOG_RX, buff);
+			write_console(FONT_LOG_RX, buff);
 
 			int i;
 			for (i = 0; i < strlen(mycallsign); i++)
@@ -425,7 +425,7 @@ static char cw_get_next_kbd_symbol(){
 		char b[2];
 		b[0]= c;
 		b[1] = 0;
-//		write_log(FONT_LOG_TX, b);
+//		write_console(FONT_LOG_TX, b);
 
 		for (int i = 0; i < sizeof(morse_table)/sizeof(struct morse); i++)
 			if (morse_table[i].c == tolower(c))
@@ -543,7 +543,7 @@ float cw_get_sample(){
 				cw_key_letter[len] = 0;	
 			}		
 			else if (last_symbol  == ' '){
-				write_log(FONT_LOG_TX, " ");
+				write_console(FONT_LOG_TX, " ");
 				cw_key_letter[0] = 0;
 			}
 			else if (last_symbol == '/'){
@@ -553,7 +553,7 @@ float cw_get_sample(){
 						char buff[2];
 						buff[0] = morse_table[i].c;
 						buff[1] = 0;
-						write_log(FONT_LOG_TX, buff);
+						write_console(FONT_LOG_TX, buff);
 					}
 				cw_key_letter[0] = 0;
 			} 
@@ -857,7 +857,7 @@ void fldigi_read(){
 
 	if(!fldigi_call("rx.get_data", "", buffer)){		
 		if (strlen(buffer))
-			write_log(FONT_LOG_RX, buffer);
+			write_console(FONT_LOG_RX, buffer);
 	}
 	fldigi_retry_at = millis() + 250;
 }
@@ -879,7 +879,7 @@ void fldigi_tx_more_data(){
 		buff[0] = c;
 		buff[1] = 0;
 		fldigi_call("text.add_tx", buff, resp);
-		write_log(FONT_LOG_TX, buff);
+		write_console(FONT_LOG_TX, buff);
 	}
 }
 	
