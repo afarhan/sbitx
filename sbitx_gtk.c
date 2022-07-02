@@ -947,7 +947,7 @@ static void save_user_settings(int forced){
 
 	char *path = getenv("HOME");
 	strcpy(file_path, path);
-	strcat(file_path, "/.sbitx/user_settings.ini");
+	strcat(file_path, "/sbitx/data/user_settings.ini");
 
 	//copy the current freq settings to the currently selected vfo
 	struct field *f_freq = get_field("r1:freq");
@@ -3355,9 +3355,9 @@ int main( int argc, char* argv[] ) {
 	char directory[200];	//dangerous, find the MAX_PATH and replace 200 with it
 	char *path = getenv("HOME");
 	strcpy(directory, path);
-	strcat(directory, "/.sbitx/user_settings.ini");
+	strcat(directory, "/sbitx/data/user_settings.ini");
   if (ini_parse(directory, user_settings_handler, NULL)<0){
-    printf("Unable to load ~/.sbitx/user_settings.ini\n");
+    printf("Unable to load ~/sbitx/data/user_settings.ini\n");
   }
 
 	if (strlen(current_macro))
