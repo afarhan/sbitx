@@ -528,21 +528,21 @@ struct field main_controls[] = {
 		"", 0,0,0},
 
 	/* band stack registers */
-	{"#10m", NULL, 400, 330, 50, 50, "10 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+	{"#10m", NULL, 400, 330, 50, 50, "10M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
 		"", 0,0,0},
-	{"#12m", NULL, 450, 330, 50, 50, "12 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+	{"#12m", NULL, 450, 330, 50, 50, "12M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
 		"", 0,0,0},
-	{"#15m", NULL, 400, 380, 50, 50, "15 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+	{"#15m", NULL, 400, 380, 50, 50, "15M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
 		"", 0,0,0},
-	{"#17m", NULL, 450, 380, 50, 50, "17 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+	{"#17m", NULL, 450, 380, 50, 50, "17M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
 		"", 0,0,0},
-	{"#20m", NULL, 500, 380, 50, 50, "20 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+	{"#20m", NULL, 500, 380, 50, 50, "20M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
 		"", 0,0,0},
-	{"#30m", NULL, 400, 430, 50, 50, "30 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+	{"#30m", NULL, 400, 430, 50, 50, "30M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
 		"", 0,0,0},
-	{"#40m", NULL, 450, 430, 50, 50, "40 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+	{"#40m", NULL, 450, 430, 50, 50, "40M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
 		"", 0,0,0},
-	{"#80m", NULL, 500, 430, 50, 50, "80 M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+	{"#80m", NULL, 500, 430, 50, 50, "80M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
 		"", 0,0,0},
 
 	//soft keyboard
@@ -712,6 +712,7 @@ int set_field(char *id, char *value){
 	sprintf(buff, "%s=%s", f->cmd, f->value);
 	do_cmd(buff);
 	update_field(f);
+	redraw_flag++;
 	return 0;
 }
 
@@ -1812,7 +1813,7 @@ void update_log_ed(){
 		strcat(log_info, "-");
 
 
-	printf("macroed is set to [%s]\n", log_info);
+//	printf("macroed is set to [%s]\n", log_info);
 //	write_console(FONT_LOG, "QSO:");
 //	write_console(FONT_LOG, log_info);
 //	write_console(FONT_LOG, "\n");
@@ -2859,6 +2860,7 @@ void set_mode(char *mode){
 	if (strstr(f->selection, umode)){
 		strcpy(f->value, umode);
 		update_field(f);
+		redraw_flag++;
 	}
 	else
 		write_console(FONT_LOG, "%s is not a mode\n");
@@ -3145,7 +3147,9 @@ void cmd_line(char *cmd){
 		execute_app(fullpath);
 	}
 	else if(!strcmp(exec, "macro")){
-		if (!macro_load(args)){
+		if (!strcmp(args, "list"))
+			macro_list();
+		else if (!macro_load(args)){
 			set_ui(LAYOUT_MACROS);
 			strcpy(current_macro, args);
 			settings_updated++;

@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <dirent.h>
 #include "sdr_ui.h"
 
 int macro_load(char *filename);
@@ -23,7 +24,7 @@ static int serial = 1;
 static char macro_v_str[10];
 static char is_running = 0; 
 
-/*
+
 void macro_list(){
 	char full_path[200];	//dangerous, find the MAX_PATH and replace 200 with it
 
@@ -31,32 +32,32 @@ void macro_list(){
 	strcpy(full_path, home_path);
 	strcat(full_path, "/sbitx/data/");
 	DIR *d = opendir(full_path);
-	DIR *d;
   struct dirent *dir;
 
-	write_console(FONT_LOG, "Available macros:\n");
-	col = 0;
-  if (d) {
-    while ((dir = readdir(d)) != NULL) {
-			char *p = dir->d_name;
-			int len = strlen(p);
-			if (p[len-3] == '.' && p[len-2] == 'm' && p[lne-1] == 'c'){
-				p[len-3] = 0;
-				write_console(p);
-				col += strlen(p);
-				if (col 
-				write	
-      	printf("%s\n", dir->d_name);
-			}
-    }
-    closedir(d);
+	if (!d){
+		write_console(FONT_LOG, "\Error:data subdirectory is missing\n");
+		return;
+	}
+
+	write_console(FONT_LOG, "\nAvailable macros:\n");
+	
+  while ((dir = readdir(d)) != NULL) {
+		char *p = dir->d_name;
+		int len = strlen(p);
+		if (p[len-3] == '.' && p[len-2] == 'm' && p[len-1] == 'c'){
+			p[len-3] = 0;
+			write_console(FONT_LOG, p);
+			write_console(FONT_LOG, "\n");
+     	printf("%s\n", dir->d_name);
+		}
+	}
+  closedir(d);
 }
-*/
+
 
 void macro_label(int fn_key, char *label){
 	*label = 0;
 
-	//if running, take the first match, if S&P, take the last match
 	for (int i = 0; i < MACRO_MAX; i++){	
 		if (macro_table[i].fn_key == fn_key){
 			strcpy(label, macro_table[i].label);
