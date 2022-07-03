@@ -775,6 +775,7 @@ int fldigi_call_i(char *action, int param, char *result){
 
 	return 0;
 }
+
 int fldigi_call(char *action, char *param, char *result){
   char buffer[10000], q[10000], xml[1000];
   struct sockaddr_in serverAddr;
