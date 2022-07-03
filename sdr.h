@@ -222,6 +222,7 @@ void do_cmd(char *cmd);
 
 int key_poll();
 int get_cw_delay();
+int	get_data_delay();
 int get_cw_input_method();
 int	get_data_delay();
 int get_cw_tx_pitch();

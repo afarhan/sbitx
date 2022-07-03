@@ -586,7 +586,7 @@ int sound_loop(){
 			//printf(" we have %d in qloop, writing now\n", q_length(&qloop));
 			// if don't we have enough to last two iterations loop back...
 			if (q_length(&qloop) < pcmreturn){
-				puts(" skipping");
+//				puts(" skipping");
 				continue;
 			}
 	

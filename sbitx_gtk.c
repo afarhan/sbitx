@@ -275,9 +275,9 @@ void ui_init(int argc, char *argv[]){
   window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
   gtk_window_set_default_size(GTK_WINDOW(window), 800, 480);
   gtk_window_set_title( GTK_WINDOW(window), "sBITX" );
+	gtk_window_set_icon_from_file(GTK_WINDOW(window), "sbitx_icon.png", NULL);
  
   display_area = gtk_drawing_area_new();
-
   gtk_container_add( GTK_CONTAINER(window), display_area );
 
   g_signal_connect( G_OBJECT(window), "destroy", G_CALLBACK( gtk_main_quit ), NULL );
@@ -441,7 +441,7 @@ int do_waterfall(struct field *f, cairo_t *gfx, int event, int a, int b);
 int do_tuning(struct field *f, cairo_t *gfx, int event, int a, int b);
 int do_text(struct field *f, cairo_t *gfx, int event, int a, int b);
 int do_status(struct field *f, cairo_t *gfx, int event, int a, int b);
-int do_log(struct field *f, cairo_t *gfx, int event, int a, int b);
+int do_console(struct field *f, cairo_t *gfx, int event, int a, int b);
 int do_pitch(struct field *f, cairo_t *gfx, int event, int a, int b);
 int do_kbd(struct field *f, cairo_t *gfx, int event, int a, int b);
 int do_mouse_move(struct field *f, cairo_t *gfx, int event, int a, int b);
@@ -490,8 +490,6 @@ struct field main_controls[] = {
 		"", 1, 50, 1},
 	{ "#rx_pitch", do_pitch, 700, 380, 50, 50, "PITCH", 40, "12", FIELD_NUMBER, FONT_FIELD_VALUE, 
 		"", 100, 3000, 10},
-	{ "#record", do_record, 700, 430, 50, 50, "REC", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, 
-		"ON/OFF", 0,0, 0},
 	
 	{ "#tx", NULL, 600, 430, 50, 50, "TX", 40, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
 		"RX/TX", 0,0, 0},
@@ -499,6 +497,9 @@ struct field main_controls[] = {
 	{ "#rx", NULL, 650, 430, 50, 50, "RX", 40, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
 		"RX/TX", 0,0, 0},
 	
+	{ "#record", do_record, 700, 430, 50, 50, "REC", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, 
+		"ON/OFF", 0,0, 0},
+
 	// top row
 	{"#step", NULL, 400, 0 ,50, 50, "STEP", 1, "50Hz", FIELD_SELECTION, FONT_FIELD_VALUE, 
 		"100KHz/10KHz/1KHz/100Hz/10Hz", 0,0,0},
@@ -513,7 +514,7 @@ struct field main_controls[] = {
 		"status", 0,0,0},  
 	{"waterfall", do_waterfall, 400, 180 , 400, 150, "Waterfall ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, 
 		"", 0,0,0},
-	{"#console", do_log, 0, 0 , 400, 320, "log", 70, "log box", FIELD_CONSOLE, FONT_LOG, 
+	{"#console", do_console, 0, 0 , 400, 320, "console", 70, "console box", FIELD_CONSOLE, FONT_LOG, 
 		"nothing valuable", 0,0,0},
 	{"#log_ed", NULL, 0, 320, 400, 20, "", 70, "", FIELD_STATIC, FONT_LOG, 
 		"nothing valuable", 0,128,0},
@@ -648,6 +649,13 @@ int last_log = 0;
 struct field *get_field(char *cmd){
 	for (int i = 0; active_layout[i].cmd[0] > 0; i++)
 		if (!strcmp(active_layout[i].cmd, cmd))
+			return active_layout + i;
+	return NULL;
+}
+
+struct field *get_field_by_label(char *label){
+	for (int i = 0; active_layout[i].cmd[0] > 0; i++)
+		if (!strcasecmp(active_layout[i].label, label))
 			return active_layout + i;
 	return NULL;
 }
@@ -1102,8 +1110,8 @@ void sdr_modulation_update(int32_t *samples, int count, double scale_up){
 		if (i % 48 == 0){
 			if (mod_display_index >= MOD_MAX)
 				mod_display_index = 0;
-			mod_display[mod_display_index++] = (min / 20000000) / scale_up;
-			mod_display[mod_display_index++] = (max / 20000000) / scale_up;
+			mod_display[mod_display_index++] = (min / 40000000) / scale_up;
+			mod_display[mod_display_index++] = (max / 40000000) / scale_up;
 			min = 0x7fffffff;
 			max = -0x7fffffff;
 		}
@@ -1821,7 +1829,7 @@ void update_log_ed(){
 }
 
 
-int do_log(struct field *f, cairo_t *gfx, int event, int a, int b){
+int do_console(struct field *f, cairo_t *gfx, int event, int a, int b){
 	char buff[100], *p, *q;
 
 	int line_height = font_table[f->font_index].height; 	
@@ -1846,7 +1854,7 @@ int do_log(struct field *f, cairo_t *gfx, int event, int a, int b){
 					update_log_ed();
 				}
 			}
-			printf("chosen line is %d[%s]\n", l, console_stream[l].text);
+//			printf("chosen line is %d[%s]\n", l, console_stream[l].text);
 			redraw_flag++;
 			return 1;
 		break;
@@ -2235,6 +2243,13 @@ int do_macro(struct field *f, cairo_t *gfx, int event, int a, int b){
 
 int do_record(struct field *f, cairo_t *gfx, int event, int a, int b){
 	if (event == FIELD_DRAW){
+
+		if (f_focus == f)
+			rect(gfx, f->x, f->y, f->width-1,f->height, COLOR_SELECTED_BOX, 2);
+		else if (f_hover == f)
+			rect(gfx, f->x, f->y, f->width,f->height, COLOR_SELECTED_BOX, 1);
+		else 
+			rect(gfx, f->x, f->y, f->width,f->height, COLOR_CONTROL_BOX, 1);
 
 		int width = measure_text(gfx, f->label, FONT_FIELD_LABEL);
 		int offset = f->width/2 - width/2;
@@ -3146,6 +3161,10 @@ void cmd_line(char *cmd){
 		sprintf(fullpath, "mousepad %s/sbitx/data/logbook.txt", path); 
 		execute_app(fullpath);
 	}
+	else if (!strcmp(exec, "clear")){
+		console_init();
+		redraw_flag++;
+	}
 	else if(!strcmp(exec, "macro")){
 		if (!strcmp(args, "list"))
 			macro_list();
@@ -3293,9 +3312,12 @@ void cmd_line(char *cmd){
 	else {
 		//see if it matches any of the fields of the UI that have FIELD_NUMBER 
 		char field_name[32];
-		struct field *f = get_field(exec);
+		struct field *f = get_field_by_label(exec);
 		if (f){
-			if(set_field(exec, args))
+			//convert all the letters to uppercase
+			for(char *p = args; *p; p++)
+					*p = toupper(*p);
+			if(set_field(f->cmd, args))
 				write_console(FONT_LOG, "Invalid setting");
 		}
 	}
@@ -3304,7 +3326,7 @@ void cmd_line(char *cmd){
 
 int main( int argc, char* argv[] ) {
 
-	puts("sBITX v0.31");
+	puts(VER_STR);
 	active_layout = main_controls;
 
 	//unlink any pending ft8 transmission
@@ -3368,7 +3390,8 @@ int main( int argc, char* argv[] ) {
   sprintf(buff, "%d", vfo_a_freq);
   set_field("r1:freq", buff);
 
-	write_console(FONT_LOG, "sBITX v0.01 is Ready\n");
+	console_init();
+	write_console(FONT_LOG, VER_STR);
 
 	sprintf(buff, "\nWelcome %s your grid is %s\n", mycallsign, mygrid);
 	write_console(FONT_LOG, buff);

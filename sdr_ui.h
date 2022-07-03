@@ -24,3 +24,4 @@ void macro_list();
 void update_log_ed();
 void write_call_log();
 
+#define VER_STR "sbitx v1.0"

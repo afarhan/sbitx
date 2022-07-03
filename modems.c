@@ -409,6 +409,7 @@ static int keyup_count = 0;			//counts down to how long a key is held down
 static float cw_envelope = 1;
 static int cw_pitch = 700;
 static int cw_tx_until = 0;
+static int data_tx_until = 0;
 
 char cw_text[] = " cq cq dx de vu2ese A k";
 char *symbol_next = NULL;
@@ -964,6 +965,12 @@ void modem_poll(int mode){
 
 		//clear the text buffer	
 		clear_tx_text_buffer();
+
+		if (current_mode == MODE_FT8)
+			macro_load("ft8");
+		else if (current_mode == MODE_RTTY || current_mode == MODE_PSK31 ||
+			MODE_CWR || MODE_CW)
+			macro_load("cw1");	
 	}
 
 	switch(mode){
@@ -995,6 +1002,45 @@ void modem_poll(int mode){
 
 	case MODE_RTTY:
 	case MODE_PSK31:
+/*
+		if (!tx_is_on && bytes_available && !fldigi_in_tx){
+			if (!fldigi_call("main.tx", "", buffer)){
+				tx_on();
+				fldigi_in_tx = 1;	
+				sound_input(1);
+				data_tx_until = millis() + get_data_delay();
+				printf("TX start %d:data_tx_until = %d vs millis = %d\n", __LINE__, data_tx_until, millis());
+			}
+			else
+				write_console(FONT_LOG, "\n*fldigi failed to start RX\n");
+		}
+		else if (fldigi_in_tx && data_tx_until < millis()){
+			printf("RX start %d:data_tx_until = %d vs millis = %d\n", __LINE__, data_tx_until, millis());
+			if (!fldigi_call("main.rx", "", buffer)){
+				fldigi_in_tx = 0;
+				sound_input(0);
+				tx_off();
+			}
+			else
+				write_console(FONT_LOG, "\n*fldigi failed to start RX\n");
+		}
+		else if (fldigi_in_tx && bytes_available > 0){
+			printf("tx %d:data_tx_until = %d vs millis = %d\n", __LINE__, data_tx_until, millis());
+			fldigi_tx_more_data();
+			data_tx_until = millis() + get_data_delay();
+		}
+		else if (fldigi_in_tx){
+			printf("%d:data_tx_until = %d vs millis = %d\n", __LINE__, data_tx_until, millis());
+			//see if we can time-out
+			fldigi_call("tx.get_data", "", buffer);
+			if (strlen(buffer) > 0){
+					data_tx_until = millis() + get_data_delay();
+					printf("### len = %d\n%s\n###\n", strlen(buffer), buffer); 
+			}
+		}
+		else if (!tx_is_on)
+			fldigi_read();
+*/
 		//we will let the keyboard decide this
 		if (tx_is_on && !fldigi_in_tx){
 			if (!fldigi_call("main.tx", "", buffer)){
@@ -1016,6 +1062,7 @@ void modem_poll(int mode){
 			fldigi_tx_more_data();	
 		else 
 			fldigi_read();		
+
 	break; 
 	}
 }
