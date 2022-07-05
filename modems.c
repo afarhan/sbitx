@@ -895,11 +895,15 @@ void modem_set_pitch(int pitch){
 		puts("fldigi modem.set_carrier error");
 }
 
+int last_pitch = 0;
 void modem_rx(int mode, int32_t *samples, int count){
 	int i, j, k, l;
 	int32_t *s;
 	FILE *pf;
 	char buff[10000];
+
+	if (get_pitch() !+ last_pitch)
+		modem_set_pitch(get_pitch());
 
 	s = samples;
 	switch(mode){
@@ -908,12 +912,10 @@ void modem_rx(int mode, int32_t *samples, int count){
 		break;
 	case MODE_RTTY:
 		fldigi_set_mode("RTTY");
-		modem_set_pitch(get_pitch());
 		fldigi_read();
 		break;
 	case MODE_PSK31:
 		fldigi_set_mode("BPSK31");
-		modem_set_pitch(get_pitch());
 		fldigi_read();
 		break;
 	case MODE_CW:
@@ -972,6 +974,7 @@ void modem_poll(int mode){
 		else if (current_mode == MODE_RTTY || current_mode == MODE_PSK31 ||
 			MODE_CWR || MODE_CW)
 			macro_load("cw1");	
+		modem_set_pitch(get_pitch());
 	}
 
 	switch(mode){

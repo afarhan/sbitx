@@ -678,8 +678,8 @@ int loopback_loop(){
 		i = 0; 
 		j = 0;	
 		for (int i = 0; i < pcmreturn; i++){
-			q_write(&qloop, data_in[j]/16);
-			q_write(&qloop, data_in[j]/16);
+			q_write(&qloop, data_in[j]/64);
+			q_write(&qloop, data_in[j]/64);
 			j += 2;
 		}
 		nsamples += j;
