@@ -902,7 +902,7 @@ void modem_rx(int mode, int32_t *samples, int count){
 	FILE *pf;
 	char buff[10000];
 
-	if (get_pitch() !+ last_pitch)
+	if (get_pitch() != last_pitch)
 		modem_set_pitch(get_pitch());
 
 	s = samples;
