@@ -1104,14 +1104,14 @@ int mod_display[MOD_MAX];
 int mod_display_index = 0;
 
 void sdr_modulation_update(int32_t *samples, int count, double scale_up){
-	int min=0, max=0;
+	double min=0, max=0;
 
 	for (int i = 0; i < count; i++){
 		if (i % 48 == 0){
 			if (mod_display_index >= MOD_MAX)
 				mod_display_index = 0;
-			mod_display[mod_display_index++] = (min / 40000000) / scale_up;
-			mod_display[mod_display_index++] = (max / 40000000) / scale_up;
+			mod_display[mod_display_index++] = (min / 40000000.0) / scale_up;
+			mod_display[mod_display_index++] = (max / 40000000.0) / scale_up;
 			min = 0x7fffffff;
 			max = -0x7fffffff;
 		}
