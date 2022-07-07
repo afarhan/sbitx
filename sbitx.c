@@ -63,6 +63,9 @@ struct rx *tx_list = NULL;
 struct filter *tx_filter;	//convolution filter
 static double tx_amp = 0.0;
 
+#define MUTE_MAX 6 
+static int mute_count = 50;
+
 FILE *pf_record;
 int16_t record_buffer[1024];
 int32_t modulation_buff[MAX_BINS];
@@ -113,10 +116,13 @@ void fft_init(){
 
 void fft_reset_m_bins(){
 	//zero up the previous 'M' bins
-	for (int i= 0; i < MAX_BINS/2; i++){
-		__real__ fft_m[i]  = 0.0;
-		__imag__ fft_m[i]  = 0.0;
-	}
+	memset(fft_in, 0, sizeof(fftw_complex) * MAX_BINS);
+	memset(fft_out, 0, sizeof(fftw_complex) * MAX_BINS);
+	memset(fft_m, 0, sizeof(fftw_complex) * MAX_BINS/2);
+//	for (int i= 0; i < MAX_BINS/2; i++){
+//		__real__ fft_m[i]  = 0.0;
+//		__imag__ fft_m[i]  = 0.0;
+//	}
 }
 
 int mag2db(double mag){
@@ -429,6 +435,12 @@ void rx_process(int32_t *input_rx,  int32_t *input_mic,
 	int i, j = 0;
 	double i_sample, q_sample;
 
+
+	if (mute_count){
+		memset(input_rx, 0, n_samples * sizeof(int32_t));
+		mute_count--;
+	}
+
 	//STEP 1: first add the previous M samples to
 	for (i = 0; i < MAX_BINS/2; i++)
 		fft_in[i]  = fft_m[i];
@@ -548,6 +560,10 @@ void tx_process(
 	struct rx *r = tx_list;
 
 
+	if (mute_count && (r->mode == MODE_USB || r->mode == MODE_LSB)){
+		memset(input_mic, 0, n_samples * sizeof(int32_t));
+		mute_count--;
+	}
 	//first add the previous M samples
 	for (i = 0; i < MAX_BINS/2; i++)
 		fft_in[i]  = fft_m[i];
@@ -949,6 +965,7 @@ void sdr_request(char *request, char *response){
 	else if (!strcmp(cmd, "tx")){
 		if (!strcmp(value, "on")){
 			in_tx = 1;
+			mute_count = 20;
       fft_reset_m_bins();
 			digitalWrite(TX_LINE, HIGH);
       delay(50);
@@ -960,6 +977,7 @@ void sdr_request(char *request, char *response){
 		else {
 			in_tx = 0;
       fft_reset_m_bins();
+			mute_count = MUTE_MAX;
 			strcpy(response, "ok");
 			digitalWrite(TX_LINE, LOW);
 			sound_mixer(audio_card, "Master", rx_vol);
