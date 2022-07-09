@@ -332,6 +332,7 @@ struct rx *add_rx(int frequency, short mode, int bpf_low, int bpf_high){
 	r->low_hz = bpf_low;
 	r->high_hz = bpf_high;
 	r->tuned_bin = 512; 
+	r->agc_gain = 0.0;
 
 	//create fft complex arrays to convert the frequency back to time
 	r->fft_time = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * MAX_BINS);
@@ -372,7 +373,7 @@ int count = 0;
 
 double agc2(struct rx *r){
 	int i;
-  double signal_strength;
+  double signal_strength, agc_gain_should_be;
 
 	//do nothing if agc is off
   if (r->agc_speed == -1){
@@ -390,44 +391,47 @@ double agc2(struct rx *r){
 	}
 	//also calculate the moving average of the signal strength
   r->signal_avg = (r->signal_avg * 0.93) + (signal_strength * 0.07);
-  double agc_gain_should_be = 100000000000/signal_strength;
+	if (signal_strength == 0)
+		agc_gain_should_be = 10000000;
+	else
+		agc_gain_should_be = 100000000000/signal_strength;
 	r->signal_strength = signal_strength;
-
+//	printf("Agc temp, g:%g, s:%g, f:%g ", r->agc_gain, signal_strength, agc_gain_should_be);
 
 	double agc_ramp = 0.0;
 
-  /* climb up the agc quickly if the signal is louder than before */
+  // climb up the agc quickly if the signal is louder than before 
 	if (agc_gain_should_be < r->agc_gain){
-  	//printf("Attack! %g, should be %g\n", r->agc_gain, agc_gain_should_be);
 		r->agc_gain = agc_gain_should_be;
 		//reset the agc to hang count down 
     r->agc_loop = r->agc_speed;
+//  	printf("attack %g %d ", r->agc_gain, r->agc_loop);
   }
 	else if (r->agc_loop <= 0){
 		agc_ramp = (agc_gain_should_be - r->agc_gain) / (MAX_BINS/2);	
-		//printf("Decay new gain %g in step %g\n", agc_gain_should_be,  agc_ramp);
+//  	printf("release %g %d ",  r->agc_gain, r->agc_loop);
 	}
-	//else if (r->agc_loop > 0)
-	//	printf("Decaying %d\n", r->agc_loop);
+//	else if (r->agc_loop > 0)
+//  	printf("hanging %g %d ", r->agc_gain, r->agc_loop);
  
 	if (agc_ramp != 0){
-		//printf("Ramping from %g ", r->agc_gain);
+//		printf("Ramping from %g ", r->agc_gain);
   	for (i = 0; i < MAX_BINS/2; i++){
 	  	__imag__ (r->fft_time[i+(MAX_BINS/2)]) *= r->agc_gain;
 			r->agc_gain += agc_ramp;
 		}
-		//printf(" by %g to %g\n", agc_ramp, r->agc_gain);
+//		printf("by %g to %g ", agc_ramp, r->agc_gain);
 	}
 	else 
   	for (i = 0; i < MAX_BINS/2; i++)
 	  	__imag__ (r->fft_time[i+(MAX_BINS/2)]) *= r->agc_gain;
 
+//	printf("\n");
   r->agc_loop--;
 
 	//printf("%d:s meter: %d %d %d \n", count++, (int)r->agc_gain, (int)r->signal_strength, r->agc_loop);
   return 100000000000 / r->agc_gain;  
 }
-
 
 void rx_process(int32_t *input_rx,  int32_t *input_mic, 
 	int32_t *output_speaker, int32_t *output_tx, int n_samples)
