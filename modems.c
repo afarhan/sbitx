@@ -828,7 +828,7 @@ int fldigi_call(char *action, char *param, char *result){
 	//now check if we got the data in base64
 	char *p = strstr(buff, "<base64>");
 	if (p){
-		p += strlen("<base64"); //skip past the tag
+		p += strlen("<base64>"); //skip past the tag
 		char *r =  strchr(p, '<'); //find the end
 		if (r){
 			*r = 0; //terminate the base64 at the end tag
@@ -836,6 +836,15 @@ int fldigi_call(char *action, char *param, char *result){
 			b64_decode(p, result);
 			result[len] = 0;
 		}
+	}
+	//maybe it is not base64 encoded
+	else if (p = strstr(buff, "<value>")){
+		p += strlen("<value>");
+		char *r = strchr(p, '<');
+		if (r){
+			*r = 0;
+			strcpy(result, p);
+		} 
 	}
 	else
 		strcpy(result, buff);
@@ -982,7 +991,6 @@ void modem_poll(int mode){
 		now = time(NULL);
 		if (now % 15 == 0){
 			if(ft8_tx_nsamples > 0 && !tx_is_on){
-//				puts("Starting ft8 tx");
 				tx_on();	
 			}
 			if (tx_is_on && ft8_tx_nsamples == 0)
@@ -1006,45 +1014,7 @@ void modem_poll(int mode){
 
 	case MODE_RTTY:
 	case MODE_PSK31:
-/*
-		if (!tx_is_on && bytes_available && !fldigi_in_tx){
-			if (!fldigi_call("main.tx", "", buffer)){
-				tx_on();
-				fldigi_in_tx = 1;	
-				sound_input(1);
-				data_tx_until = millis() + get_data_delay();
-				printf("TX start %d:data_tx_until = %d vs millis = %d\n", __LINE__, data_tx_until, millis());
-			}
-			else
-				write_console(FONT_LOG, "\n*fldigi failed to start RX\n");
-		}
-		else if (fldigi_in_tx && data_tx_until < millis()){
-			printf("RX start %d:data_tx_until = %d vs millis = %d\n", __LINE__, data_tx_until, millis());
-			if (!fldigi_call("main.rx", "", buffer)){
-				fldigi_in_tx = 0;
-				sound_input(0);
-				tx_off();
-			}
-			else
-				write_console(FONT_LOG, "\n*fldigi failed to start RX\n");
-		}
-		else if (fldigi_in_tx && bytes_available > 0){
-			printf("tx %d:data_tx_until = %d vs millis = %d\n", __LINE__, data_tx_until, millis());
-			fldigi_tx_more_data();
-			data_tx_until = millis() + get_data_delay();
-		}
-		else if (fldigi_in_tx){
-			printf("%d:data_tx_until = %d vs millis = %d\n", __LINE__, data_tx_until, millis());
-			//see if we can time-out
-			fldigi_call("tx.get_data", "", buffer);
-			if (strlen(buffer) > 0){
-					data_tx_until = millis() + get_data_delay();
-					printf("### len = %d\n%s\n###\n", strlen(buffer), buffer); 
-			}
-		}
-		else if (!tx_is_on)
-			fldigi_read();
-*/
+		fldigi_call("main.get_trx_state", "", buffer);
 		//we will let the keyboard decide this
 		if (tx_is_on && !fldigi_in_tx){
 			if (!fldigi_call("main.tx", "", buffer)){
@@ -1054,9 +1024,11 @@ void modem_poll(int mode){
 			else
 				puts("*fldigi tx failed");
 		}	
-		else if (!tx_is_on && fldigi_in_tx){
+		//switch to rx if the sbitx is set to manual or the fldigi has gone back to rx 
+		else if ((tx_is_on && !strcmp(buffer, "RX")) || (!tx_is_on && fldigi_in_tx)){
 			if (!fldigi_call("main.rx", "", buffer)){
 				fldigi_in_tx = 0;
+				tx_off();
 				sound_input(0);
 			}
 			else

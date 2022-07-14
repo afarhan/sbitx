@@ -2188,7 +2188,7 @@ void macro_get_var(char *var, char *s){
 }
 
 int do_macro(struct field *f, cairo_t *gfx, int event, int a, int b){
-	char buff[256];
+	char buff[256], *mode;
 
 	if(event == GDK_BUTTON_PRESS){
 		int fn_key = atoi(f->cmd+3); // skip past the '#mf' and read the function key number
@@ -2203,8 +2203,16 @@ int do_macro(struct field *f, cairo_t *gfx, int event, int a, int b){
 			write_call_log();
 		else 
 		 	macro_exec(fn_key, buff);
+	
+		mode = get_field("r1:mode")->value;
 
-		if (!strcmp(get_field("r1:mode")->value, "FT8") && strlen(buff)){
+		//add the end of transmission to the expanded buffer for the fldigi modes
+		if (!strcmp(mode, "RTTY") || !strcmp(mode, "PSK31")){
+			strcat(buff, "^r");
+			tx_on();
+		}
+
+		if (!strcmp(mode, "FT8") && strlen(buff)){
 			//we use the setting of the PITCH control for tx freq
 			ft8_tx(buff, atoi(get_field("#rx_pitch")->value));
 			//write_console(FONT_LOG_TX, buff);
