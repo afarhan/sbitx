@@ -55,6 +55,10 @@ char pins[15] = {0, 2, 3, 6, 7,
 #define ENC_FAST 1
 #define ENC_SLOW 5
 
+//time sync, when the NTP time is not synced, this tracks the number of seconds 
+//between the system cloc and the actual time set by \utc command
+static long time_delta = 0;
+
 //mouse/touch screen state
 static int mouse_down = 0;
 static int last_mouse_x = -1;
@@ -142,7 +146,7 @@ struct encoder enc_a, enc_b;
 #define FIELD_STATIC 5
 #define FIELD_CONSOLE 6
 
-// The log is a series of lines
+// The console is a series of lines
 #define MAX_CONSOLE_BUFFER 10000
 #define MAX_LINE_LENGTH 128
 #define MAX_CONSOLE_LINES 500
@@ -433,7 +437,7 @@ int screen_width, screen_height;
 int spectrum_span = 48000;
 
 void do_cmd(char *cmd);
-void cmd_line(char *cmd);
+void cmd_exec(char *cmd);
 
 
 int do_spectrum(struct field *f, cairo_t *gfx, int e, int a, int b);
@@ -1037,6 +1041,8 @@ static int user_settings_handler(void* user, const char* section,
 			char request[100], response[100];
 			sprintf(request, "sidetone=%d",sidetone);  
 			sdr_request(request, response);
+			sprintf(request, "sideetone is set to %d Hz\n", sidetone);
+			write_console(FONT_LOG, request);
 		}
 		//contesting
 		else if (!strcmp(name, "sent_exchange"))
@@ -1659,6 +1665,14 @@ static void focus_field(struct field *f){
 		do_cmd(f->cmd);
 }
 
+time_t time_sbitx(){
+	if (time_delta)
+		return  (millis()/1000l) + time_delta;
+	else
+		return time(NULL);
+}
+
+
 // setting the frequency is complicated by having to take care of the
 // rit/split and power levels associated with each frequency
 void set_operating_freq(int dial_freq, char *response){
@@ -1820,11 +1834,6 @@ void update_log_ed(){
 	else
 		strcat(log_info, "-");
 
-
-//	printf("macroed is set to [%s]\n", log_info);
-//	write_console(FONT_LOG, "QSO:");
-//	write_console(FONT_LOG, log_info);
-//	write_console(FONT_LOG, "\n");
 	redraw_flag++;
 }
 
@@ -1866,8 +1875,8 @@ int do_status(struct field *f, cairo_t *gfx, int event, int a, int b){
 	char buff[100];
 
 	if (event == FIELD_DRAW){
-		time_t now;
-		time(&now);
+		time_t now = time_sbitx();
+//		time(&now);
 		struct tm *tmp = gmtime(&now);
 
 		sprintf(buff, "%s | %s", mycallsign, mygrid);
@@ -1890,7 +1899,7 @@ int do_text(struct field *f, cairo_t *gfx, int event, int a, int b){
 	if (event == FIELD_EDIT){
 		//if it is a command, then execute it and clear the field
 		if (f->value[0] == COMMAND_ESCAPE &&  strlen(f->value) > 1 && (a == '\n' || a == MIN_KEY_ENTER)){
-			cmd_line(f->value + 1);
+			cmd_exec(f->value + 1);
 			f->value[0] = 0;
 			update_field(f);
 			redraw_flag++;
@@ -2037,8 +2046,8 @@ void write_call_log(){
 	char *path = getenv("HOME");
 	sprintf(fullpath, "%s/sbitx/data/logbook.txt", path); 
 
-	time_t log_time;
-	time(&log_time);
+	time_t log_time = time_sbitx();
+//	time(&log_time);
 	struct tm *tmp = gmtime(&log_time);
 			//tmp->tm_year + 1900, tmp->tm_mon + 1, tmp->tm_mday, tmp->tm_hour, tmp->tm_min, tmp->tm_sec); 
 	
@@ -3008,6 +3017,53 @@ void qrz(char *callsign){
 	execute_app(bash_line);
 }
 
+void utc_set(char *args){
+	int n[7], i;
+	char *p, *q;
+	struct tm t;
+	time_t gm_now;
+
+	i = 0;
+	p =  strtok(args, "-/;: ");
+	if (p){
+		n[0] = atoi(p);
+		for (i = 1; i < 7; i++){
+			p = strtok(NULL, "-/;: ");
+			if (!p)
+				break;
+			n[i] = atoi(p);
+		}
+	}	
+
+	if (i != 6 ){
+		write_console(FONT_LOG, 
+			"Sets the current UTC Time for logging etc.\nUsage \\utc yyyy mm dd hh mm ss\nWhere\n"
+			"  yyyy is a four digit year like 2022\n"
+			"  mm is two digit month [1-12]\n"
+			"  dd is two digit day of the month [0-31]\n"
+			"  hh is two digit hour in 24 hour format (UTC)\n"
+			"  mm is two digit minutes in 24 hour format(UTC)\n"
+			"  ss is two digit seconds in [0-59]\n"
+			"ex: \\utc 2022 07 14 8:40:00\n"); 
+			return;
+	}
+	if (n[0] < 2000)
+		n[0] += 2000;
+	t.tm_year = n[0] - 1900;
+	t.tm_mon = n[1] - 1;
+	t.tm_mday = n[2]; 
+	t.tm_hour = n[3];
+	t.tm_min = n[4];
+	t.tm_sec = n[5];
+
+	tzname[0] = tzname[1] = "GMT";
+	timezone = 0;
+	daylight = 0;
+	setenv("TZ", "UTC", 1);	
+	gm_now = mktime(&t);
+
+	time_delta =(long)gm_now -(long)(millis()/1000l);
+}
 
 void do_cmd(char *cmd){	
 	char request[1000], response[1000], buff[100];
@@ -3124,7 +3180,7 @@ void do_cmd(char *cmd){
 }
 
 
-void cmd_line(char *cmd){
+void cmd_exec(char *cmd){
 	int i, j;
 	int mode = mode_id(get_field("r1:mode")->value);
 
@@ -3158,6 +3214,9 @@ void cmd_line(char *cmd){
 		strcpy(mygrid, args);
 		sprintf(response, "\n[Your grid is set to %s]\n", mygrid);
 		write_console(FONT_LOG, response);
+	}
+	else if (!strcmp(exec, "utc")){
+		utc_set(args);
 	}
 	else if (!strcmp(exec, "l")){
 		interpret_log(args);
@@ -3209,12 +3268,17 @@ void cmd_line(char *cmd){
 	}
 	else if(!strcmp(exec, "freq") || !strcmp(exec, "f")){
 		long freq = atol(args);
-		if (freq < 30000)
+		if (freq == 0){
+			write_console(FONT_LOG, "Usage: \f xxxxx (in Hz or KHz)\n");
+		}
+		else if (freq < 30000)
 			freq *= 1000;
-		char freq_s[20];
-		sprintf(freq_s, "%ld",freq);
-		set_field("r1:freq", freq_s);
-		//set_freq(atol(args));
+
+		if (freq > 0){
+			char freq_s[20];
+			sprintf(freq_s, "%ld",freq);
+			set_field("r1:freq", freq_s);
+		}
 	}
 	else if (!strcmp(exec, "cwdelay")){
 		if (strlen(args)){
@@ -3392,7 +3456,7 @@ int main( int argc, char* argv[] ) {
 
 	if (strlen(current_macro))
 		macro_load(current_macro);
-	char buff[MAX_FIELD_LENGTH];
+	char buff[1000];
 
 	//now set the frequency of operation and more to vfo_a
   sprintf(buff, "%d", vfo_a_freq);
@@ -3401,17 +3465,32 @@ int main( int argc, char* argv[] ) {
 	console_init();
 	write_console(FONT_LOG, VER_STR);
 
-	sprintf(buff, "\nWelcome %s your grid is %s\n", mycallsign, mygrid);
-	write_console(FONT_LOG, buff);
-	write_console(FONT_LOG, "To change your callsign, or grid\nenter '\\callsign [yourcallsign]'\n"
-		" or '\\grid [yourgrid]'\n(without the brackets, starting with \\)\n"
-		"For help enter \\help\n");
+	if (strcmp(mycallsign, "N0BDY")){
+		sprintf(buff, "\nWelcome %s your grid is %s\n", mycallsign, mygrid);
+		write_console(FONT_LOG, buff);
+	}
+	else 
+		write_console(FONT_LOG, "Set your with '\\callsign [yourcallsign]'\n"
+		"Set your 6 letter grid with '\\grid [yourgrid]\n");
+
 	set_field("#text_in", "");
 
 	// you don't want to save the recently loaded settings
 	settings_updated = 0;
   hamlib_start();
-	//wsjtx_start();
+
+	int not_synchronized = 0;
+	FILE *pf = popen("chronyc tracking", "r");
+	while(fgets(buff, sizeof(buff), pf)) 
+		if(strstr(buff, "Not synchronised"))
+			not_synchronized = 1; 
+	fclose(pf);
+
+	if (not_synchronized)
+		write_console(FONT_LOG, "Enter the precise UTC time using \\utc command\n"
+		"ex: \\utc 2022/07/15 23:034:00\n"
+		"Hit enter for the command at the exact time\n");
+
   gtk_main();
   
   return 0;

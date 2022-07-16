@@ -211,6 +211,7 @@ void tx_off();
 long get_freq();
 int get_pitch();
 void do_cmd(char *cmd);
+time_t time_sbitx();
 
 //cw defines
 #define CW_DASH (1)

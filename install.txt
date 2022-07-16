@@ -112,4 +112,10 @@ warnings from popping up all the time, from the commaind line run:
 
 
 
+##STEP 8: Install ntpstat
+ntp and ntpstat are useful to know if the radio is synched to realtime.
+this is important when the date/time in the logbook needs to be accruate.
+it is also useful for ft8 synchronization
 
+sudo apt install ntp
+sudo apt install ntpstat

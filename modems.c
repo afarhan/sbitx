@@ -225,9 +225,9 @@ void ft8_tx(char *message, int freq){
 		message[i] = toupper(message[i]);
 
 	//timestamp the packets for display log
-	time_t	rawtime;
+	time_t	rawtime = time_sbitx();
 	char time_str[20];
-	time(&rawtime);
+//	time(&rawtime);
 	struct tm *t = gmtime(&rawtime);
 	sprintf(time_str, "%02d%02d%02d                   ", t->tm_hour, t->tm_min, t->tm_sec);
 	write_console(FONT_LOG_TX, time_str);
@@ -278,9 +278,9 @@ void *ft8_thread_function(void *ptr){
 		pf = popen("/home/pi/ft8_lib/decode_ft8 /tmp/ftrx.raw", "r");
 
 		//timestamp the packets
-		time_t	rawtime;
+		time_t	rawtime = time_sbitx();
 		char time_str[20], response[100];
-		time(&rawtime);
+//		time(&rawtime);
 		struct tm *t = gmtime(&rawtime);
 		sprintf(time_str, "%02d%02d%02d", t->tm_hour, t->tm_min, t->tm_sec);
 
@@ -900,8 +900,8 @@ void fldigi_tx_more_data(){
 void modem_set_pitch(int pitch){
 	char response[1000];
 
-	if(fldigi_call_i("modem.set_carrier", pitch, response))
-		puts("fldigi modem.set_carrier error");
+	fldigi_call_i("modem.set_carrier", pitch, response);
+//		puts("fldigi modem.set_carrier error");
 }
 
 int last_pitch = 0;
@@ -911,7 +911,8 @@ void modem_rx(int mode, int32_t *samples, int count){
 	FILE *pf;
 	char buff[10000];
 
-	if (get_pitch() != last_pitch)
+	if (get_pitch() != last_pitch  
+		&& (mode == MODE_CW || mode == MODE_CWR || MODE_RTTY || MODE_PSK31))
 		modem_set_pitch(get_pitch());
 
 	s = samples;
@@ -981,14 +982,15 @@ void modem_poll(int mode){
 		if (current_mode == MODE_FT8)
 			macro_load("ft8");
 		else if (current_mode == MODE_RTTY || current_mode == MODE_PSK31 ||
-			MODE_CWR || MODE_CW)
+			MODE_CWR || MODE_CW){
 			macro_load("cw1");	
-		modem_set_pitch(get_pitch());
+			modem_set_pitch(get_pitch());
+		}
 	}
 
 	switch(mode){
 	case MODE_FT8:
-		now = time(NULL);
+		now = time_sbitx();
 		if (now % 15 == 0){
 			if(ft8_tx_nsamples > 0 && !tx_is_on){
 				tx_on();	
