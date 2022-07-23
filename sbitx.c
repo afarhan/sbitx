@@ -36,8 +36,6 @@ fftw_complex *fft_spectrum;
 fftw_plan plan_spectrum;
 float spectrum_window[MAX_BINS];
 
-// spectrum display
-fftw_complex *spectrum_fft;
 
 fftw_complex *fft_out;		// holds the incoming samples in freq domain (for rx as well as tx)
 fftw_complex *fft_in;			// holds the incoming samples in time domain (for rx as well as tx) 
@@ -119,6 +117,7 @@ void fft_reset_m_bins(){
 	memset(fft_in, 0, sizeof(fftw_complex) * MAX_BINS);
 	memset(fft_out, 0, sizeof(fftw_complex) * MAX_BINS);
 	memset(fft_m, 0, sizeof(fftw_complex) * MAX_BINS/2);
+	memset(fft_spectrum, 0, sizeof(fftw_complex) * MAX_BINS);
 //	for (int i= 0; i < MAX_BINS/2; i++){
 //		__real__ fft_m[i]  = 0.0;
 //		__imag__ fft_m[i]  = 0.0;
