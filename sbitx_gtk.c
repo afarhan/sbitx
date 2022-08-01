@@ -1876,7 +1876,6 @@ int do_status(struct field *f, cairo_t *gfx, int event, int a, int b){
 
 	if (event == FIELD_DRAW){
 		time_t now = time_sbitx();
-//		time(&now);
 		struct tm *tmp = gmtime(&now);
 
 		sprintf(buff, "%s | %s", mycallsign, mygrid);
@@ -1907,7 +1906,6 @@ int do_text(struct field *f, cairo_t *gfx, int event, int a, int b){
 		else if ((a =='\n' || a == MIN_KEY_ENTER) && !strcmp(get_field("r1:mode")->value, "FT8") 
 			&& f->value[0] != COMMAND_ESCAPE){
 			ft8_tx(f->value, atoi(get_field("#rx_pitch")->value));
-			//write_console(FONT_LOG_TX, f->value);
 			f->value[0] = 0;		
 		}
 		else if (a >= ' ' && a <= 127 && strlen(f->value) < f->max-1){
@@ -2224,6 +2222,7 @@ int do_macro(struct field *f, cairo_t *gfx, int event, int a, int b){
 		if (!strcmp(mode, "FT8") && strlen(buff)){
 			//we use the setting of the PITCH control for tx freq
 			ft8_tx(buff, atoi(get_field("#rx_pitch")->value));
+			set_field("#text_in", "");
 			//write_console(FONT_LOG_TX, buff);
 		}
 		else if (strlen(buff)){
@@ -3062,7 +3061,9 @@ void utc_set(char *args){
 	setenv("TZ", "UTC", 1);	
 	gm_now = mktime(&t);
 
+	write_console(FONT_LOG, "UTC time is set\n");
 	time_delta =(long)gm_now -(long)(millis()/1000l);
+	printf("time_delta = %ld\n", time_delta);
 }
 
 void do_cmd(char *cmd){	

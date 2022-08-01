@@ -97,6 +97,7 @@ int ft8_tx_buff_index = 0;
 int	ft8_tx_nsamples = 0;
 int ft8_do_decode = 0;
 int	ft8_do_tx = 0;
+int	ft8_pitch = 0;
 int	ft8_mode = FT8_SEMI;
 pthread_t ft8_thread;
 
@@ -122,9 +123,16 @@ void ft8_interpret(char *received, char *transmit){
 	char second_word[100];
 	char third_word[100];
 	char fourth_word[100];
+	int freq;
 
 	//reset the transmit buffer
 	transmit[0]= 0;	
+
+	//extract the received frequency if any
+	char *f = received + 17;
+	if (*f == ' ')
+		f++;
+	ft8_pitch = atoi(f);
 
 	//move past the prefixes	
 	char *q, *p = received + 25;
@@ -161,7 +169,6 @@ void ft8_interpret(char *received, char *transmit){
 		*q++ = *p++;
 	*q = 0;
 
-
 	if (!strcmp(first_word, "CQ")){
 		if (strlen(second_word) == 2 && strlen(fourth_word) > 0){
 			strcpy(contact_callsign, third_word);
@@ -174,6 +181,7 @@ void ft8_interpret(char *received, char *transmit){
 
 		char grid_square[10];
 		strcpy(grid_square, mygrid);
+		strcpy(sent_rst, "-10"); //this is fudged, replace it with the actual value
 		grid_square[4] = 0;
 		received_rst[0] = 0;
 		sprintf(transmit, "%s %s %s", contact_callsign, mycallsign, grid_square);
@@ -220,25 +228,25 @@ void ft8_tx(char *message, int freq){
 	char cmd[200], buff[1000];
 	FILE	*pf;
 
-
 	for (int i = 0; i < strlen(message); i++)
 		message[i] = toupper(message[i]);
 
 	//timestamp the packets for display log
 	time_t	rawtime = time_sbitx();
 	char time_str[20];
-//	time(&rawtime);
 	struct tm *t = gmtime(&rawtime);
 	sprintf(time_str, "%02d%02d%02d                   ", t->tm_hour, t->tm_min, t->tm_sec);
 	write_console(FONT_LOG_TX, time_str);
 	write_console(FONT_LOG_TX, message);
 	write_console(FONT_LOG_TX, "\n");
 
-	//printf("ft8 tx:[%s]\n", message);
-	//generate the ft8 samples into a temporary file
+	if (!strncmp(message, "CQ ", 3) || ft8_pitch == 0) 
+		ft8_pitch = freq;
 
+	printf("transmitting on %d\n", ft8_pitch);
 	sprintf(cmd, "/home/pi/ft8_lib/gen_ft8 \"%s\" /tmp/ft_tx.wav %d", 
-		message, freq);
+			message, ft8_pitch);
+	
 	pf = popen(cmd, "r");
 	while(fgets(buff, sizeof(buff), pf)) 
 		puts(buff);
@@ -296,8 +304,9 @@ void *ft8_thread_function(void *ptr){
 			//is this interesting?
 			if (ft8_mode != FT8_MANUAL && strstr(buff, mycallsign_upper)){
 				ft8_interpret(buff, response);
-				if (ft8_mode && strlen(response))
+				if (ft8_mode && strlen(response)){
 					ft8_tx(response, get_pitch());
+				}
 				else
 					set_field("#text_in", response);
 			}
@@ -321,7 +330,7 @@ void ft8_rx(int32_t *samples, int count){
 	for (int i = 0; i < count; i += decimation_ratio)
 		ft8_rx_buff[ft8_rx_buff_index++] = samples[i];
 
-	int now = time(NULL);
+	int now = time_sbitx();
 	if (now != wallclock)	
 		wallclock = now;
 	else 
@@ -964,7 +973,7 @@ void modem_poll(int mode){
 	int bytes_available = get_tx_data_length();
 	int tx_is_on = is_in_tx();
 	int key_status;
-	time_t now;
+	time_t t;
 	char buffer[10000];
 
 	if (current_mode != mode){
@@ -990,8 +999,8 @@ void modem_poll(int mode){
 
 	switch(mode){
 	case MODE_FT8:
-		now = time_sbitx();
-		if (now % 15 == 0){
+		t = time_sbitx();
+		if ((t % 15) == 0){
 			if(ft8_tx_nsamples > 0 && !tx_is_on){
 				tx_on();	
 			}
@@ -1003,7 +1012,6 @@ void modem_poll(int mode){
 	case MODE_CWR:
 		key_status = key_poll();
 		if (!tx_is_on && (bytes_available || key_status) > 0){
-			puts("switching cw on");
 			tx_on();
 			cw_init();
 			symbol_memory = key_status;
