@@ -1859,7 +1859,7 @@ int do_console(struct field *f, cairo_t *gfx, int event, int a, int b){
 				char ft8_response[100];
 				ft8_interpret(console_stream[l].text, ft8_response);
 				if (ft8_response[0] != 0){
-					set_field("#text_in", ft8_response);
+					//set_field("#text_in", ft8_response);
 					update_log_ed();
 				}
 			}

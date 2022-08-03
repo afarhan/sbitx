@@ -209,7 +209,9 @@ void ft8_interpret(char *received, char *transmit){
 			// this is a fresh call
 			strcpy(contact_callsign, second_word);
 			strcpy(contact_grid, third_word);
-			sprintf(transmit, "%s %s -10", contact_callsign, mycallsign);
+			//don't autorespond, wait for the macro to reply
+			transmit[0] = 0;
+			//sprintf(transmit, "%s %s -10", contact_callsign, mycallsign);
 			strcpy(sent_rst, "-10");
 			received_rst[0] = 0;
 		}

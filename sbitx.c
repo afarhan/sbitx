@@ -578,7 +578,7 @@ void tx_process(
 
 		if (r->mode == MODE_2TONE)
 			i_sample = (1.0 * (vfo_read(&tone_a) 
-										+ vfo_read(&tone_b))) / 80000000000.0;
+										+ vfo_read(&tone_b))) / 50000000000.0;
 		else if (r->mode == MODE_CW || r->mode == MODE_CWR || r->mode == MODE_FT8)
 			i_sample = modem_next_sample(r->mode) / 3;
 		else 
