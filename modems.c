@@ -247,55 +247,16 @@ void ft8_tx(char *message, int freq){
 	write_console(FONT_LOG_TX, message);
 	write_console(FONT_LOG_TX, "\n");
 
-	if (!strncmp(message, "CQ ", 3) || ft8_pitch == 0) 
+//	if (!strncmp(message, "CQ ", 3) || ft8_pitch == 0) 
 		ft8_pitch = freq;
 
-	printf("transmitting on %d\n", ft8_pitch);
 	ft8_tx_nsamples = sbitx_ft8_encode(message, ft8_pitch, ft8_tx_buff, false); 
 	
 
 	ft8_tx_buff_index = 0;
 	//printf("ft8 ready to transmit with %d samples\n", ft8_tx_nsamples);
 }
-/*
-void ft8_tx(char *message, int freq){
-	char cmd[200], buff[1000];
-	FILE	*pf;
 
-	for (int i = 0; i < strlen(message); i++)
-		message[i] = toupper(message[i]);
-
-	//timestamp the packets for display log
-	time_t	rawtime = time_sbitx();
-	char time_str[20];
-	struct tm *t = gmtime(&rawtime);
-	sprintf(time_str, "%02d%02d%02d                   ", t->tm_hour, t->tm_min, t->tm_sec);
-	write_console(FONT_LOG_TX, time_str);
-	write_console(FONT_LOG_TX, message);
-	write_console(FONT_LOG_TX, "\n");
-
-	if (!strncmp(message, "CQ ", 3) || ft8_pitch == 0) 
-		ft8_pitch = freq;
-
-	printf("transmitting on %d\n", ft8_pitch);
-	sprintf(cmd, "/home/pi/ft8_lib/gen_ft8 \"%s\" /tmp/ft_tx.wav %d", 
-			message, ft8_pitch);
-	
-	pf = popen(cmd, "r");
-	while(fgets(buff, sizeof(buff), pf)) 
-		puts(buff);
-	fclose(pf);
-
-	//read the samples into the tx buffer, set up the variables to trigger 
-	//tx on the next 15th second boundary
-
-	pf = fopen("/home/pi/sbitx/ft8tx_float.raw", "r");
-	ft8_tx_nsamples = fread(ft8_tx_buff, sizeof(float), 180000, pf);
-	fclose(pf);
-	ft8_tx_buff_index = 0;
-	//printf("ft8 ready to transmit with %d samples\n", ft8_tx_nsamples);
-}
-*/
 int sbitx_ft8_decode(float *signal, int num_samples, bool is_ft8);
 
 void *ft8_thread_function(void *ptr){
@@ -313,85 +274,8 @@ void *ft8_thread_function(void *ptr){
 		//let the next batch begin
 		ft8_do_decode = 0;
 		ft8_rx_buff_index = 0;
-	
-/*	
-		//timestamp the packets
-		time_t	rawtime = time_sbitx();
-		char time_str[20], response[100];
-		struct tm *t = gmtime(&rawtime);
-		sprintf(time_str, "%02d%02d%02d", t->tm_hour, t->tm_min, t->tm_sec);
-		
-		while(fgets(buff, sizeof(buff), pf)) {
-			strncpy(buff, time_str, 6);
-			write_console(FONT_LOG_RX, buff);
-
-			int i;
-			for (i = 0; i < strlen(mycallsign); i++)
-				mycallsign_upper[i] = toupper(mycallsign[i]);
-			mycallsign_upper[i] = 0;	
-
-			//is this interesting?
-			if (ft8_mode != FT8_MANUAL && strstr(buff, mycallsign_upper)){
-				ft8_interpret(buff, response);
-				if (ft8_mode && strlen(response)){
-					ft8_tx(response, get_pitch());
-				}
-				else
-					set_field("#text_in", response);
-			}
-		}
-	*/
 	}
 }
-
-/*
-void *ft8_thread_function(void *ptr){
-	FILE *pf;
-	char buff[1000], mycallsign_upper[20]; //there are many ways to crash sbitx, bufferoverflow of callsigns is 1
-
-	//wake up every 100 msec to see if there is anything to decode
-	while(1){
-		usleep(1000);
-
-		if (!ft8_do_decode)
-			continue;
-
-		//let the next batch begin
-		ft8_do_decode = 0;
-		ft8_rx_buff_index = 0;
-		
-		//now launch the decoder
-		pf = popen("/home/pi/ft8_lib/decode_ft8 /tmp/ftrx.raw", "r");
-
-		//timestamp the packets
-		time_t	rawtime = time_sbitx();
-		char time_str[20], response[100];
-		struct tm *t = gmtime(&rawtime);
-		sprintf(time_str, "%02d%02d%02d", t->tm_hour, t->tm_min, t->tm_sec);
-
-		while(fgets(buff, sizeof(buff), pf)) {
-			strncpy(buff, time_str, 6);
-			write_console(FONT_LOG_RX, buff);
-
-			int i;
-			for (i = 0; i < strlen(mycallsign); i++)
-				mycallsign_upper[i] = toupper(mycallsign[i]);
-			mycallsign_upper[i] = 0;	
-
-			//is this interesting?
-			if (ft8_mode != FT8_MANUAL && strstr(buff, mycallsign_upper)){
-				ft8_interpret(buff, response);
-				if (ft8_mode && strlen(response)){
-					ft8_tx(response, get_pitch());
-				}
-				else
-					set_field("#text_in", response);
-			}
-		}
-		fclose(pf);
-	}
-}
-*/
 
 // the ft8 sampling is at 12000, the incoming samples are at
 // 96000 samples/sec
