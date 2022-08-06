@@ -272,42 +272,6 @@ static void rect(cairo_t *gfx, int x, int y, int w, int h,
   cairo_stroke(gfx);
 }
 
-void ui_init(int argc, char *argv[]){
- 
-  gtk_init( &argc, &argv );
-
-  window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-  gtk_window_set_default_size(GTK_WINDOW(window), 800, 480);
-  gtk_window_set_title( GTK_WINDOW(window), "sBITX" );
-	gtk_window_set_icon_from_file(GTK_WINDOW(window), "/home/pi/sbitx/sbitx_icon.png", NULL);
- 
-  display_area = gtk_drawing_area_new();
-  gtk_container_add( GTK_CONTAINER(window), display_area );
-
-  g_signal_connect( G_OBJECT(window), "destroy", G_CALLBACK( gtk_main_quit ), NULL );
-  g_signal_connect( G_OBJECT(display_area), "draw", G_CALLBACK( on_draw_event ), NULL );
-  g_signal_connect (G_OBJECT (window), "key_press_event", G_CALLBACK (on_key_press), NULL);
-  g_signal_connect (G_OBJECT (window), "key_release_event", G_CALLBACK (on_key_release), NULL);
-  g_signal_connect (G_OBJECT (window), "window_state_event", G_CALLBACK (on_window_state), NULL);
-	g_signal_connect (G_OBJECT(display_area), "button_press_event", G_CALLBACK (on_mouse_press), NULL);
-	g_signal_connect (G_OBJECT(window), "button_release_event", G_CALLBACK (on_mouse_release), NULL);
-	g_signal_connect (G_OBJECT(display_area), "motion_notify_event", G_CALLBACK (on_mouse_move), NULL);
-	g_signal_connect (G_OBJECT(display_area), "scroll_event", G_CALLBACK (on_scroll), NULL);
-	g_signal_connect(G_OBJECT(window), "configure_event", G_CALLBACK(on_resize), NULL);
-
-  /* Ask to receive events the drawing area doesn't normally
-   * subscribe to. In particular, we need to ask for the
-   * button press and motion notify events that want to handle.
-   */
-  gtk_widget_set_events (display_area, gtk_widget_get_events (display_area)
-                                     | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK 
-																			| GDK_SCROLL_MASK
-                                     | GDK_POINTER_MOTION_MASK);
-
-
-  gtk_widget_show_all( window );
-	gtk_window_fullscreen(GTK_WINDOW(window));
-}
 
 /****************************************************************************
 	Using the above hooks and primitives, we build user interface controls,
@@ -920,6 +884,7 @@ void draw_field(GtkWidget *widget, cairo_t *gfx, struct field *f){
 			break;
 	}
 }
+
 
 static int mode_id(char *mode_str){
 	if (!strcmp(mode_str, "CW"))
@@ -2819,7 +2784,10 @@ gboolean ui_tick(gpointer gook){
 		ticks = 0;
 		update_field(get_field("#console"));
 		update_field(get_field("#status"));
-	
+
+		if (digitalRead(ENC1_SW) == 0)
+				focus_field(get_field("r1:volume"));
+
 		if (record_start)
 			update_field(get_field("#record"));
 
@@ -2863,6 +2831,42 @@ gboolean ui_tick(gpointer gook){
 	return TRUE;
 }
 
+void ui_init(int argc, char *argv[]){
+ 
+  gtk_init( &argc, &argv );
+
+  window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+  gtk_window_set_default_size(GTK_WINDOW(window), 800, 480);
+  gtk_window_set_title( GTK_WINDOW(window), "sBITX" );
+	gtk_window_set_icon_from_file(GTK_WINDOW(window), "/home/pi/sbitx/sbitx_icon.png", NULL);
+ 
+  display_area = gtk_drawing_area_new();
+  gtk_container_add( GTK_CONTAINER(window), display_area );
+
+  g_signal_connect( G_OBJECT(window), "destroy", G_CALLBACK( gtk_main_quit ), NULL );
+  g_signal_connect( G_OBJECT(display_area), "draw", G_CALLBACK( on_draw_event ), NULL );
+  g_signal_connect (G_OBJECT (window), "key_press_event", G_CALLBACK (on_key_press), NULL);
+  g_signal_connect (G_OBJECT (window), "key_release_event", G_CALLBACK (on_key_release), NULL);
+  g_signal_connect (G_OBJECT (window), "window_state_event", G_CALLBACK (on_window_state), NULL);
+	g_signal_connect (G_OBJECT(display_area), "button_press_event", G_CALLBACK (on_mouse_press), NULL);
+	g_signal_connect (G_OBJECT(window), "button_release_event", G_CALLBACK (on_mouse_release), NULL);
+	g_signal_connect (G_OBJECT(display_area), "motion_notify_event", G_CALLBACK (on_mouse_move), NULL);
+	g_signal_connect (G_OBJECT(display_area), "scroll_event", G_CALLBACK (on_scroll), NULL);
+	g_signal_connect(G_OBJECT(window), "configure_event", G_CALLBACK(on_resize), NULL);
+
+  /* Ask to receive events the drawing area doesn't normally
+   * subscribe to. In particular, we need to ask for the
+   * button press and motion notify events that want to handle.
+   */
+  gtk_widget_set_events (display_area, gtk_widget_get_events (display_area)
+                                     | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK 
+																			| GDK_SCROLL_MASK
+                                     | GDK_POINTER_MOTION_MASK);
+
+  gtk_widget_show_all( window );
+	gtk_window_fullscreen(GTK_WINDOW(window));
+	focus_field(get_field("r1:volume"));
+}
 
 /* handle modem callbacks for more data */
 
