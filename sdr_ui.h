@@ -23,5 +23,6 @@ void macro_label(int fn_key, char *label);
 void macro_list();
 void update_log_ed();
 void write_call_log();
+time_t time_sbitx();
 
-#define VER_STR "sbitx v1.0"
+#define VER_STR "sbitx v1.1"
