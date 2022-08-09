@@ -2693,7 +2693,8 @@ void hw_init(){
 	enc_init(&enc_a, ENC_FAST, ENC1_B, ENC1_A);
 	enc_init(&enc_b, ENC_FAST, ENC2_A, ENC2_B);
 
-	int e = g_timeout_add(10, ui_tick, NULL);
+	int e = g_timeout_add(1, ui_tick, NULL);
+	//int e = g_timeout_add(10, ui_tick, NULL);
 
 	wiringPiISR(ENC2_A, INT_EDGE_BOTH, tuning_isr);
 	wiringPiISR(ENC2_B, INT_EDGE_BOTH, tuning_isr);
@@ -2773,7 +2774,7 @@ gboolean ui_tick(gpointer gook){
 		tuning_ticks++;
 	}
 
-	if (ticks == 10){
+	if (ticks == 100){
 
 		struct field *f = get_field("spectrum");
 		update_field(f);	//move this each time the spectrum watefall index is moved
@@ -2801,10 +2802,10 @@ gboolean ui_tick(gpointer gook){
 			edit_field(f_text, f_focus->label[0]);
 			focus_since = millis();
 		}
+  }
 
-		modem_poll(mode_id(get_field("r1:mode")->value));
-		update_field(get_field("#text_in")); //modem might have extracted some text
-	}
+	modem_poll(mode_id(get_field("r1:mode")->value));
+	update_field(get_field("#text_in")); //modem might have extracted some text
 
   hamlib_slice();
 	//wsjtx_slice();
