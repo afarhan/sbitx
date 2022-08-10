@@ -163,6 +163,7 @@ static struct console_line console_stream[MAX_CONSOLE_LINES];
 int console_current_line = 0;
 int	console_selected_line = -1;
 
+char temp_str[11];
 
 // event ids, some of them are mapped from gtk itself
 #define FIELD_DRAW 0
@@ -1386,6 +1387,43 @@ int waterfall_fn(struct field *f, cairo_t *gfx, int event, int a, int b){
 	}
 }
 
+char* freq_with_separators(char* freq_str){
+
+  int freq = atoi(freq_str);
+  int f_mhz, f_khz, f_hz;
+  char temp_string[11];
+  static char return_string[11];
+
+  f_mhz = freq / 1000000;
+  f_khz = (freq - (f_mhz*1000000)) / 1000;
+  f_hz = freq - (f_mhz*1000000) - (f_khz*1000);
+
+  sprintf(temp_string,"%d",f_mhz);
+  strcpy(return_string,temp_string);
+  strcat(return_string,".");
+  if (f_khz < 100){
+	  strcat(return_string,"0");
+  }
+  if (f_khz < 10){
+    strcat(return_string,"0");
+  }
+  sprintf(temp_string,"%d",f_khz);
+  strcat(return_string,temp_string);
+  strcat(return_string,".");
+  if (f_hz < 100){
+    strcat(return_string,"0");
+  }
+  if (f_hz < 10){
+    strcat(return_string,"0");
+  }
+  sprintf(temp_string,"%d",f_hz);
+  strcat(return_string,temp_string);
+  return return_string;  
+  
+
+
+}
+
 void draw_dial(struct field *f, cairo_t *gfx){
 	struct font_style *s = font_table + 0;
 	struct field *rit = get_field("#rit");
@@ -1410,27 +1448,31 @@ void draw_dial(struct field *f, cairo_t *gfx){
 	offset = f->width/2 - width/2;
 	if (!strcmp(rit->value, "ON")){
 		if (!in_tx){
-			sprintf(buff, "TX:%s", f->value);
+			sprintf(buff, "TX:%s", freq_with_separators(f->value));
 			draw_text(gfx, f->x+5 , f->y+6 , buff , FONT_LARGE_FIELD);
-			sprintf(buff, "RX:%d", atoi(f->value) + rit_delta);
+      sprintf(temp_str, "%d", (atoi(f->value) + rit_delta));
+      sprintf(buff, "RX:%s", freq_with_separators(temp_str));
 			draw_text(gfx, f->x+5 , f->y+25 , buff , FONT_LARGE_VALUE);
 		}
 		else {
-			sprintf(buff, "TX:%s", f->value);
+      sprintf(buff, "TX:%s", freq_with_separators(f->value));
 			draw_text(gfx, f->x+5 , f->y+25 , buff , FONT_LARGE_VALUE);
-			sprintf(buff, "RX:%d", atoi(f->value) + rit_delta);
+      sprintf(temp_str, "%d", (atoi(f->value) + rit_delta));
+      sprintf(buff, "RX:%s", freq_with_separators(temp_str));
 			draw_text(gfx, f->x+5 , f->y+6 , buff , FONT_LARGE_FIELD);
 		}	
 	}
 	else if (!strcmp(split->value, "ON")){
 		if (!in_tx){
-			sprintf(buff, "TX:%d", vfo_b_freq);
+      sprintf(temp_str, "%d", vfo_b_freq);
+      sprintf(buff, "TX:%s", freq_with_separators(temp_str));
 			draw_text(gfx, f->x+5 , f->y+6 , buff , FONT_LARGE_FIELD);
-			sprintf(buff, "RX:%d", atoi(f->value));
+      sprintf(buff, "RX:%s", freq_with_separators(f->value));
 			draw_text(gfx, f->x+5 , f->y+25 , buff , FONT_LARGE_VALUE);
 		}
 		else {
-			sprintf(buff, "TX:%d", vfo_b_freq);
+      sprintf(temp_str, "%d", vfo_b_freq);
+      sprintf(buff, "TX:%s", freq_with_separators(temp_str));
 			draw_text(gfx, f->x+5 , f->y+25 , buff , FONT_LARGE_VALUE);
 			sprintf(buff, "RX:%d", atoi(f->value) + rit_delta);
 			draw_text(gfx, f->x+5 , f->y+6 , buff , FONT_LARGE_FIELD);
@@ -1438,27 +1480,31 @@ void draw_dial(struct field *f, cairo_t *gfx){
 	}
 	else if (!strcmp(vfo->value, "A")){
 		if (!in_tx){
-			sprintf(buff, "B:%d", vfo_b_freq);
+      sprintf(temp_str, "%d", vfo_b_freq);
+      sprintf(buff, "B:%s", freq_with_separators(temp_str));
 			draw_text(gfx, f->x+15 , f->y+6 , buff , FONT_LARGE_FIELD);
-			sprintf(buff, "A:%s", f->value);
+      sprintf(buff, "A:%s", freq_with_separators(f->value));
 			draw_text(gfx, f->x+5 , f->y+25 , buff , FONT_LARGE_VALUE);
 		} else {
-			sprintf(buff, "B:%d", vfo_b_freq);
+      sprintf(temp_str, "%d", vfo_b_freq);
+      sprintf(buff, "B:%s", freq_with_separators(temp_str));
 			draw_text(gfx, f->x+5 , f->y+6 , buff , FONT_LARGE_FIELD);
-			sprintf(buff, "TX:%s", f->value);
+      sprintf(buff, "TX:%s", freq_with_separators(f->value));
 			draw_text(gfx, f->x+5 , f->y+25 , buff , FONT_LARGE_VALUE);
 		}	
 	}
 	else{ 
 		if (!in_tx){
-			sprintf(buff, "A:%d", vfo_a_freq);
+      sprintf(temp_str, "%d", vfo_a_freq);
+      sprintf(buff, "A:%s", freq_with_separators(temp_str));
 			draw_text(gfx, f->x+5 , f->y+6 , buff , FONT_LARGE_FIELD);
-			sprintf(buff, "B:%s", f->value);
+			sprintf(buff, "B:%s", freq_with_separators(f->value));
 			draw_text(gfx, f->x+5 , f->y+25 , buff , FONT_LARGE_VALUE);
 		}else {
-			sprintf(buff, "A:%d", vfo_a_freq);
+      sprintf(temp_str, "%d", vfo_a_freq);
+      sprintf(buff, "A:%s", freq_with_separators(temp_str));
 			draw_text(gfx, f->x+5 , f->y+6 , buff , FONT_LARGE_FIELD);
-			sprintf(buff, "TX:%s", f->value);
+			sprintf(buff, "TX:%s", freq_with_separators(f->value));
 			draw_text(gfx, f->x+5 , f->y+25 , buff , FONT_LARGE_VALUE);
 		}
 	} 
