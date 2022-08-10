@@ -53,7 +53,7 @@ static int tx_compress = 0;
 static double spectrum_speed = 0.1;
 static int in_tx = 0;
 static int rx_tx_ramp = 0;
-static int sidetone = 2000000000.0;
+static int sidetone = 2000000000;
 struct vfo tone_a, tone_b; //these are audio tone generators
 static int tx_use_line = 0;
 struct rx *rx_list = NULL;
