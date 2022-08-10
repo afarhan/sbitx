@@ -330,7 +330,7 @@ char*mode_name[MAX_MODES] = {
 
 static int serial_fd = -1;
 static int xit = 512; 
-static int tuning_step = 1000;
+static long int tuning_step = 1000;
 static int tx_mode = MODE_USB;
 
 
@@ -470,7 +470,7 @@ struct field main_controls[] = {
 
 	// top row
 	{"#step", NULL, 400, 0 ,50, 50, "STEP", 1, "50Hz", FIELD_SELECTION, FONT_FIELD_VALUE, 
-		"100KHz/10KHz/1KHz/100Hz/10Hz", 0,0,0},
+		"1MHz/100KHz/10KHz/1KHz/100Hz/10Hz", 0,0,0},
 	{"#vfo", NULL, 450, 0 ,50, 50, "VFO", 1, "A", FIELD_SELECTION, FONT_FIELD_VALUE, 
 		"A/B", 0,0,0},
 	{"#span", NULL, 500, 0 ,50, 50, "SPAN", 1, "25KHz", FIELD_SELECTION, FONT_FIELD_VALUE, 
@@ -3119,6 +3119,8 @@ void do_cmd(char *cmd){
 		}
 	}
 	//tuning step
+	else if (!strcmp(request, "#step=1MHz"))
+		tuning_step = 1000000;
 	else if (!strcmp(request, "#step=100KHz"))
 		tuning_step = 100000;
 	else if (!strcmp(request, "#step=10KHz"))
