@@ -240,12 +240,10 @@ void ft8_tx(char *message, int freq){
 
 	//timestamp the packets for display log
 	time_t	rawtime = time_sbitx();
-	char time_str[20];
 	struct tm *t = gmtime(&rawtime);
-	sprintf(time_str, "%02d%02d%02d                   ", t->tm_hour, t->tm_min, t->tm_sec);
-	write_console(FONT_LOG_TX, time_str);
-	write_console(FONT_LOG_TX, message);
-	write_console(FONT_LOG_TX, "\n");
+
+  sprintf(buff, "%02d%02d%02d           %04d ~  %s\n", t->tm_hour, t->tm_min, t->tm_sec, get_pitch(), message);
+	write_console(FONT_LOG_TX, buff);
 
 //	if (!strncmp(message, "CQ ", 3) || ft8_pitch == 0) 
 		ft8_pitch = freq;

@@ -629,8 +629,8 @@ int sound_loop(){
 		int jj = 0;
 		int ii = 0;
 		while (ii < pcmreturn){
-			line_out[jj++] = output_i[ii];
-			line_out[jj++] = output_i[ii];
+			line_out[jj++] = output_i[ii]/10;
+			line_out[jj++] = output_i[ii]/10;
 			ii += 2;
 		}
 

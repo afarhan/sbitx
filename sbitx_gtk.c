@@ -33,6 +33,8 @@ The initial sync between the gui values, the core radio values, settings, et al 
 #include "sdr_ui.h"
 #include "ini.h"
 #include "hamlib.h"
+#include "remote.h"
+#include "remote.h"
 #include "wsjtx.h"
 
 /* Front Panel controls */
@@ -474,7 +476,7 @@ struct field main_controls[] = {
 	{"#vfo", NULL, 450, 0 ,50, 50, "VFO", 1, "A", FIELD_SELECTION, FONT_FIELD_VALUE, 
 		"A/B", 0,0,0},
 	{"#span", NULL, 500, 0 ,50, 50, "SPAN", 1, "25KHz", FIELD_SELECTION, FONT_FIELD_VALUE, 
-		"25KHz/10KHz/2.5KHz", 0,0,0},
+		"25KHz/10KHz/6KHz/2.5KHz", 0,0,0},
 
 	{"spectrum", do_spectrum, 400, 80, 400, 100, "Spectrum ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, 
 		"", 0,0,0},  
@@ -743,6 +745,8 @@ void write_console(int style, char *text){
 	//write to the scroll
 	fwrite(text, strlen(text), 1, pf);
 	fclose(pf);
+
+	remote_write(text);
 
 	while(*text){
 		char c = *text;
@@ -1855,6 +1859,14 @@ int do_status(struct field *f, cairo_t *gfx, int event, int a, int b){
 	return 0;
 }
 
+void execute_app(char *app){
+	int pid = fork();
+	if (!pid){
+		system(app);
+		exit(0);	
+	}
+}
+
 int do_text(struct field *f, cairo_t *gfx, int event, int a, int b){
 	int width, offset, text_length, line_start, y;	
 	char this_line[MAX_FIELD_LENGTH];
@@ -2058,8 +2070,8 @@ void write_call_log(){
 		contest_serial++;
 		sprintf(sent_exchange, "%04d", contest_serial);
 	}
-	//wipe it clean
-	call_wipe();
+	//wipe it clean, deffered for the time being
+	//call_wipe();
 	redraw_flag++;
 }
 
@@ -2159,6 +2171,14 @@ void macro_get_var(char *var, char *s){
 		*s = 0;
 }
 
+void qrz(char *callsign){
+	char 	bash_line[1000];
+	sprintf(bash_line, "Querying qrz.com for %s\n", callsign);
+	write_console(FONT_LOG, bash_line);
+	sprintf(bash_line, "chromium-browser https://qrz.com/DB/%s &", callsign);
+	execute_app(bash_line);
+}
+
 int do_macro(struct field *f, cairo_t *gfx, int event, int a, int b){
 	char buff[256], *mode;
 
@@ -2169,10 +2189,18 @@ int do_macro(struct field *f, cairo_t *gfx, int event, int a, int b){
 			set_ui(LAYOUT_KBD);
 			return 1;
 		}
-		else if (!strcmp(f->cmd, "#mfwipe"))
+		else if (!strcmp(f->cmd, "#mfqrz") && strlen(contact_callsign) > 0){
+			qrz(contact_callsign);
+			return 1;
+		}
+		else if (!strcmp(f->cmd, "#mfwipe")){
 			call_wipe();
-		else if (!strcmp(f->cmd, "#mflog"))
+			return 1;
+		}	
+		else if (!strcmp(f->cmd, "#mflog")){
 			write_call_log();
+			return 1;
+		}
 		else 
 		 	macro_exec(fn_key, buff);
 	
@@ -2807,6 +2835,7 @@ gboolean ui_tick(gpointer gook){
 	}
 
   hamlib_slice();
+	remote_slice();
 	//wsjtx_slice();
 	save_user_settings(0);
 
@@ -3004,21 +3033,7 @@ void change_band(char *request){
 	clear_tx_text_buffer();
 }
 
-void execute_app(char *app){
-	int pid = fork();
-	if (!pid){
-		system(app);
-		exit(0);	
-	}
-}
 
-void qrz(char *callsign){
-	char 	bash_line[1000];
-	sprintf(bash_line, "Querying qrz.com for %s\n", callsign);
-	write_console(FONT_LOG, bash_line);
-	sprintf(bash_line, "chromium-browser https://qrz.com/DB/%s &", callsign);
-	execute_app(bash_line);
-}
 
 void utc_set(char *args){
 	int n[7], i;
@@ -3132,6 +3147,8 @@ void do_cmd(char *cmd){
 	//spectrum bandwidth
 	else if (!strcmp(request, "#span=2.5KHz"))
 		spectrum_span = 2500;
+	else if (!strcmp(request, "#span=6KHz"))
+		spectrum_span = 6000;
 	else if (!strcmp(request, "#span=10KHz"))
 		spectrum_span = 10000;
 	else if (!strcmp(request, "#span=25KHz"))
@@ -3302,20 +3319,20 @@ void cmd_exec(char *cmd){
 			case 'a':
 			case 'A':
 				ft8_setmode(FT8_AUTO);
-				write_console(FONT_LOG, "\ft8mode set to auto\n");
+				write_console(FONT_LOG, "ft8mode set to auto\n");
 				break;
 			case 's':
 			case 'S':
 				ft8_setmode(FT8_SEMI);
-				write_console(FONT_LOG, "\ft8mode set to semiauto\n");
+				write_console(FONT_LOG, "ft8mode set to semiauto\n");
 				break;
 			case 'm':
 			case 'M':
 				ft8_setmode(FT8_MANUAL);
-				write_console(FONT_LOG, "\ft8mode set to manual\n");
+				write_console(FONT_LOG, "ft8mode set to manual\n");
 				break;
 			default:
-				write_console(FONT_LOG, "Usage: \ft8mode auto or semi or manual\n");
+				write_console(FONT_LOG, "Usage: \\ft8mode auto or semi or manual\n");
 				break;
 		}
 	}
@@ -3483,6 +3500,7 @@ int main( int argc, char* argv[] ) {
 	// you don't want to save the recently loaded settings
 	settings_updated = 0;
   hamlib_start();
+	remote_start();
 
 	int not_synchronized = 0;
 	FILE *pf = popen("chronyc tracking", "r");
