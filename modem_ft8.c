@@ -269,9 +269,9 @@ void monitor_init(monitor_t* me, const monitor_config_t* cfg)
     size_t fft_work_size;
     kiss_fftr_alloc(me->nfft, 0, 0, &fft_work_size);
 
-    LOG(LOG_INFO, "Block size = %d\n", me->block_size);
-    LOG(LOG_INFO, "Subblock size = %d\n", me->subblock_size);
-    LOG(LOG_INFO, "N_FFT = %d\n", me->nfft);
+    //LOG(LOG_INFO, "Block size = %d\n", me->block_size);
+    //LOG(LOG_INFO, "Subblock size = %d\n", me->subblock_size);
+    //LOG(LOG_INFO, "N_FFT = %d\n", me->nfft);
     LOG(LOG_DEBUG, "FFT work area = %zu\n", fft_work_size);
 
     me->fft_work = malloc(fft_work_size);
@@ -364,7 +364,7 @@ int sbitx_ft8_decode(float *signal, int num_samples, bool is_ft8)
 
     int sample_rate = 12000;
 
-    LOG(LOG_INFO, "Sample rate %d Hz, %d samples, %.3f seconds\n", sample_rate, num_samples, (double)num_samples / sample_rate);
+    LOG(LOG_DEBUG, "Sample rate %d Hz, %d samples, %.3f seconds\n", sample_rate, num_samples, (double)num_samples / sample_rate);
 
     // Compute FFT over the whole signal and store it
     monitor_t mon;
@@ -426,21 +426,14 @@ int sbitx_ft8_decode(float *signal, int num_samples, bool is_ft8)
 
         message_t message;
         decode_status_t status;
-        if (!ft8_decode(&mon.wf, cand, &message, kLDPC_iterations, &status))
-        {
+        if (!ft8_decode(&mon.wf, cand, &message, kLDPC_iterations, &status)){
             // printf("000000 %3d %+4.2f %4.0f ~  ---\n", cand->score, time_sec, freq_hz);
             if (status.ldpc_errors > 0)
-            {
                 LOG(LOG_DEBUG, "LDPC decode: %d errors\n", status.ldpc_errors);
-            }
             else if (status.crc_calculated != status.crc_extracted)
-            {
                 LOG(LOG_DEBUG, "CRC mismatch!\n");
-            }
             else if (status.unpack_status != 0)
-            {
                 LOG(LOG_DEBUG, "Error while unpacking!\n");
-            }
             continue;
         }
 
@@ -448,28 +441,23 @@ int sbitx_ft8_decode(float *signal, int num_samples, bool is_ft8)
         int idx_hash = message.hash % kMax_decoded_messages;
         bool found_empty_slot = false;
         bool found_duplicate = false;
-        do
-        {
-            if (decoded_hashtable[idx_hash] == NULL)
-            {
+        do {
+            if (decoded_hashtable[idx_hash] == NULL) {
                 LOG(LOG_DEBUG, "Found an empty slot\n");
                 found_empty_slot = true;
             }
-            else if ((decoded_hashtable[idx_hash]->hash == message.hash) && (0 == strcmp(decoded_hashtable[idx_hash]->text, message.text)))
-            {
+            else if ((decoded_hashtable[idx_hash]->hash == message.hash) && (0 == strcmp(decoded_hashtable[idx_hash]->text, message.text))) {
                 LOG(LOG_DEBUG, "Found a duplicate [%s]\n", message.text);
                 found_duplicate = true;
             }
-            else
-            {
+            else {
                 LOG(LOG_DEBUG, "Hash table clash!\n");
                 // Move on to check the next entry in hash table
                 idx_hash = (idx_hash + 1) % kMax_decoded_messages;
             }
         } while (!found_empty_slot && !found_duplicate);
 
-        if (found_empty_slot)
-        {
+        if (found_empty_slot) {
            // Fill the empty hashtable slot
            memcpy(&decoded[idx_hash], &message, sizeof(message));
            decoded_hashtable[idx_hash] = &decoded[idx_hash];
@@ -481,7 +469,11 @@ int sbitx_ft8_decode(float *signal, int num_samples, bool is_ft8)
           sprintf(buff, "%s %3d %+4.2f %4.0f ~  %s\n", time_str, 
 						cand->score, time_sec, freq_hz, message.text);
 
-					write_console(FONT_LOG_RX, buff);
+					if (strstr(buff, mycallsign_upper))
+						write_console(FONT_LOG_TX, buff);
+					else 
+						write_console(FONT_LOG_RX, buff);
+
 					if (ft8_mode != FT8_MANUAL && strstr(buff, mycallsign_upper)){
 						char response[1000];
 						ft8_interpret(buff, response);
@@ -493,7 +485,7 @@ int sbitx_ft8_decode(float *signal, int num_samples, bool is_ft8)
 					n_decodes++;
         }
     }
-    LOG(LOG_INFO, "Decoded %d messages\n", num_decoded);
+    //LOG(LOG_INFO, "Decoded %d messages\n", num_decoded);
 
     monitor_free(&mon);
 
