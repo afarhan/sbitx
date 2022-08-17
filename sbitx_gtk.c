@@ -33,6 +33,8 @@ The initial sync between the gui values, the core radio values, settings, et al 
 #include "sdr_ui.h"
 #include "ini.h"
 #include "hamlib.h"
+#include "remote.h"
+#include "remote.h"
 #include "wsjtx.h"
 
 /* Front Panel controls */
@@ -163,7 +165,8 @@ static struct console_line console_stream[MAX_CONSOLE_LINES];
 int console_current_line = 0;
 int	console_selected_line = -1;
 
-char temp_str[11];
+char temp_str[11];  // k3ng 2022-08-16
+
 
 // event ids, some of them are mapped from gtk itself
 #define FIELD_DRAW 0
@@ -331,7 +334,7 @@ char*mode_name[MAX_MODES] = {
 
 static int serial_fd = -1;
 static int xit = 512; 
-static long int tuning_step = 1000;
+static long int tuning_step = 1000; // k3ng 2022-08-16
 static int tx_mode = MODE_USB;
 
 
@@ -436,7 +439,7 @@ struct field main_controls[] = {
 	{ "r1:low", NULL, 550, 330, 50, 50, "LOW", 40, "300", FIELD_NUMBER, FONT_FIELD_VALUE, 
 		"", 0,4000, 50},
 	{ "r1:high", NULL, 600, 330, 50, 50, "HIGH", 40, "3000", FIELD_NUMBER, FONT_FIELD_VALUE, 
-		"", 300, 10000, 50},
+		"", 300, 10000, 50}, // k3ng 2022-08-16
 
 	{ "r1:agc", NULL, 650, 330, 50, 50, "AGC", 40, "SLOW", FIELD_SELECTION, FONT_FIELD_VALUE, 
 		"OFF/SLOW/MED/FAST", 0, 1024, 1},
@@ -475,7 +478,7 @@ struct field main_controls[] = {
 	{"#vfo", NULL, 450, 0 ,50, 50, "VFO", 1, "A", FIELD_SELECTION, FONT_FIELD_VALUE, 
 		"A/B", 0,0,0},
 	{"#span", NULL, 500, 0 ,50, 50, "SPAN", 1, "25KHz", FIELD_SELECTION, FONT_FIELD_VALUE, 
-		"25KHz/10KHz/2.5KHz", 0,0,0},
+		"25KHz/10KHz/6KHz/2.5KHz", 0,0,0},
 
 	{"spectrum", do_spectrum, 400, 80, 400, 100, "Spectrum ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, 
 		"", 0,0,0},  
@@ -744,6 +747,8 @@ void write_console(int style, char *text){
 	//write to the scroll
 	fwrite(text, strlen(text), 1, pf);
 	fclose(pf);
+
+	remote_write(text);
 
 	while(*text){
 		char c = *text;
@@ -1387,7 +1392,7 @@ int waterfall_fn(struct field *f, cairo_t *gfx, int event, int a, int b){
 	}
 }
 
-char* freq_with_separators(char* freq_str){
+char* freq_with_separators(char* freq_str){ // k3ng 2022-08-16
 
   int freq = atoi(freq_str);
   int f_mhz, f_khz, f_hz;
@@ -1402,7 +1407,7 @@ char* freq_with_separators(char* freq_str){
   strcpy(return_string,temp_string);
   strcat(return_string,".");
   if (f_khz < 100){
-	  strcat(return_string,"0");
+    strcat(return_string,"0");
   }
   if (f_khz < 10){
     strcat(return_string,"0");
@@ -1418,11 +1423,8 @@ char* freq_with_separators(char* freq_str){
   }
   sprintf(temp_string,"%d",f_hz);
   strcat(return_string,temp_string);
-  return return_string;  
-  
-
-
-}
+  return return_string;
+} // k3ng 2022-08-16
 
 void draw_dial(struct field *f, cairo_t *gfx){
 	struct font_style *s = font_table + 0;
@@ -1446,68 +1448,68 @@ void draw_dial(struct field *f, cairo_t *gfx){
 	draw_text(gfx, f->x + offset, f->y+5 ,  f->label, FONT_FIELD_LABEL);
 	width = measure_text(gfx, f->value, f->font_index);
 	offset = f->width/2 - width/2;
-	if (!strcmp(rit->value, "ON")){
-		if (!in_tx){
-			sprintf(buff, "TX:%s", freq_with_separators(f->value));
-			draw_text(gfx, f->x+5 , f->y+6 , buff , FONT_LARGE_FIELD);
-      sprintf(temp_str, "%d", (atoi(f->value) + rit_delta));
-      sprintf(buff, "RX:%s", freq_with_separators(temp_str));
-			draw_text(gfx, f->x+5 , f->y+25 , buff , FONT_LARGE_VALUE);
-		}
-		else {
+  if (!strcmp(rit->value, "ON")){
+    if (!in_tx){
       sprintf(buff, "TX:%s", freq_with_separators(f->value));
-			draw_text(gfx, f->x+5 , f->y+25 , buff , FONT_LARGE_VALUE);
+      draw_text(gfx, f->x+5 , f->y+6 , buff , FONT_LARGE_FIELD);
       sprintf(temp_str, "%d", (atoi(f->value) + rit_delta));
       sprintf(buff, "RX:%s", freq_with_separators(temp_str));
-			draw_text(gfx, f->x+5 , f->y+6 , buff , FONT_LARGE_FIELD);
-		}	
-	}
-	else if (!strcmp(split->value, "ON")){
-		if (!in_tx){
+      draw_text(gfx, f->x+5 , f->y+25 , buff , FONT_LARGE_VALUE);
+    }
+    else {
+      sprintf(buff, "TX:%s", freq_with_separators(f->value));
+      draw_text(gfx, f->x+5 , f->y+25 , buff , FONT_LARGE_VALUE);
+      sprintf(temp_str, "%d", (atoi(f->value) + rit_delta));
+      sprintf(buff, "RX:%s", freq_with_separators(temp_str));
+      draw_text(gfx, f->x+5 , f->y+6 , buff , FONT_LARGE_FIELD);
+    }
+  }
+  else if (!strcmp(split->value, "ON")){
+    if (!in_tx){
       sprintf(temp_str, "%d", vfo_b_freq);
       sprintf(buff, "TX:%s", freq_with_separators(temp_str));
-			draw_text(gfx, f->x+5 , f->y+6 , buff , FONT_LARGE_FIELD);
+      draw_text(gfx, f->x+5 , f->y+6 , buff , FONT_LARGE_FIELD);
       sprintf(buff, "RX:%s", freq_with_separators(f->value));
-			draw_text(gfx, f->x+5 , f->y+25 , buff , FONT_LARGE_VALUE);
-		}
-		else {
+      draw_text(gfx, f->x+5 , f->y+25 , buff , FONT_LARGE_VALUE);
+    }
+    else {
       sprintf(temp_str, "%d", vfo_b_freq);
       sprintf(buff, "TX:%s", freq_with_separators(temp_str));
-			draw_text(gfx, f->x+5 , f->y+25 , buff , FONT_LARGE_VALUE);
-			sprintf(buff, "RX:%d", atoi(f->value) + rit_delta);
-			draw_text(gfx, f->x+5 , f->y+6 , buff , FONT_LARGE_FIELD);
-		}	
-	}
-	else if (!strcmp(vfo->value, "A")){
-		if (!in_tx){
+      draw_text(gfx, f->x+5 , f->y+25 , buff , FONT_LARGE_VALUE);
+      sprintf(buff, "RX:%d", atoi(f->value) + rit_delta);
+      draw_text(gfx, f->x+5 , f->y+6 , buff , FONT_LARGE_FIELD);
+    }
+  }
+  else if (!strcmp(vfo->value, "A")){
+    if (!in_tx){
       sprintf(temp_str, "%d", vfo_b_freq);
       sprintf(buff, "B:%s", freq_with_separators(temp_str));
-			draw_text(gfx, f->x+15 , f->y+6 , buff , FONT_LARGE_FIELD);
+      draw_text(gfx, f->x+15 , f->y+6 , buff , FONT_LARGE_FIELD);
       sprintf(buff, "A:%s", freq_with_separators(f->value));
-			draw_text(gfx, f->x+5 , f->y+25 , buff , FONT_LARGE_VALUE);
-		} else {
+      draw_text(gfx, f->x+5 , f->y+25 , buff , FONT_LARGE_VALUE);
+    } else {
       sprintf(temp_str, "%d", vfo_b_freq);
       sprintf(buff, "B:%s", freq_with_separators(temp_str));
-			draw_text(gfx, f->x+5 , f->y+6 , buff , FONT_LARGE_FIELD);
+      draw_text(gfx, f->x+5 , f->y+6 , buff , FONT_LARGE_FIELD);
       sprintf(buff, "TX:%s", freq_with_separators(f->value));
-			draw_text(gfx, f->x+5 , f->y+25 , buff , FONT_LARGE_VALUE);
-		}	
-	}
-	else{ 
-		if (!in_tx){
+      draw_text(gfx, f->x+5 , f->y+25 , buff , FONT_LARGE_VALUE);
+    }
+  }
+  else{
+    if (!in_tx){
       sprintf(temp_str, "%d", vfo_a_freq);
       sprintf(buff, "A:%s", freq_with_separators(temp_str));
-			draw_text(gfx, f->x+5 , f->y+6 , buff , FONT_LARGE_FIELD);
-			sprintf(buff, "B:%s", freq_with_separators(f->value));
-			draw_text(gfx, f->x+5 , f->y+25 , buff , FONT_LARGE_VALUE);
-		}else {
+      draw_text(gfx, f->x+5 , f->y+6 , buff , FONT_LARGE_FIELD);
+      sprintf(buff, "B:%s", freq_with_separators(f->value));
+      draw_text(gfx, f->x+5 , f->y+25 , buff , FONT_LARGE_VALUE);
+    }else {
       sprintf(temp_str, "%d", vfo_a_freq);
       sprintf(buff, "A:%s", freq_with_separators(temp_str));
-			draw_text(gfx, f->x+5 , f->y+6 , buff , FONT_LARGE_FIELD);
-			sprintf(buff, "TX:%s", freq_with_separators(f->value));
-			draw_text(gfx, f->x+5 , f->y+25 , buff , FONT_LARGE_VALUE);
-		}
-	} 
+      draw_text(gfx, f->x+5 , f->y+6 , buff , FONT_LARGE_FIELD);
+      sprintf(buff, "TX:%s", freq_with_separators(f->value));
+      draw_text(gfx, f->x+5 , f->y+25 , buff , FONT_LARGE_VALUE);
+    }
+  }
 }
 
 
@@ -1901,6 +1903,14 @@ int do_status(struct field *f, cairo_t *gfx, int event, int a, int b){
 	return 0;
 }
 
+void execute_app(char *app){
+	int pid = fork();
+	if (!pid){
+		system(app);
+		exit(0);	
+	}
+}
+
 int do_text(struct field *f, cairo_t *gfx, int event, int a, int b){
 	int width, offset, text_length, line_start, y;	
 	char this_line[MAX_FIELD_LENGTH];
@@ -2104,8 +2114,8 @@ void write_call_log(){
 		contest_serial++;
 		sprintf(sent_exchange, "%04d", contest_serial);
 	}
-	//wipe it clean
-	call_wipe();
+	//wipe it clean, deffered for the time being
+	//call_wipe();
 	redraw_flag++;
 }
 
@@ -2205,6 +2215,14 @@ void macro_get_var(char *var, char *s){
 		*s = 0;
 }
 
+void qrz(char *callsign){
+	char 	bash_line[1000];
+	sprintf(bash_line, "Querying qrz.com for %s\n", callsign);
+	write_console(FONT_LOG, bash_line);
+	sprintf(bash_line, "chromium-browser https://qrz.com/DB/%s &", callsign);
+	execute_app(bash_line);
+}
+
 int do_macro(struct field *f, cairo_t *gfx, int event, int a, int b){
 	char buff[256], *mode;
 
@@ -2215,10 +2233,18 @@ int do_macro(struct field *f, cairo_t *gfx, int event, int a, int b){
 			set_ui(LAYOUT_KBD);
 			return 1;
 		}
-		else if (!strcmp(f->cmd, "#mfwipe"))
+		else if (!strcmp(f->cmd, "#mfqrz") && strlen(contact_callsign) > 0){
+			qrz(contact_callsign);
+			return 1;
+		}
+		else if (!strcmp(f->cmd, "#mfwipe")){
 			call_wipe();
-		else if (!strcmp(f->cmd, "#mflog"))
+			return 1;
+		}	
+		else if (!strcmp(f->cmd, "#mflog")){
 			write_call_log();
+			return 1;
+		}
 		else 
 		 	macro_exec(fn_key, buff);
 	
@@ -2739,8 +2765,7 @@ void hw_init(){
 	enc_init(&enc_a, ENC_FAST, ENC1_B, ENC1_A);
 	enc_init(&enc_b, ENC_FAST, ENC2_A, ENC2_B);
 
-	int e = g_timeout_add(1, ui_tick, NULL);
-	//int e = g_timeout_add(10, ui_tick, NULL);
+	int e = g_timeout_add(1, ui_tick, NULL); // k3ng 2022-08-16
 
 	wiringPiISR(ENC2_A, INT_EDGE_BOTH, tuning_isr);
 	wiringPiISR(ENC2_B, INT_EDGE_BOTH, tuning_isr);
@@ -2820,7 +2845,7 @@ gboolean ui_tick(gpointer gook){
 		tuning_ticks++;
 	}
 
-	if (ticks == 100){
+	if (ticks == 100){ // k3ng 2022-08-16
 
 		struct field *f = get_field("spectrum");
 		update_field(f);	//move this each time the spectrum watefall index is moved
@@ -2849,11 +2874,11 @@ gboolean ui_tick(gpointer gook){
 			focus_since = millis();
 		}
   }
-
-	modem_poll(mode_id(get_field("r1:mode")->value));
+  modem_poll(mode_id(get_field("r1:mode")->value));
 	update_field(get_field("#text_in")); //modem might have extracted some text
 
   hamlib_slice();
+	remote_slice();
 	//wsjtx_slice();
 	save_user_settings(0);
 
@@ -3051,21 +3076,7 @@ void change_band(char *request){
 	clear_tx_text_buffer();
 }
 
-void execute_app(char *app){
-	int pid = fork();
-	if (!pid){
-		system(app);
-		exit(0);	
-	}
-}
 
-void qrz(char *callsign){
-	char 	bash_line[1000];
-	sprintf(bash_line, "Querying qrz.com for %s\n", callsign);
-	write_console(FONT_LOG, bash_line);
-	sprintf(bash_line, "chromium-browser https://qrz.com/DB/%s &", callsign);
-	execute_app(bash_line);
-}
 
 void utc_set(char *args){
 	int n[7], i;
@@ -3165,8 +3176,8 @@ void do_cmd(char *cmd){
 		}
 	}
 	//tuning step
-	else if (!strcmp(request, "#step=1MHz"))
-		tuning_step = 1000000;
+  else if (!strcmp(request, "#step=1MHz"))
+    tuning_step = 1000000;
 	else if (!strcmp(request, "#step=100KHz"))
 		tuning_step = 100000;
 	else if (!strcmp(request, "#step=10KHz"))
@@ -3181,6 +3192,8 @@ void do_cmd(char *cmd){
 	//spectrum bandwidth
 	else if (!strcmp(request, "#span=2.5KHz"))
 		spectrum_span = 2500;
+	else if (!strcmp(request, "#span=6KHz"))
+		spectrum_span = 6000;
 	else if (!strcmp(request, "#span=10KHz"))
 		spectrum_span = 10000;
 	else if (!strcmp(request, "#span=25KHz"))
@@ -3351,20 +3364,20 @@ void cmd_exec(char *cmd){
 			case 'a':
 			case 'A':
 				ft8_setmode(FT8_AUTO);
-				write_console(FONT_LOG, "\ft8mode set to auto\n");
+				write_console(FONT_LOG, "ft8mode set to auto\n");
 				break;
 			case 's':
 			case 'S':
 				ft8_setmode(FT8_SEMI);
-				write_console(FONT_LOG, "\ft8mode set to semiauto\n");
+				write_console(FONT_LOG, "ft8mode set to semiauto\n");
 				break;
 			case 'm':
 			case 'M':
 				ft8_setmode(FT8_MANUAL);
-				write_console(FONT_LOG, "\ft8mode set to manual\n");
+				write_console(FONT_LOG, "ft8mode set to manual\n");
 				break;
 			default:
-				write_console(FONT_LOG, "Usage: \ft8mode auto or semi or manual\n");
+				write_console(FONT_LOG, "Usage: \\ft8mode auto or semi or manual\n");
 				break;
 		}
 	}
@@ -3532,6 +3545,7 @@ int main( int argc, char* argv[] ) {
 	// you don't want to save the recently loaded settings
 	settings_updated = 0;
   hamlib_start();
+	remote_start();
 
 	int not_synchronized = 0;
 	FILE *pf = popen("chronyc tracking", "r");
