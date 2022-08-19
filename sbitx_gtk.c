@@ -404,6 +404,8 @@ static int redraw_flag = 1;
 int screen_width, screen_height;
 int spectrum_span = 48000;
 
+int spectrum_freq_style = 0; // k3ng 2022-08-19
+
 void do_cmd(char *cmd);
 void cmd_exec(char *cmd);
 
@@ -948,6 +950,7 @@ static void save_user_settings(int forced){
 	fprintf(f, "callsign=%s\n", mycallsign);
 	fprintf(f, "grid=%s\n", mygrid);
 	fprintf(f, "cw_delay=%d\n", cw_delay);
+	fprintf(f, "spectrum_freq_style=%d\n", spectrum_freq_style);
 	fprintf(f, "data_delay=%d\n", data_delay);
 	fprintf(f, "cw_input_method=%d\n", cw_input_method);
 	fprintf(f, "current_macro=%s\n", current_macro);
@@ -999,6 +1002,9 @@ static int user_settings_handler(void* user, const char* section,
 			strcpy(mycallsign, value);
 		else if (!strcmp(name, "grid"))
 			strcpy(mygrid, value);
+    //spectrum display    // k3ng 2022-08-19
+    else if (!strcmp(name, "spectrum_freq_style"))
+      spectrum_freq_style = atoi(value);
 		//cw 
 		else if (!strcmp(name, "cw_delay"))
 			cw_delay = atoi(value);
@@ -1012,7 +1018,7 @@ static int user_settings_handler(void* user, const char* section,
 			char request[100], response[100];
 			sprintf(request, "sidetone=%d",sidetone);  
 			sdr_request(request, response);
-			sprintf(request, "sideetone is set to %d Hz\n", sidetone);
+			sprintf(request, "sidetone is set to %d Hz\n", sidetone);
 			write_console(FONT_LOG, request);
 		}
 		//contesting
@@ -1319,7 +1325,12 @@ void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
 			palette[COLOR_TEXT_MUTED][1], palette[COLOR_TEXT_MUTED][2]);
 	long f_start = freq - (4 * freq_div); 
 	for (i = f->width/10; i < f->width; i += f->width/10){
-		sprintf(freq_text, "%ld", f_start/100);
+    if (spectrum_freq_style == 0){
+		  sprintf(freq_text, "%ld", f_start/100);  // k3ng 2022-08-19 zzzzzz
+    } else if (spectrum_freq_style == 1){
+		  sprintf(freq_text, "%ld", f_start/1000);  // k3ng 2022-08-19
+    }
+		//sprintf(freq_text, "%ld", f_start/100);  // k3ng 2022-08-19 zzzzzz
 		int off = measure_text(gfx, freq_text, FONT_SMALL)/2;
 		draw_text(gfx, f->x + i - off , f->y+grid_height , freq_text, FONT_SMALL);
 		f_start += freq_div;
