@@ -1003,8 +1003,19 @@ static int user_settings_handler(void* user, const char* section,
 		else if (!strcmp(name, "grid"))
 			strcpy(mygrid, value);
     //spectrum display    // k3ng 2022-08-19
-    else if (!strcmp(name, "spectrum_freq_style"))
-      spectrum_freq_style = atoi(value);
+    else if (!strcmp(name, "spectrum_freq_style")){
+      int temp_value = atoi(value); 
+      if ((temp_value >= 0) && (temp_value < 4)){
+        spectrum_freq_style = temp_value;
+        char success_message[100];
+        sprintf(success_message, "spectrum_freq_style set to %d", temp_value);
+        write_console(FONT_LOG, success_message);
+      } else {
+        char error_message[100];
+        sprintf(error_message, "Error: value must be 0, 1, or 2");
+        write_console(FONT_LOG, error_message);
+      }
+    } // k3ng - end 2022-08-19
 		//cw 
 		else if (!strcmp(name, "cw_delay"))
 			cw_delay = atoi(value);
@@ -1325,12 +1336,18 @@ void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
 			palette[COLOR_TEXT_MUTED][1], palette[COLOR_TEXT_MUTED][2]);
 	long f_start = freq - (4 * freq_div); 
 	for (i = f->width/10; i < f->width; i += f->width/10){
-    if (spectrum_freq_style == 0){
-		  sprintf(freq_text, "%ld", f_start/100);  // k3ng 2022-08-19 zzzzzz
+    if (spectrum_freq_style == 0){ // k3ng 2022-08-19
+		  sprintf(freq_text, "%ld", f_start/100);
     } else if (spectrum_freq_style == 1){
-		  sprintf(freq_text, "%ld", f_start/1000);  // k3ng 2022-08-19
-    }
-		//sprintf(freq_text, "%ld", f_start/100);  // k3ng 2022-08-19 zzzzzz
+		  sprintf(freq_text, "%ld", f_start/1000);
+    } else if (spectrum_freq_style == 2){
+      int f_khz = (f_start - (int)(f_start/1000000) * 1000000) / 1000;
+		  sprintf(freq_text, "%ld", f_khz);
+    } else if (spectrum_freq_style == 3){
+      int f_khz = (f_start - (int)(f_start/1000000) * 1000000) / 1000;
+		  sprintf(freq_text, "%d.1", f_khz);
+    } // k3ng - end 2022-08-19
+
 		int off = measure_text(gfx, freq_text, FONT_SMALL)/2;
 		draw_text(gfx, f->x + i - off , f->y+grid_height , freq_text, FONT_SMALL);
 		f_start += freq_div;
@@ -3370,6 +3387,21 @@ void cmd_exec(char *cmd){
 		sprintf(buff, "cwdelay: %d msec\n", cw_delay);
 		write_console(FONT_LOG, buff);
 	}
+  else if (!strcmp(exec, "spectrum_freq_style")){
+    if (strlen(args)){
+      int temp_value = atoi(args);
+      if ((temp_value >= 0) && (temp_value < 4)){
+        spectrum_freq_style = temp_value; // k3ng zzzzzz
+        char success_message[100];
+        sprintf(success_message, "spectrum_freq_style set to %d", temp_value);
+        write_console(FONT_LOG, success_message);
+      } else {
+        char error_message[100];
+        sprintf(error_message, "Error: value must be 0, 1, 2, or 3");
+        write_console(FONT_LOG, error_message);
+      }
+    }
+  }
 	else if (!strcmp(exec, "ft8mode")){
 		switch(args[0]){
 			case 'a':

@@ -43,7 +43,7 @@ void remote_start(){
   if(listen(welcome_socket,5)!=0)
     printf("telnet listen() Error\n");
   incoming_ptr = 0;
-	puts("Telent is listening");
+	puts("Telnet is listening");
 }
 
 void remote_send(char *m){
