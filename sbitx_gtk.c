@@ -406,6 +406,9 @@ int spectrum_span = 48000;
 
 int spectrum_freq_style = 0; // k3ng 2022-08-19
 int reverse_scrolling = 0; // k3ng 2022-08-22
+int tuning_acceleration = 1; // k3ng 2022-08-23
+long int tuning_accel_thresh1 = 10000; // k3ng 2022-08-23
+long int tuning_accel_thresh2 = 500;  // k3ng 2022-08-23
 
 void do_cmd(char *cmd);
 void cmd_exec(char *cmd);
@@ -953,6 +956,9 @@ static void save_user_settings(int forced){
 	fprintf(f, "cw_delay=%d\n", cw_delay);
 	fprintf(f, "spectrum_freq_style=%d\n", spectrum_freq_style);
 	fprintf(f, "reverse_scrolling=%d\n", reverse_scrolling);
+	fprintf(f, "tuning_acceleration=%d\n", tuning_acceleration);
+	fprintf(f, "tuning_accel_thresh1=%d\n", tuning_accel_thresh1);
+	fprintf(f, "tuning_accel_thresh2=%d\n", tuning_accel_thresh2);
 	fprintf(f, "data_delay=%d\n", data_delay);
 	fprintf(f, "cw_input_method=%d\n", cw_input_method);
 	fprintf(f, "current_macro=%s\n", current_macro);
@@ -1010,11 +1016,11 @@ static int user_settings_handler(void* user, const char* section,
       if ((temp_value >= 0) && (temp_value < 4)){
         spectrum_freq_style = temp_value;
         char success_message[100];
-        sprintf(success_message, "spectrum_freq_style set to %d", temp_value);
+        sprintf(success_message, "spectrum_freq_style set to %d\r\n", temp_value);
         write_console(FONT_LOG, success_message);
       } else {
         char error_message[100];
-        sprintf(error_message, "Error: value must be 0, 1, or 2");
+        sprintf(error_message, "Error: value must be 0, 1, or 2\r\n");
         write_console(FONT_LOG, error_message);
       }
     } // k3ng - end 2022-08-19
@@ -1024,17 +1030,61 @@ static int user_settings_handler(void* user, const char* section,
         reverse_scrolling = temp_value;
         char success_message[100];
         if (reverse_scrolling){
-          sprintf(success_message, "reverse scrolling on");
+          sprintf(success_message, "reverse scrolling on\r\n");
         } else {
-          sprintf(success_message, "reverse_scrolling off");
+          sprintf(success_message, "reverse scrolling off\r\n");
         }
         write_console(FONT_LOG, success_message);
       } else {
         char error_message[100];
-        sprintf(error_message, "Error: value must be 0 or 1");
+        sprintf(error_message, "Error: value must be 0 or 1\r\n");
         write_console(FONT_LOG, error_message);
       }
     } // k3ng - end 2022-08-19
+    else if (!strcmp(name, "tuning_acceleration")){
+      int temp_value = atoi(value);
+      if ((temp_value >= 0) && (temp_value < 2)){
+        tuning_acceleration = temp_value;
+        char success_message[100];
+        if (tuning_acceleration){
+          sprintf(success_message, "tuning acceleration on\r\n");
+        } else {
+          sprintf(success_message, "tuning acceleration off\r\n");
+        }
+        write_console(FONT_LOG, success_message);
+      } else {
+        char error_message[100];
+        sprintf(error_message, "Error: value must be 0 or 1\r\n");
+        write_console(FONT_LOG, error_message);
+      }
+    } // k3ng - end 2022-08-19
+
+
+    else if (!strcmp(name, "tuning_accel_thresh1")){ // k3ng 2022-08-23
+      long int temp_value = atoi(value);
+      if ((temp_value > 99) && (temp_value < 100000)){
+        tuning_accel_thresh1 = temp_value;
+      } else {
+        char error_message[100];
+        sprintf(error_message, "Error: tuning_accel_thresh1 value must be > 99 and < 100000\r\n");
+        write_console(FONT_LOG, error_message);
+      }
+    } // k3ng - end 2022-08-23
+
+
+    else if (!strcmp(name, "tuning_accel_thresh2")){ // k3ng 2022-08-23
+      long int temp_value = atoi(value);
+      if ((temp_value > 99) && (temp_value < 100000)){
+        tuning_accel_thresh2 = temp_value;
+      } else {
+        char error_message[100];
+        sprintf(error_message, "Error: tuning_accel_thresh2 value must be > 99 and < 100000\r\n");
+        write_console(FONT_LOG, error_message);
+      }
+    } // k3ng - end 2022-08-23
+
+
+
 		//cw 
 		else if (!strcmp(name, "cw_delay"))
 			cw_delay = atoi(value);
@@ -2051,23 +2101,29 @@ static struct timespec last_change_time, this_change_time;
 	if (event == FIELD_EDIT){
 
 
- // k3ng 2022-08-22 zzzzzzzz  tuning accleration feature in progress
-clock_gettime(CLOCK_MONOTONIC_RAW, &this_change_time);
-uint64_t delta_us = (this_change_time.tv_sec - last_change_time.tv_sec) * 1000000 + (this_change_time.tv_nsec - last_change_time.tv_nsec) / 1000;
-char temp_char[100];
-//sprintf(temp_char, "delta: %d", delta_us);
-//strcat(temp_char,"\r\n");
-//write_console(FONT_LOG, temp_char);
-clock_gettime(CLOCK_MONOTONIC_RAW, &last_change_time);
-if (delta_us < 500){
-  tuning_step = tuning_step * 100;
-  sprintf(temp_char, "x100 activated\r\n");
-  write_console(FONT_LOG, temp_char);
-} else if (delta_us < 10000){
-  tuning_step = tuning_step * 10;
-  sprintf(temp_char, "x10 activated\r\n");
-  write_console(FONT_LOG, temp_char);
-}
+ // k3ng 2022-08-22 tuning accleration
+  if (tuning_acceleration){
+    clock_gettime(CLOCK_MONOTONIC_RAW, &this_change_time);
+    uint64_t delta_us = (this_change_time.tv_sec - last_change_time.tv_sec) * 1000000 + (this_change_time.tv_nsec - last_change_time.tv_nsec) / 1000;
+    char temp_char[100];
+    //sprintf(temp_char, "delta: %d", delta_us);
+    //strcat(temp_char,"\r\n");
+    //write_console(FONT_LOG, temp_char);
+    clock_gettime(CLOCK_MONOTONIC_RAW, &last_change_time);
+    if (delta_us < 500){
+      if (tuning_step < tuning_accel_thresh2){
+        tuning_step = tuning_step * 100;
+        //sprintf(temp_char, "x100 activated\r\n");
+        //write_console(FONT_LOG, temp_char);
+      }
+    } else if (delta_us < tuning_accel_thresh1){
+      if (tuning_step < 1000){
+        tuning_step = tuning_step * 10;
+        //printf(temp_char, "x10 activated\r\n");
+        //write_console(FONT_LOG, temp_char);
+      }
+    }
+  }
 
 		if (a == MIN_KEY_UP && v + f->step <= f->max){
 			//this is tuning the radio
@@ -3461,18 +3517,69 @@ void cmd_exec(char *cmd){
         reverse_scrolling = temp_value; 
         char success_message[100];
         if (reverse_scrolling){
-          sprintf(success_message, "reverse scrolling on");
+          sprintf(success_message, "reverse scrolling on\r\n");
         } else {
-          sprintf(success_message, "reverse scrolling off");
+          sprintf(success_message, "reverse scrolling off\r\n");
         }
         write_console(FONT_LOG, success_message);
       } else {
         char error_message[100];
-        sprintf(error_message, "Error: value must be 0 or 1");
+        sprintf(error_message, "Error: value must be 0 or 1\r\n");
         write_console(FONT_LOG, error_message);
       }
     }
   }
+  else if (!strcmp(exec, "tuning_acceleration")){  // k3ng 2022-08-23
+    if (strlen(args)){
+      int temp_value = atoi(args);
+      if ((temp_value >= 0) && (temp_value < 2)){
+        tuning_acceleration = temp_value;
+        char success_message[100];
+        if (tuning_acceleration){
+          sprintf(success_message, "tuning_acceleration on\r\n");
+        } else {
+          sprintf(success_message, "tuning_acceleration off\r\n");
+        }
+        write_console(FONT_LOG, success_message);
+      } else {
+        char error_message[100];
+        sprintf(error_message, "Error: value must be 0 or 1\r\n");
+        write_console(FONT_LOG, error_message);
+      }
+    }
+  }
+
+
+    else if (!strcmp(exec, "tuning_thresh1")){ // k3ng 2022-08-23
+      long int temp_value = atoi(args);
+      if ((temp_value > 99) && (temp_value < 100000)){
+        tuning_accel_thresh1 = temp_value;
+        char success_message[100];
+        sprintf(success_message, "tuning acceleration first threshold set to %d\r\n", temp_value);
+        write_console(FONT_LOG, success_message);
+      } else {
+        char error_message[100];
+        sprintf(error_message, "Error: value must be > 99 and < 100000\r\n");
+        write_console(FONT_LOG, error_message);
+      }
+    } // k3ng - end 2022-08-23
+
+
+    else if (!strcmp(exec, "tuning_thresh2")){ // k3ng 2022-08-23
+      long int temp_value = atoi(args);
+      if ((temp_value > 99) && (temp_value < 100000)){
+        tuning_accel_thresh2 = temp_value;
+        char success_message[100];
+        sprintf(success_message, "tuning acceleration second threshold set to %d\r\n", temp_value);
+        write_console(FONT_LOG, success_message);
+      } else {
+        char error_message[100];
+        sprintf(error_message, "Error: value must be > 99 and < 100000\r\n");
+        write_console(FONT_LOG, error_message);
+      }
+    } // k3ng - end 2022-08-23
+
+
 	else if (!strcmp(exec, "ft8mode")){
 		switch(args[0]){
 			case 'a':
