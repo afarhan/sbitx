@@ -493,7 +493,7 @@ struct field main_controls[] = {
 		"nothing valuable", 0,0,0},
 	{"#log_ed", NULL, 0, 320, 400, 20, "", 70, "", FIELD_STATIC, FONT_LOG, 
 		"nothing valuable", 0,128,0},
-	{"#text_in", do_text, 0, 340, 400, 20, "text", 70, "text box", FIELD_TEXT, FONT_LOG, 
+	{"#text_in", do_text, 0, 340, 398, 20, "text", 70, "text box", FIELD_TEXT, FONT_LOG, 
 		"nothing valuable", 0,128,0},
 
 
