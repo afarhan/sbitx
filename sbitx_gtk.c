@@ -405,6 +405,7 @@ int screen_width, screen_height;
 int spectrum_span = 48000;
 
 int spectrum_freq_style = 0; // k3ng 2022-08-19
+int reverse_scrolling = 0; // k3ng 2022-08-22
 
 void do_cmd(char *cmd);
 void cmd_exec(char *cmd);
@@ -951,6 +952,7 @@ static void save_user_settings(int forced){
 	fprintf(f, "grid=%s\n", mygrid);
 	fprintf(f, "cw_delay=%d\n", cw_delay);
 	fprintf(f, "spectrum_freq_style=%d\n", spectrum_freq_style);
+	fprintf(f, "reverse_scrolling=%d\n", reverse_scrolling);
 	fprintf(f, "data_delay=%d\n", data_delay);
 	fprintf(f, "cw_input_method=%d\n", cw_input_method);
 	fprintf(f, "current_macro=%s\n", current_macro);
@@ -1013,6 +1015,23 @@ static int user_settings_handler(void* user, const char* section,
       } else {
         char error_message[100];
         sprintf(error_message, "Error: value must be 0, 1, or 2");
+        write_console(FONT_LOG, error_message);
+      }
+    } // k3ng - end 2022-08-19
+    else if (!strcmp(name, "reverse_scrolling")){
+      int temp_value = atoi(value);
+      if ((temp_value >= 0) && (temp_value < 2)){
+        reverse_scrolling = temp_value;
+        char success_message[100];
+        if (reverse_scrolling){
+          sprintf(success_message, "reverse scrolling on");
+        } else {
+          sprintf(success_message, "reverse_scrolling off");
+        }
+        write_console(FONT_LOG, success_message);
+      } else {
+        char error_message[100];
+        sprintf(error_message, "Error: value must be 0 or 1");
         write_console(FONT_LOG, error_message);
       }
     } // k3ng - end 2022-08-19
@@ -2023,9 +2042,33 @@ int do_pitch(struct field *f, cairo_t *gfx, int event, int a, int b){
 //called for RIT as well as the main tuning
 int do_tuning(struct field *f, cairo_t *gfx, int event, int a, int b){
 
+static struct timespec last_change_time, this_change_time;
+
 	int	v = atoi(f->value);
 
+  int temp_tuning_step = tuning_step;
+
 	if (event == FIELD_EDIT){
+
+
+ // k3ng 2022-08-22 zzzzzzzz  tuning accleration feature in progress
+clock_gettime(CLOCK_MONOTONIC_RAW, &this_change_time);
+uint64_t delta_us = (this_change_time.tv_sec - last_change_time.tv_sec) * 1000000 + (this_change_time.tv_nsec - last_change_time.tv_nsec) / 1000;
+char temp_char[100];
+//sprintf(temp_char, "delta: %d", delta_us);
+//strcat(temp_char,"\r\n");
+//write_console(FONT_LOG, temp_char);
+clock_gettime(CLOCK_MONOTONIC_RAW, &last_change_time);
+if (delta_us < 500){
+  tuning_step = tuning_step * 100;
+  sprintf(temp_char, "x100 activated\r\n");
+  write_console(FONT_LOG, temp_char);
+} else if (delta_us < 10000){
+  tuning_step = tuning_step * 10;
+  sprintf(temp_char, "x10 activated\r\n");
+  write_console(FONT_LOG, temp_char);
+}
+
 		if (a == MIN_KEY_UP && v + f->step <= f->max){
 			//this is tuning the radio
 			if (!strcmp(get_field("#rit")->value, "ON")){
@@ -2050,7 +2093,7 @@ int do_tuning(struct field *f, cairo_t *gfx, int event, int a, int b){
 		}
 		
 		sprintf(f->value, "%d",  v);
-		
+		tuning_step = temp_tuning_step;
 		//send the new frequency to the sbitx core
 		char buff[100];
 		sprintf(buff, "%s=%s", f->cmd, f->value);
@@ -2611,10 +2654,19 @@ static gboolean on_key_press (GtkWidget *widget, GdkEventKey *event, gpointer us
 static gboolean on_scroll (GtkWidget *widget, GdkEventScroll *event, gpointer data) {
 	
 	if (f_focus){
-		if (event->direction == 0)
-			edit_field(f_focus, MIN_KEY_UP);
-		else
-			edit_field(f_focus, MIN_KEY_DOWN);
+		if (event->direction == 0){
+     if (reverse_scrolling){  // k3ng 2022-08-22
+	  		edit_field(f_focus, MIN_KEY_DOWN);
+      } else {
+		  	edit_field(f_focus, MIN_KEY_UP);
+      }
+		} else {
+      if (reverse_scrolling){
+			  edit_field(f_focus, MIN_KEY_UP);
+      } else {
+			  edit_field(f_focus, MIN_KEY_DOWN);
+      }
+   }
 	}
 		
 }
@@ -3387,17 +3439,36 @@ void cmd_exec(char *cmd){
 		sprintf(buff, "cwdelay: %d msec\n", cw_delay);
 		write_console(FONT_LOG, buff);
 	}
-  else if (!strcmp(exec, "spectrum_freq_style")){
+  else if (!strcmp(exec, "spectrum_freq_style")){  // k3ng 2022-08-22
     if (strlen(args)){
       int temp_value = atoi(args);
       if ((temp_value >= 0) && (temp_value < 4)){
-        spectrum_freq_style = temp_value; // k3ng zzzzzz
+        spectrum_freq_style = temp_value; 
         char success_message[100];
         sprintf(success_message, "spectrum_freq_style set to %d", temp_value);
         write_console(FONT_LOG, success_message);
       } else {
         char error_message[100];
         sprintf(error_message, "Error: value must be 0, 1, 2, or 3");
+        write_console(FONT_LOG, error_message);
+      }
+    }
+  }
+  else if (!strcmp(exec, "reverse_scrolling")){  // k3ng 2022-08-22
+    if (strlen(args)){
+      int temp_value = atoi(args);
+      if ((temp_value >= 0) && (temp_value < 2)){
+        reverse_scrolling = temp_value; 
+        char success_message[100];
+        if (reverse_scrolling){
+          sprintf(success_message, "reverse scrolling on");
+        } else {
+          sprintf(success_message, "reverse scrolling off");
+        }
+        write_console(FONT_LOG, success_message);
+      } else {
+        char error_message[100];
+        sprintf(error_message, "Error: value must be 0 or 1");
         write_console(FONT_LOG, error_message);
       }
     }
