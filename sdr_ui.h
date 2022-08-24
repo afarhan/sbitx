@@ -25,4 +25,4 @@ void update_log_ed();
 void write_call_log();
 time_t time_sbitx();
 
-#define VER_STR "sbitx v1.1.k3ng.20220824.1522"
+#define VER_STR "sbitx v1.1.k3ng.20220824.1930"

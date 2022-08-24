@@ -3561,6 +3561,41 @@ void cmd_exec(char *cmd){
     }
   }
 
+  else if ((!strcmp(exec, "help")) || (!strcmp(exec, "?"))){  // k3ng 2022-08-24 zzzzzzzz
+    write_console(FONT_LOG, "Help - UNDER CONSTRUCTION\r\n\r\n");
+    write_console(FONT_LOG, "\\audio\r\n");
+    write_console(FONT_LOG, "\\callsign [your callsign]\r\n");
+    write_console(FONT_LOG, "\\clear - clear the console display\r\n");
+    write_console(FONT_LOG, "\\cwinput [key|keyer|kbd]\r\n");
+    write_console(FONT_LOG, "\\cwdelay\r\n");
+    write_console(FONT_LOG, "\\cw_tx_pitch\r\n");
+    write_console(FONT_LOG, "\\exchange\r\n");
+    write_console(FONT_LOG, "\\freq\r\n");
+    write_console(FONT_LOG, "\\ft8mode [auto|semiauto|manual]\r\n");
+    write_console(FONT_LOG, "\\grid [your grid]\r\n");
+    write_console(FONT_LOG, "\\l [callsign] [rst]\r\n");
+    write_console(FONT_LOG, "\\logbook\r\n");
+    write_console(FONT_LOG, "\\macro [macro name]\r\n");
+    write_console(FONT_LOG, "\\mode [CW|CWR|USB|LSB|RTTY|FT8|DIGITAL|2TONE]\r\n");
+    write_console(FONT_LOG, "\\qrz [callsign]\r\n");
+    write_console(FONT_LOG, "\\r - receive\r\n");
+    write_console(FONT_LOG, "\\sidetone\r\n");
+    write_console(FONT_LOG, "\\t - transmit\r\n");
+    write_console(FONT_LOG, "\\telnet [server]:[port]\r\n");
+    write_console(FONT_LOG, "\\tclose - close telnet session\r\n");
+    write_console(FONT_LOG, "\\txpitch [100-3000]\r\n");
+    write_console(FONT_LOG, "\\wpm [cw words per minute]\r\n");
+    write_console(FONT_LOG, "Do \\h2 command for help page 2...\r\n");
+  }
+
+  else if (!strcmp(exec, "h2")){  // k3ng 2022-08-24 zzzzzzzz
+    write_console(FONT_LOG, "Help - Page 2\r\n\r\n");
+    write_console(FONT_LOG, "\\reverse_scrolling [0|1]\r\n");
+    write_console(FONT_LOG, "\\spectrum_freq_style [0|1|2|3]\r\n");
+    write_console(FONT_LOG, "\\tuning_acceleration [0|1] - Turns tuning acceleration on and off\r\n");
+    write_console(FONT_LOG, "\\tuning_thresh1 [99-99999] - 1st threshold at which acceleration occurs (default: 10,000)\r\n");
+    write_console(FONT_LOG, "\\tuning_thresh2 [99-99999] - 2nd threshold at which acceleration occurs (default: 500)\r\n");
+  }
 
     else if (!strcmp(exec, "tuning_thresh1")){ // k3ng 2022-08-23
       long int temp_value = atoi(args);
