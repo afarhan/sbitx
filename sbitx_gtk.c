@@ -1724,7 +1724,7 @@ static void edit_field(struct field *f, int action){
 				strcpy(f->value, p);
 			else
         strcpy(f->value, first); // roll over
-				return;
+				//return;
 				//strcpy(f->value, prev); 
 		}
 		else if (action == MIN_KEY_UP){
@@ -1732,7 +1732,7 @@ static void edit_field(struct field *f, int action){
 				strcpy(f->value, prev);
 			else
         strcpy(f->value, last); // roll over
-				return;
+				//return;
 		}
 	}
 	else if (f->value_type == FIELD_TOGGLE){
@@ -2912,6 +2912,7 @@ void hw_init(){
 	enc_init(&enc_b, ENC_FAST, ENC2_A, ENC2_B);
 
 	int e = g_timeout_add(1, ui_tick, NULL); // k3ng 2022-08-16
+	//int e = g_timeout_add(10, ui_tick, NULL); // original
 
 	wiringPiISR(ENC2_A, INT_EDGE_BOTH, tuning_isr);
 	wiringPiISR(ENC2_B, INT_EDGE_BOTH, tuning_isr);
@@ -2992,6 +2993,7 @@ gboolean ui_tick(gpointer gook){
 	}
 
 	if (ticks == 100){ // k3ng 2022-08-16
+	//if (ticks == 10){ // original 
 
 		struct field *f = get_field("spectrum");
 		update_field(f);	//move this each time the spectrum watefall index is moved
