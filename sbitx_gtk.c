@@ -1692,7 +1692,15 @@ static void edit_field(struct field *f, int action){
 		sprintf(f->value, "%d",  v);
 	}
 	else if (f->value_type == FIELD_SELECTION){
-		char *p, *prev, *next, b[100];
+		char *p, *prev, *next, b[100], *first, *last; // k3ng 2022-08-23 implemented field selection roll over
+    // get the first and last selections
+    strcpy(b, f->selection);
+    p = strtok(b, "/");
+    first = p;
+    while(p){
+      last = p;
+      p = strtok(NULL, "/");
+    }
 		//search the current text in the selection
 		prev = NULL;
 		strcpy(b, f->selection);
@@ -1715,6 +1723,7 @@ static void edit_field(struct field *f, int action){
 			if (p)
 				strcpy(f->value, p);
 			else
+        strcpy(f->value, first); // roll over
 				return;
 				//strcpy(f->value, prev); 
 		}
@@ -1722,6 +1731,7 @@ static void edit_field(struct field *f, int action){
 			if (prev)
 				strcpy(f->value, prev);
 			else
+        strcpy(f->value, last); // roll over
 				return;
 		}
 	}
