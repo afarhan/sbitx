@@ -3799,6 +3799,7 @@ int main( int argc, char* argv[] ) {
 
 	console_init();
 	write_console(FONT_LOG, VER_STR);
+  write_console(FONT_LOG, "\r\nEnter \\help for help\r\n");
 
 	if (strcmp(mycallsign, "N0BDY")){
 		sprintf(buff, "\nWelcome %s your grid is %s\n", mycallsign, mygrid);
