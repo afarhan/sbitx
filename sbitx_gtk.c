@@ -3507,6 +3507,24 @@ void cmd_exec(char *cmd){
 		sprintf(buff, "cwdelay: %d msec\n", cw_delay);
 		write_console(FONT_LOG, buff);
 	}
+
+  else if (!strcmp(exec, "exit")){  // k3ng 2022-08-26
+    tx_off();
+    set_field("#record", "OFF");
+    save_user_settings(1);
+    exit(0);
+  }
+
+
+  else if ((!strcmp(exec, "lsb")) || (!strcmp(exec, "LSB"))){  // k3ng 2022-08-26
+    set_mode("LSB");
+  }
+  else if ((!strcmp(exec, "usb")) || (!strcmp(exec, "USB"))){  // k3ng 2022-08-26
+    set_mode("USB"); 
+  }
+  else if ((!strcmp(exec, "cw")) || (!strcmp(exec, "CW"))){  // k3ng 2022-08-26
+    set_mode("CW"); 
+  }
   else if (!strcmp(exec, "spectrum_freq_style")){  // k3ng 2022-08-22
     if (strlen(args)){
       int temp_value = atoi(args);
@@ -3590,6 +3608,7 @@ void cmd_exec(char *cmd){
 
   else if (!strcmp(exec, "h2")){  // k3ng 2022-08-24 zzzzzzzz
     write_console(FONT_LOG, "Help - Page 2\r\n\r\n");
+    write_console(FONT_LOG, "\\exit\r\n");
     write_console(FONT_LOG, "\\reverse_scrolling [0|1]\r\n");
     write_console(FONT_LOG, "\\spectrum_freq_style [0|1|2|3]\r\n");
     write_console(FONT_LOG, "\\tuning_acceleration [0|1] - Turns tuning acceleration on and off\r\n");
