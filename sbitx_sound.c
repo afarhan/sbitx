@@ -147,6 +147,7 @@ static int exact_rate;   /* Sample rate returned by */
 static int	sound_thread_continue = 0;
 pthread_t sound_thread, loopback_thread;
 
+#define LOOPBACK_LEVEL_DIVISOR 8				// Constant used to reduce audio level to the loopback channel (FLDIGI)
 static int play_write_error = 0;				// count play channel write errors
 static int loopback_write_error = 0;			// count loopback channel write errors
 // Note: Error messages appear when the sbitx program is started from the command line
@@ -666,8 +667,8 @@ int sound_loop(){
 	int jj = 0;
 	int ii = 0;
 	while (ii < ret_card){
-		line_out[jj++] = output_i[ii] / 16;  // Left Channel. Reduce audio level to FLDIGI a bit
-		line_out[jj++] = output_i[ii] / 16;  // Right Channel. Note: FLDIGI does not use the this channel.
+		line_out[jj++] = output_i[ii] / LOOPBACK_LEVEL_DIVISOR;  // Left Channel. Reduce audio level to FLDIGI a bit
+		line_out[jj++] = output_i[ii] / LOOPBACK_LEVEL_DIVISOR;  // Right Channel. Note: FLDIGI does not use the this channel.
 		// The right channel can be used to output other integer values such as AGC, for capture by an
 		// application such as audacity.
 		ii += 2;	// Skip a pair of samples to account for the 96K sample to 48K sample rate change.
