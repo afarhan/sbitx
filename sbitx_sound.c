@@ -147,6 +147,10 @@ static int exact_rate;   /* Sample rate returned by */
 static int	sound_thread_continue = 0;
 pthread_t sound_thread, loopback_thread;
 
+static int play_write_error = 0;				// count play channel write errors
+static int loopback_write_error = 0;			// count loopback channel write errors
+// Note: Error messages appear when the sbitx program is started from the command line
+
 int use_virtual_cable = 0;
 
 struct Queue qloop;
@@ -603,7 +607,7 @@ int sound_loop(){
 			played_samples += 1024;
 		}
 		else {
-			while (i < pcmreturn){
+			while (i < ret_card){
 				input_i[i] = data_in[j++]/2;
 				input_q[i] = data_in[j++]/2;
 				i++;
@@ -611,35 +615,100 @@ int sound_loop(){
 		}
 
 		//printf("%d %ld %d\n", count++, nsamples, pcmreturn);
-		sound_process(input_i, input_q, output_i, output_q, pcmreturn);
+			
+		sound_process(input_i, input_q, output_i, output_q, ret_card);
 
 		i = 0; 
 		j = 0;	
-		while (i < pcmreturn){
+		while (i < ret_card){
 			data_out[j++] = output_i[i];
 			data_out[j++] = output_q[i++];
 		}
+
+/*
+	// This is the original pcm play write routine, now commented out.
     while ((pcmreturn = snd_pcm_writei(pcm_play_handle, 
 			data_out, frames)) < 0) {
        snd_pcm_prepare(pcm_play_handle);
     }
+*/
 
-		//decimate the line out to half, ie from 96000 to 48000
-		//play the recevied data (from left channel) to both of line out
-		int jj = 0;
-		int ii = 0;
-		while (ii < pcmreturn){
-			line_out[jj++] = output_i[ii]/10;
-			line_out[jj++] = output_i[ii]/10;
-			ii += 2;
+	// This is the new pcm play write routine
+
+	int framesize = ret_card;
+	int offset = 0;
+		
+	while(framesize > 0)
+	{
+		pcmreturn = snd_pcm_writei(pcm_play_handle, data_out + offset, framesize);
+		if((pcmreturn < 0) && (pcmreturn != -11))	// also ignore "temporarily unavailable" errors
+		{
+			// Handle an error condition from the snd_pcm_writei function
+			printf("Play PCM Write Error: %s  count = %d\n",snd_strerror(pcmreturn), play_write_error++);
+			snd_pcm_prepare(pcm_play_handle);		
 		}
+		
+		if(pcmreturn >= 0)
+		{
+			// Calculate remaining number of samples to be sent and new position in sample array.
+			// If all the samples were processed by the snd_pcm_writei function then framesize will be
+			// zero and the while() loop will end.
+			framesize -= pcmreturn;
+			offset += (pcmreturn * 2);
+		}
+	}
+	// End of new pcm play write routine
 
+
+	//decimate the line out to half, ie from 96000 to 48000
+	//play the received data (from left channel) to both of line out
+		
+	int jj = 0;
+	int ii = 0;
+	while (ii < ret_card){
+		line_out[jj++] = output_i[ii] / 16;  // Left Channel. Reduce audio level to FLDIGI a bit
+		line_out[jj++] = output_i[ii] / 16;  // Right Channel. Note: FLDIGI does not use the this channel.
+		// The right channel can be used to output other integer values such as AGC, for capture by an
+		// application such as audacity.
+		ii += 2;	// Skip a pair of samples to account for the 96K sample to 48K sample rate change.
+	}
+
+/*
+	// This is the original pcm loopback write routine, now commented out.
     while((pcmreturn = snd_pcm_writei(loopback_play_handle, 
 			 line_out, jj)) < 0){
 			 //printf("loopback rx error: %s\n", snd_strerror(pcmreturn));
        snd_pcm_prepare(loopback_play_handle);
 			//puts("preparing loopback");
     }
+*/    
+
+	// This is the new pcm loopback write routine
+	framesize = (ret_card + 1) /2;		// only writing half the number of samples because of the slower channel rate
+	offset = 0;
+
+	while(framesize > 0)
+	{
+		pcmreturn = snd_pcm_writei(loopback_play_handle, line_out + offset, framesize);
+		if(pcmreturn < 0)
+		{
+			printf("Loopback PCM Write Error: %s  count = %d\n",snd_strerror(pcmreturn), loopback_write_error++);
+			// Handle an error condition from the snd_pcm_writei function
+			snd_pcm_prepare(loopback_play_handle);
+		}
+		
+		if(pcmreturn >= 0)
+		{
+			// Calculate remaining number of samples to be sent and new position in sample array.
+			// If all the samples were processed by the snd_pcm_writei function then framesize will be
+			// zero and the while() loop will end.	
+			framesize -= pcmreturn;
+			offset += (pcmreturn * 2);
+		}
+	}
+	// End of new pcm loopback write routine	
+	
+    
 		//played_samples += pcmreturn;
   }
 	//fclose(pf);
