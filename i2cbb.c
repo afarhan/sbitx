@@ -33,7 +33,7 @@ void i2cbb_init(uint8_t pin_number_sda, uint8_t pin_number_scl)
 	sleepTimeNanos = 0;
 	nanoSleepTime.tv_sec = 0;
 	nanoSleepTime.tv_nsec = 0;	
-	delayTicks = 0;
+	delayTicks = 100;       // Delay value empirically chosen to be twice the value that just start to cause I2C NACKs - N3SB 
 	i2c_started = 0;
   // Pull up setzen 50KΩ
   // http://wiringpi.com/reference/core-functions/
@@ -87,7 +87,7 @@ static void i2c_sleep() {
 }
 
 static void i2c_delay() {
-    unsigned int index;
+    volatile unsigned int index;        // keeps compiler from optimizing out an empty for-loop
     for (index = 0; index < delayTicks; index++)
         ;
 }
@@ -144,6 +144,7 @@ static void i2c_write_bit(int bit)
         clear_SDA();
     }
     i2c_delay();
+
     while (read_SCL() == 0) { // Clock stretching
       // You should add timeout to this loop
         i2c_sleep();

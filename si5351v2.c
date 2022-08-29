@@ -47,6 +47,8 @@ int xtal_freq_calibrated = 25000000; // tcxo
 
 uint32_t plla_freq, pllb_freq;
 
+static int i2c_error_count = 0;       // counts I2C Errors
+
 #define SI5351_ADDR 0x60              // I2C address of Si5351   (typical)
 
 /*
@@ -56,7 +58,11 @@ void i2cSendRegister(uint8_t reg, uint8_t* data, uint8_t n){
 */
 
 void i2cSendRegister(uint8_t reg, uint8_t val){ 
-  i2cbb_write_byte_data(SI5351_ADDR, reg, val);
+  while (i2cbb_write_byte_data(SI5351_ADDR, reg, val) < 0)
+  {
+    printf("Repeating I2C #%d\n",i2c_error_count++);  // reports number of I2C repeats caused by errors
+    delay(1);
+  }
 }
 
 void si5351_reset(){
@@ -66,7 +72,6 @@ void si5351_reset(){
 void si5351a_clkoff(uint8_t clk)
 {
   //i2c_init();
-  
   i2cSendRegister(clk, 0x80);   // Refer to SiLabs AN619 to see bit values - 0x80 turns off the output stage
 
   //i2c_exit();
@@ -97,7 +102,6 @@ static void setup_pll(uint8_t pll, uint8_t mult, uint32_t num, uint32_t denom)
     P2 = (uint32_t)(128 * num - denom * P2);
     P3 = denom;
   }
-  
   i2cSendRegister(pll + 0, (P3 & 0x0000FF00) >> 8);
   i2cSendRegister(pll + 1, (P3 & 0x000000FF));
   i2cSendRegister(pll + 2, (P1 & 0x00030000) >> 16);
