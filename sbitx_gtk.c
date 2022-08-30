@@ -1779,6 +1779,10 @@ static void focus_field(struct field *f){
 	if (f_focus->value_type == FIELD_TOGGLE)
 		edit_field(f_focus, MIN_KEY_DOWN);	
 
+  //is it a selection field?
+  if (f_focus->value_type == FIELD_SELECTION)    // k3ng 2022-08-30 button press changes selection fields
+    edit_field(f_focus, MIN_KEY_UP);
+
 	//if the button has been pressed, do the needful
 	if (f_focus->value_type == FIELD_TOGGLE || 
 			f_focus->value_type == FIELD_BUTTON)
