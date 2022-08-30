@@ -3059,7 +3059,12 @@ void ui_init(int argc, char *argv[]){
   gtk_window_set_default_size(GTK_WINDOW(window), 800, 480);
   gtk_window_set_title( GTK_WINDOW(window), "sBITX" );
 	gtk_window_set_icon_from_file(GTK_WINDOW(window), "/home/pi/sbitx/sbitx_icon.png", NULL);
- 
+
+
+  GdkCursor* blank_cursor; // k3ng 2022-08-30 make the cursor disappear
+  blank_cursor = gdk_cursor_new_for_display (gdk_display_get_default(),GDK_BLANK_CURSOR);
+  gdk_window_set_cursor(gdk_get_default_root_window(), blank_cursor);
+
   display_area = gtk_drawing_area_new();
   gtk_container_add( GTK_CONTAINER(window), display_area );
 
@@ -3525,6 +3530,21 @@ void cmd_exec(char *cmd){
   else if ((!strcmp(exec, "cw")) || (!strcmp(exec, "CW"))){  // k3ng 2022-08-26
     set_mode("CW"); 
   }
+  else if ((!strcmp(exec, "cwr")) || (!strcmp(exec, "CWR"))){  // k3ng 2022-08-29
+    set_mode("CWR");
+  }
+  else if ((!strcmp(exec, "rtty")) || (!strcmp(exec, "RTTY"))){  // k3ng 2022-08-29
+    set_mode("RTTY");
+  }
+  else if ((!strcmp(exec, "ft8")) || (!strcmp(exec, "FT8"))){  // k3ng 2022-08-29
+    set_mode("FT8");
+  }
+  else if ((!strcmp(exec, "digital")) || (!strcmp(exec, "DIGITAL"))  || (!strcmp(exec, "dig")) || (!strcmp(exec, "DIG"))){  // k3ng 2022-08-29
+    set_mode("DIGITAL");
+  }
+  else if ((!strcmp(exec, "2tone")) || (!strcmp(exec, "2TONE"))){  // k3ng 2022-08-29
+    set_mode("2TONE");
+  }
   else if (!strcmp(exec, "spectrum_freq_style")){  // k3ng 2022-08-22
     if (strlen(args)){
       int temp_value = atoi(args);
@@ -3608,12 +3628,13 @@ void cmd_exec(char *cmd){
 
   else if (!strcmp(exec, "h2")){  // k3ng 2022-08-24 zzzzzzzz
     write_console(FONT_LOG, "Help - Page 2\r\n\r\n");
-    write_console(FONT_LOG, "\\exit\r\n");
-    write_console(FONT_LOG, "\\reverse_scrolling [0|1]\r\n");
+    write_console(FONT_LOG, "\\exit\r\n\r\n");
+    write_console(FONT_LOG, "\\reverse_scrolling [0|1]\r\n\r\n");
     write_console(FONT_LOG, "\\spectrum_freq_style [0|1|2|3]\r\n");
     write_console(FONT_LOG, "\\tuning_acceleration [0|1] - Turns tuning acceleration on and off\r\n");
     write_console(FONT_LOG, "\\tuning_thresh1 [99-99999] - 1st threshold at which acceleration occurs (default: 10,000)\r\n");
-    write_console(FONT_LOG, "\\tuning_thresh2 [99-99999] - 2nd threshold at which acceleration occurs (default: 500)\r\n");
+    write_console(FONT_LOG, "\\tuning_thresh2 [99-99999] - 2nd threshold at which acceleration occurs (default: 500)\r\n\r\n");
+    write_console(FONT_LOG, "\\cw \\cwr \\usb \\lsb \\rtty \\ft8 \\digital \\dig \\2tone\r\n");
   }
 
     else if (!strcmp(exec, "tuning_thresh1")){ // k3ng 2022-08-23
