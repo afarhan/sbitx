@@ -134,6 +134,7 @@ struct font_style font_table[] = {
 	{FONT_LOG, 1, 1, 1, "Mono", 12, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
 	{FONT_LOG_RX, 0, 1, 0, "Mono", 12, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
 	{FONT_LOG_TX, 1, 0.6, 0, "Mono", 12, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
+	{FONT_SMALL_FIELD_VALUE, 1, 1, 1, "Mono", 11, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
 };
 
 struct encoder enc_a, enc_b;
@@ -859,12 +860,35 @@ void draw_field(GtkWidget *widget, cairo_t *gfx, struct field *f){
 			offset = f->width/2 - width/2;
 			draw_text(gfx, f->x + offset, f->y+5 ,  f->label, FONT_FIELD_LABEL);
 			width = measure_text(gfx, f->value, f->font_index);
-			offset = f->width/2 - width/2;
-			if (!strlen(f->label))
-				draw_text(gfx, f->x + offset , f->y+6, f->value, f->font_index);
-			else
-				draw_text(gfx, f->x+offset , f->y+25 , f->value , f->font_index);
-			break;
+      if (width >= f->width){ // k3ng 2022-08-30 automatic button font downsizing
+        width = measure_text(gfx, f->value, FONT_SMALL_FIELD_VALUE);
+        offset = f->width/2 - width/2;
+        if (!strlen(f->label))
+          draw_text(gfx, f->x + offset , f->y+6, f->value, FONT_SMALL_FIELD_VALUE);
+        else
+          draw_text(gfx, f->x+offset , f->y+25 , f->value , FONT_SMALL_FIELD_VALUE);
+      } else {
+        offset = f->width/2 - width/2;
+        if (!strlen(f->label))
+          draw_text(gfx, f->x + offset , f->y+6, f->value, f->font_index);
+        else
+          draw_text(gfx, f->x+offset , f->y+25 , f->value , f->font_index);
+      }
+      break;
+/*
+
+      width = measure_text(gfx, f->label, FONT_FIELD_LABEL);
+      offset = f->width/2 - width/2;
+      draw_text(gfx, f->x + offset, f->y+5 ,  f->label, FONT_FIELD_LABEL);
+      width = measure_text(gfx, f->value, f->font_index);
+      offset = f->width/2 - width/2;
+      if (!strlen(f->label))
+        draw_text(gfx, f->x + offset , f->y+6, f->value, f->font_index);
+      else
+        draw_text(gfx, f->x+offset , f->y+25 , f->value , f->font_index);
+      break;
+
+*/
 
 		case FIELD_BUTTON:
 			width = measure_text(gfx, f->label, FONT_FIELD_LABEL);

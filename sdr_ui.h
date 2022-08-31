@@ -15,6 +15,7 @@ extern int display_freq;
 #define FONT_LOG 5
 #define FONT_LOG_RX 6
 #define FONT_LOG_TX 7
+#define FONT_SMALL_FIELD_VALUE 8
 
 void write_console(int style, char *text);
 int macro_load(char *filename);
@@ -25,4 +26,4 @@ void update_log_ed();
 void write_call_log();
 time_t time_sbitx();
 
-#define VER_STR "sbitx v1.1.k3ng.20220830.1930"
+#define VER_STR "sbitx v1.1.k3ng.20220831.0030"
