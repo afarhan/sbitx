@@ -166,8 +166,6 @@ static struct console_line console_stream[MAX_CONSOLE_LINES];
 int console_current_line = 0;
 int	console_selected_line = -1;
 
-char temp_str[11];  // k3ng 2022-08-16
-
 
 // event ids, some of them are mapped from gtk itself
 #define FIELD_DRAW 0
@@ -410,6 +408,8 @@ int reverse_scrolling = 0; // k3ng 2022-08-22
 int tuning_acceleration = 1; // k3ng 2022-08-23
 long int tuning_accel_thresh1 = 10000; // k3ng 2022-08-23
 long int tuning_accel_thresh2 = 500;  // k3ng 2022-08-23
+char temp_str[11];  // k3ng 2022-08-16
+int mouse_pointer = 1; // k3ng
 
 void do_cmd(char *cmd);
 void cmd_exec(char *cmd);
@@ -983,6 +983,7 @@ static void save_user_settings(int forced){
 	fprintf(f, "tuning_acceleration=%d\n", tuning_acceleration);
 	fprintf(f, "tuning_accel_thresh1=%d\n", tuning_accel_thresh1);
 	fprintf(f, "tuning_accel_thresh2=%d\n", tuning_accel_thresh2);
+	fprintf(f, "mouse_pointer=%d\n", mouse_pointer);
 	fprintf(f, "data_delay=%d\n", data_delay);
 	fprintf(f, "cw_input_method=%d\n", cw_input_method);
 	fprintf(f, "current_macro=%s\n", current_macro);
@@ -1107,7 +1108,16 @@ static int user_settings_handler(void* user, const char* section,
       }
     } // k3ng - end 2022-08-23
 
-
+    else if (!strcmp(name, "mouse_pointer")){ // k3ng 2022-08-23
+      long int temp_value = atoi(value);
+      if ((temp_value >= 0) && (temp_value < 4)){
+        mouse_pointer = temp_value;
+      } else {
+        char error_message[100];
+        sprintf(error_message, "Error: invalid mouse_pointer value\r\n");
+        write_console(FONT_LOG, error_message);
+      }
+    } // k3ng - end 2022-08-23
 
 		//cw 
 		else if (!strcmp(name, "cw_delay"))
@@ -3079,6 +3089,27 @@ gboolean ui_tick(gpointer gook){
 	return TRUE;
 }
 
+void update_cursor(int mode){  // k3ng 2022-09-02
+
+  int cursor_type;
+
+  if (mode == 255){  // ignore mouse_pointer setting and set to normal pointer
+    cursor_type = GDK_LEFT_PTR;
+  } else {
+    switch(mouse_pointer){
+      case 0: cursor_type = GDK_BLANK_CURSOR; break;
+      case 1: cursor_type = GDK_LEFT_PTR; break;
+      case 2: cursor_type = GDK_RIGHT_PTR; break;
+      case 3: cursor_type = GDK_CROSSHAIR; break;
+    }
+  }
+
+  GdkCursor* new_cursor;
+  new_cursor = gdk_cursor_new_for_display (gdk_display_get_default(),cursor_type);
+  gdk_window_set_cursor(gdk_get_default_root_window(), new_cursor);
+
+}
+
 void ui_init(int argc, char *argv[]){
  
   gtk_init( &argc, &argv );
@@ -3088,10 +3119,7 @@ void ui_init(int argc, char *argv[]){
   gtk_window_set_title( GTK_WINDOW(window), "sBITX" );
 	gtk_window_set_icon_from_file(GTK_WINDOW(window), "/home/pi/sbitx/sbitx_icon.png", NULL);
 
-
-  GdkCursor* blank_cursor; // k3ng 2022-08-30 make the cursor disappear
-  blank_cursor = gdk_cursor_new_for_display (gdk_display_get_default(),GDK_BLANK_CURSOR);
-  gdk_window_set_cursor(gdk_get_default_root_window(), blank_cursor);
+  update_cursor(255);
 
   display_area = gtk_drawing_area_new();
   gtk_container_add( GTK_CONTAINER(window), display_area );
@@ -3573,13 +3601,13 @@ void cmd_exec(char *cmd){
   else if ((!strcmp(exec, "2tone")) || (!strcmp(exec, "2TONE"))){  // k3ng 2022-08-29
     set_mode("2TONE");
   }
-  else if (!strcmp(exec, "spectrum_freq_style")){  // k3ng 2022-08-22
+  else if (!strcmp(exec, "sfs")){  // k3ng 2022-08-22
     if (strlen(args)){
       int temp_value = atoi(args);
       if ((temp_value >= 0) && (temp_value < 4)){
         spectrum_freq_style = temp_value; 
         char success_message[100];
-        sprintf(success_message, "spectrum_freq_style set to %d", temp_value);
+        sprintf(success_message, "spectrum freq style set to %d", temp_value);
         write_console(FONT_LOG, success_message);
       } else {
         char error_message[100];
@@ -3588,7 +3616,37 @@ void cmd_exec(char *cmd){
       }
     }
   }
-  else if (!strcmp(exec, "reverse_scrolling")){  // k3ng 2022-08-22
+  else if (!strcmp(exec, "mp")){  // k3ng 2022-09-02
+    if (strlen(args)){ 
+      int temp_value = atoi(args);
+      if ((temp_value >= 0) && (temp_value < 4)){
+        mouse_pointer = temp_value;
+        char success_message[100];
+        switch (mouse_pointer){
+          case 0: 
+            sprintf(success_message, "mouse pointer set to blank");
+            break;
+          case 1:
+            sprintf(success_message, "mouse pointer set to left pointer");
+            break;        
+          case 2:
+            sprintf(success_message, "mouse pointer set to right pointer");
+            break;
+          case 3:
+            sprintf(success_message, "mouse pointer set to crosshair");
+            break;
+
+        }
+        update_cursor(0);
+        write_console(FONT_LOG, success_message);
+      } else {
+        char error_message[100];
+        sprintf(error_message, "Error: invaled mouse pointer style");
+        write_console(FONT_LOG, error_message);
+      }
+    }
+  }
+  else if (!strcmp(exec, "rs")){  // k3ng 2022-08-22
     if (strlen(args)){
       int temp_value = atoi(args);
       if ((temp_value >= 0) && (temp_value < 2)){
@@ -3607,16 +3665,16 @@ void cmd_exec(char *cmd){
       }
     }
   }
-  else if (!strcmp(exec, "tuning_acceleration")){  // k3ng 2022-08-23
+  else if (!strcmp(exec, "ta")){  // k3ng 2022-08-23
     if (strlen(args)){
       int temp_value = atoi(args);
       if ((temp_value >= 0) && (temp_value < 2)){
         tuning_acceleration = temp_value;
         char success_message[100];
         if (tuning_acceleration){
-          sprintf(success_message, "tuning_acceleration on\r\n");
+          sprintf(success_message, "tuning acceleration on\r\n");
         } else {
-          sprintf(success_message, "tuning_acceleration off\r\n");
+          sprintf(success_message, "tuning acceleration off\r\n");
         }
         write_console(FONT_LOG, success_message);
       } else {
@@ -3657,9 +3715,10 @@ void cmd_exec(char *cmd){
   else if (!strcmp(exec, "h2")){  // k3ng 2022-08-24 zzzzzzzz
     write_console(FONT_LOG, "Help - Page 2\r\n\r\n");
     write_console(FONT_LOG, "\\exit\r\n\r\n");
-    write_console(FONT_LOG, "\\reverse_scrolling [0|1]\r\n\r\n");
-    write_console(FONT_LOG, "\\spectrum_freq_style [0|1|2|3]\r\n");
-    write_console(FONT_LOG, "\\tuning_acceleration [0|1] - Turns tuning acceleration on and off\r\n");
+    write_console(FONT_LOG, "\\mp [0|1|2|3] - mouse pointer off/style\r\n");
+    write_console(FONT_LOG, "\\rs [0|1] - reverse scrolling\r\n\r\n");
+    write_console(FONT_LOG, "\\sfs [0|1|2|3] spectrum frequency style\r\n");
+    write_console(FONT_LOG, "\\ta [0|1] - Turns tuning acceleration on and off\r\n");
     write_console(FONT_LOG, "\\tuning_thresh1 [99-99999] - 1st threshold at which acceleration occurs (default: 10,000)\r\n");
     write_console(FONT_LOG, "\\tuning_thresh2 [99-99999] - 2nd threshold at which acceleration occurs (default: 500)\r\n\r\n");
     write_console(FONT_LOG, "\\cw \\cwr \\usb \\lsb \\rtty \\ft8 \\digital \\dig \\2tone\r\n");
@@ -3856,6 +3915,8 @@ int main( int argc, char* argv[] ) {
   if (ini_parse(directory, user_settings_handler, NULL)<0){
     printf("Unable to load ~/sbitx/data/user_settings.ini\n");
   }
+
+  update_cursor(0);
 
 	if (strlen(current_macro))
 		macro_load(current_macro);
