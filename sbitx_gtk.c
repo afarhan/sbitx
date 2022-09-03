@@ -3095,6 +3095,14 @@ gboolean ui_tick(gpointer gook){
 			edit_field(f_text, f_focus->label[0]);
 			focus_since = millis();
 		}
+
+    // check if low and high settings are stepping on each other - k3ng 2022-09-03
+    char new_value[20];
+    while (atoi(get_field("r1:low")->value) > atoi(get_field("r1:high")->value)){
+      sprintf(new_value, "%d", atoi(get_field("r1:high")->value)+get_field("r1:high")->step);
+      set_field("r1:high",new_value);
+    }
+
   }
   modem_poll(mode_id(get_field("r1:mode")->value));
 	update_field(get_field("#text_in")); //modem might have extracted some text
@@ -3317,6 +3325,10 @@ void change_band(char *request){
 	set_operating_freq(band_stack[new_band].freq[stack], resp);
 	set_field("r1:freq", buff);	
 	set_field("r1:mode", mode_name[band_stack[new_band].mode[stack]]);	
+
+  // this fixes bug with filter settings not being applied after a band change, not sure why it's a bug - k3ng 2022-09-03
+  set_field("r1:low",get_field("r1:low")->value);
+  set_field("r1:high",get_field("r1:high")->value);
 
 	clear_tx_text_buffer();
 }
