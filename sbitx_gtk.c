@@ -284,7 +284,7 @@ static void rect(cairo_t *gfx, int x, int y, int w, int h,
 
 struct field {
 	char	*cmd;
-	int		(*fn)(struct field *f, cairo_t *gfx, int event, int param_a, int param_b);
+	int		(*fn)(struct field *f, cairo_t *gfx, int event, int param_a, int param_b, int param_c);
 	int		x, y, width, height;
 	char	label[30];
 	int 	label_width;
@@ -415,17 +415,17 @@ void do_cmd(char *cmd);
 void cmd_exec(char *cmd);
 
 
-int do_spectrum(struct field *f, cairo_t *gfx, int e, int a, int b);
-int do_waterfall(struct field *f, cairo_t *gfx, int event, int a, int b);
-int do_tuning(struct field *f, cairo_t *gfx, int event, int a, int b);
-int do_text(struct field *f, cairo_t *gfx, int event, int a, int b);
-int do_status(struct field *f, cairo_t *gfx, int event, int a, int b);
-int do_console(struct field *f, cairo_t *gfx, int event, int a, int b);
-int do_pitch(struct field *f, cairo_t *gfx, int event, int a, int b);
-int do_kbd(struct field *f, cairo_t *gfx, int event, int a, int b);
-int do_mouse_move(struct field *f, cairo_t *gfx, int event, int a, int b);
-int do_macro(struct field *f, cairo_t *gfx, int event, int a, int b);
-int do_record(struct field *f, cairo_t *gfx, int event, int a, int b);
+int do_spectrum(struct field *f, cairo_t *gfx, int event, int a, int b, int c);
+int do_waterfall(struct field *f, cairo_t *gfx, int event, int a, int b, int c);
+int do_tuning(struct field *f, cairo_t *gfx, int event, int a, int b, int c);
+int do_text(struct field *f, cairo_t *gfx, int event, int a, int b, int c);
+int do_status(struct field *f, cairo_t *gfx, int event, int a, int b, int c);
+int do_console(struct field *f, cairo_t *gfx, int event, int a, int b, int c);
+int do_pitch(struct field *f, cairo_t *gfx, int event, int a, int b, int c);
+int do_kbd(struct field *f, cairo_t *gfx, int event, int a, int b, int c);
+int do_mouse_move(struct field *f, cairo_t *gfx, int event, int a, int b, int c);
+int do_macro(struct field *f, cairo_t *gfx, int event, int a, int b, int c);
+int do_record(struct field *f, cairo_t *gfx, int event, int a, int b, int c);
 
 struct field *active_layout = NULL;
 char settings_updated = 0;
@@ -813,7 +813,7 @@ void draw_field(GtkWidget *widget, cairo_t *gfx, struct field *f){
 	//if there is a handling function, use that else
 	//skip down to the default behaviour of the controls
 	if (f->fn){
-		if(f->fn(f, gfx, FIELD_DRAW, -1, -1))
+		if(f->fn(f, gfx, FIELD_DRAW, -1, -1, 0))
 			return;
 	}
 
@@ -1515,7 +1515,7 @@ void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
 }
 
 int waterfall_fn(struct field *f, cairo_t *gfx, int event, int a, int b){
-		if(f->fn(f, gfx, FIELD_DRAW, -1, -1))
+		if(f->fn(f, gfx, FIELD_DRAW, -1, -1, 0))
 	switch(FIELD_DRAW){
 		case FIELD_DRAW:
 			draw_waterfall(f, gfx);
@@ -1713,7 +1713,7 @@ static void edit_field(struct field *f, int action){
 		focus_since = millis();
 
 	if (f->fn){
-		if (f->fn(f, NULL, FIELD_EDIT, action, 0))
+		if (f->fn(f, NULL, FIELD_EDIT, action, 0, 0))
 			return;
 	}
 	
@@ -1894,11 +1894,12 @@ void band_stack_update_power(int power){
 	} 
 }
 
-int do_spectrum(struct field *f, cairo_t *gfx, int event, int a, int b){
-	struct field *f_freq, *f_span;
-	int 	span;
-	long 	freq;
+int do_spectrum(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
+	struct field *f_freq, *f_span, *f_pitch;
+	int span, pitch;
+  long freq;
 	char buff[100];
+  int mode = mode_id(get_field("r1:mode")->value);
 
 	switch(event){
 		case FIELD_DRAW:
@@ -1906,21 +1907,42 @@ int do_spectrum(struct field *f, cairo_t *gfx, int event, int a, int b){
 			return 1;
 		break;
 		case GDK_MOTION_NOTIFY:
-			f_freq = get_field("r1:freq");
-			freq = atoi(f_freq->value);
-			f_span = get_field("#span");
-			span = atoi(f_span->value);
-			//a has the x position of the mouse
-			freq -= ((a - last_mouse_x) *tuning_step)/4;	//slow this down a bit
-			sprintf(buff, "%ld", freq);
-			set_field("r1:freq", buff);
-			return 1;
+	    f_freq = get_field("r1:freq");
+		  freq = atoi(f_freq->value);
+		  f_span = get_field("#span");
+		  span = atof(f_span->value) * 1000;
+		  //a has the x position of the mouse
+		  //freq -= ((a - last_mouse_x) *tuning_step)/4;	//slow this down a bit
+		  freq -= ((a - last_mouse_x) * (span/f->width)); // method based on span rather than tuning_step - k3ng 2022-09-02
+		  sprintf(buff, "%ld", freq);
+		  set_field("r1:freq", buff);
+		  return 1;
 		break;
+    case GDK_BUTTON_PRESS: 
+      if (c == GDK_BUTTON_SECONDARY){
+        f_freq = get_field("r1:freq");
+        freq = atoi(f_freq->value);
+        f_span = get_field("#span");
+        span = atof(f_span->value) * 1000;
+        f_pitch = get_field("#rx_pitch");
+        pitch = atoi(f_pitch->value);
+        if (mode == MODE_CW){
+          freq += ((((float)(a - f->x) / (float)f->width) - 0.5) * (float)span) - pitch;
+        } else if (mode == MODE_CWR){
+          freq += ((((float)(a - f->x) / (float)f->width) - 0.5) * (float)span) + pitch;
+        } else { // other modes may need to be optimized - k3ng 2022-09-02
+          freq += (((float)(a - f->x) / (float)f->width) - 0.5) * (float)span;
+        }
+        sprintf(buff, "%ld", freq);
+        set_field("r1:freq", buff);
+        return 1;
+      }
+    break;
 	}
 	return 0;	
 }
 
-int do_waterfall(struct field *f, cairo_t *gfx, int event, int a, int b){
+int do_waterfall(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 	switch(event){
 		case FIELD_DRAW:
 			draw_waterfall(f, gfx);
@@ -1996,7 +2018,7 @@ void update_log_ed(){
 }
 
 
-int do_console(struct field *f, cairo_t *gfx, int event, int a, int b){
+int do_console(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 	char buff[100], *p, *q;
 
 	int line_height = font_table[f->font_index].height; 	
@@ -2029,7 +2051,7 @@ int do_console(struct field *f, cairo_t *gfx, int event, int a, int b){
 	return 0;	
 }
 
-int do_status(struct field *f, cairo_t *gfx, int event, int a, int b){
+int do_status(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 	char buff[100];
 
 	if (event == FIELD_DRAW){
@@ -2056,7 +2078,7 @@ void execute_app(char *app){
 	}
 }
 
-int do_text(struct field *f, cairo_t *gfx, int event, int a, int b){
+int do_text(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 	int width, offset, text_length, line_start, y;	
 	char this_line[MAX_FIELD_LENGTH];
 	int text_line_width = 0;
@@ -2117,7 +2139,7 @@ int do_text(struct field *f, cairo_t *gfx, int event, int a, int b){
 }
 
 
-int do_pitch(struct field *f, cairo_t *gfx, int event, int a, int b){
+int do_pitch(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 
 	int	v = atoi(f->value);
 
@@ -2138,7 +2160,7 @@ int do_pitch(struct field *f, cairo_t *gfx, int event, int a, int b){
 }
 
 //called for RIT as well as the main tuning
-int do_tuning(struct field *f, cairo_t *gfx, int event, int a, int b){
+int do_tuning(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 
 static struct timespec last_change_time, this_change_time;
 
@@ -2217,7 +2239,7 @@ static struct timespec last_change_time, this_change_time;
 	return 0;	
 }
 
-int do_kbd(struct field *f, cairo_t *gfx, int event, int a, int b){
+int do_kbd(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 	if(event == GDK_BUTTON_PRESS){
 		struct field *f_text = get_field("#text_in");
 		if (!strcmp(f->cmd, "#kbd_macro"))
@@ -2398,7 +2420,7 @@ void qrz(char *callsign){
 	execute_app(bash_line);
 }
 
-int do_macro(struct field *f, cairo_t *gfx, int event, int a, int b){
+int do_macro(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 	char buff[256], *mode;
 
 	if(event == GDK_BUTTON_PRESS){
@@ -2469,7 +2491,7 @@ int do_macro(struct field *f, cairo_t *gfx, int event, int a, int b){
 	return 0;
 }
 
-int do_record(struct field *f, cairo_t *gfx, int event, int a, int b){
+int do_record(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 	if (event == FIELD_DRAW){
 
 		if (f_focus == f)
@@ -2744,7 +2766,7 @@ static gboolean on_key_press (GtkWidget *widget, GdkEventKey *event, gpointer us
 				int fn_key = event->keyval - MIN_KEY_F1 + 1;
 				char fname[10];
 				sprintf(fname, "#mf%d", fn_key);
-				do_macro(get_field(fname), NULL, GDK_BUTTON_PRESS, 0, 0);
+				do_macro(get_field(fname), NULL, GDK_BUTTON_PRESS, 0, 0, 0);
 			} 
 			else
 				edit_field(get_field("#text_in"), event->keyval);
@@ -2805,7 +2827,7 @@ static gboolean on_mouse_move (GtkWidget *widget, GdkEventButton *event, gpointe
 	// else treat it as a spin up/down of the control
 	if (f_focus){
 
-			if (!f_focus->fn ||  !f_focus->fn(f_focus, NULL, GDK_MOTION_NOTIFY, event->x, event->y)){
+			if (!f_focus->fn ||  !f_focus->fn(f_focus, NULL, GDK_MOTION_NOTIFY, event->x, event->y, 0)){
 				//just emit up or down
 				if(last_mouse_x < x || last_mouse_y > y)
 					edit_field(f_focus, MIN_KEY_UP);
@@ -2826,7 +2848,7 @@ static gboolean on_mouse_press (GtkWidget *widget, GdkEventButton *event, gpoint
 		mouse_down = 0;
 		//puts("mouse up in on_mouse_press");
 	}
-	else if (event->type == GDK_BUTTON_PRESS && event->button == GDK_BUTTON_PRIMARY){
+	else if (event->type == GDK_BUTTON_PRESS /*&& event->button == GDK_BUTTON_PRIMARY*/){
 
 		//printf("mouse event at %d, %d\n", (int)(event->x), (int)(event->y));
 		for (int i = 0; active_layout[i].cmd[0] > 0; i++) {
@@ -2836,7 +2858,7 @@ static gboolean on_mouse_press (GtkWidget *widget, GdkEventButton *event, gpoint
 				focus_field(f);
 				if (f->fn){
 					//we get out of the loop just to prevent two buttons from responding
-					if (f->fn(f, NULL, GDK_BUTTON_PRESS, event->x, event->y))
+					if (f->fn(f, NULL, GDK_BUTTON_PRESS, event->x, event->y, event->button))
 						break;	
 				}
 			} 
@@ -3463,6 +3485,8 @@ void cmd_exec(char *cmd){
 	char args[MAX_FIELD_LENGTH];
 	char exec[20];
 
+  args[0] = 0;
+
 	//copy the exec
 	for (i = 0; *cmd > ' ' && i < sizeof(exec) - 1; i++)
 		exec[i] = *cmd++;
@@ -3595,6 +3619,9 @@ void cmd_exec(char *cmd){
   else if ((!strcmp(exec, "ft8")) || (!strcmp(exec, "FT8"))){  // k3ng 2022-08-29
     set_mode("FT8");
   }
+  else if ((!strcmp(exec, "psk")) || (!strcmp(exec, "psk31")) || (!strcmp(exec, "PSK")) || (!strcmp(exec, "PSK31"))){  // k3ng 2022-08-29
+    set_mode("PSK31");
+  }
   else if ((!strcmp(exec, "digital")) || (!strcmp(exec, "DIGITAL"))  || (!strcmp(exec, "dig")) || (!strcmp(exec, "DIG"))){  // k3ng 2022-08-29
     set_mode("DIGITAL");
   }
@@ -3647,11 +3674,11 @@ void cmd_exec(char *cmd){
     }
   }
   else if (!strcmp(exec, "rs")){  // k3ng 2022-08-22
+    char success_message[100];
     if (strlen(args)){
       int temp_value = atoi(args);
       if ((temp_value >= 0) && (temp_value < 2)){
         reverse_scrolling = temp_value; 
-        char success_message[100];
         if (reverse_scrolling){
           sprintf(success_message, "reverse scrolling on\r\n");
         } else {
@@ -3663,6 +3690,13 @@ void cmd_exec(char *cmd){
         sprintf(error_message, "Error: value must be 0 or 1\r\n");
         write_console(FONT_LOG, error_message);
       }
+    } else {
+      if (reverse_scrolling){
+        sprintf(success_message, "reverse scrolling is on\r\n");
+      } else {
+        sprintf(success_message, "reverse scrolling is off\r\n");
+      }
+      write_console(FONT_LOG, success_message);
     }
   }
   else if (!strcmp(exec, "ta")){  // k3ng 2022-08-23
@@ -3685,7 +3719,7 @@ void cmd_exec(char *cmd){
     }
   }
 
-  else if ((!strcmp(exec, "help")) || (!strcmp(exec, "?"))){  // k3ng 2022-08-24 zzzzzzzz
+  else if ((!strcmp(exec, "help")) || (!strcmp(exec, "?"))){  // k3ng 2022-08-24
     write_console(FONT_LOG, "Help - UNDER CONSTRUCTION\r\n\r\n");
     write_console(FONT_LOG, "\\audio\r\n");
     write_console(FONT_LOG, "\\callsign [your callsign]\r\n");
@@ -3712,7 +3746,7 @@ void cmd_exec(char *cmd){
     write_console(FONT_LOG, "Do \\h2 command for help page 2...\r\n");
   }
 
-  else if (!strcmp(exec, "h2")){  // k3ng 2022-08-24 zzzzzzzz
+  else if (!strcmp(exec, "h2")){  // k3ng 2022-08-24 
     write_console(FONT_LOG, "Help - Page 2\r\n\r\n");
     write_console(FONT_LOG, "\\exit\r\n\r\n");
     write_console(FONT_LOG, "\\mp [0|1|2|3] - mouse pointer off/style\r\n");
