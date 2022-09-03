@@ -1405,9 +1405,12 @@ void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
 	if(!strcmp(mode_f->value, "CWR") || !strcmp(mode_f->value, "LSB")){
 	 	filter_start = f_spectrum->x + (f_spectrum->width/2) - 
 			((f_spectrum->width * bw_high)/(span * 1000)); 
-		if (filter_start < f_spectrum->x)
+		if (filter_start < f_spectrum->x){
+	 	  filter_width = ((f_spectrum->width * (bw_high -bw_low))/(span * 1000)) - (f_spectrum->x - filter_start); 
 			filter_start = f_spectrum->x;
-	 	filter_width = (f_spectrum->width * (bw_high -bw_low))/(span * 1000); 
+    } else {
+	 	  filter_width = (f_spectrum->width * (bw_high -bw_low))/(span * 1000); 
+    }
 		if (filter_width + filter_start > f_spectrum->x + f_spectrum->width)
 			filter_width = f_spectrum->x + f_spectrum->width - filter_start;
 		pitch = f_spectrum->x + (f_spectrum->width/2) -
@@ -1497,13 +1500,18 @@ void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
 		x += x_step;
 	}
 	cairo_stroke(gfx);
-
-	
-	cairo_set_source_rgb(gfx, palette[SPECTRUM_PITCH][0], 
-		palette[SPECTRUM_PITCH][1], palette[SPECTRUM_PITCH][2]);
-	cairo_move_to(gfx, pitch, f->y);
-	cairo_line_to(gfx, pitch, f->y + grid_height); 
-	cairo_stroke(gfx);
+ 
+  if (pitch >= f_spectrum->x){
+    cairo_set_source_rgb(gfx, palette[SPECTRUM_PITCH][0],palette[SPECTRUM_PITCH][1], palette[SPECTRUM_PITCH][2]);
+    if(!strcmp(mode_f->value, "CWR") || !strcmp(mode_f->value, "CW")){
+	    cairo_move_to(gfx, pitch, f->y);
+	    cairo_line_to(gfx, pitch, f->y + grid_height); 
+    } else {  // for modes other than CW, draw pitch line at center frequency - k3ng 2022-09-03
+	    cairo_move_to(gfx, f->x + (f->width/2), f->y);
+	    cairo_line_to(gfx, f->x + (f->width/2), f->y + grid_height); 
+    }
+   	cairo_stroke(gfx);
+  }
 
 	//draw the needle
 	for (struct rx *r = rx_list; r; r = r->next){
@@ -2181,7 +2189,7 @@ static struct timespec last_change_time, this_change_time;
     //write_console(FONT_LOG, temp_char);
     clock_gettime(CLOCK_MONOTONIC_RAW, &last_change_time);
     if (delta_us < 500){
-      if (tuning_step < tuning_accel_thresh2){
+      if (tuning_step < 10000){
         tuning_step = tuning_step * 100;
         //sprintf(temp_char, "x100 activated\r\n");
         //write_console(FONT_LOG, temp_char);
@@ -3037,6 +3045,7 @@ gboolean ui_tick(gpointer gook){
 		redraw_flag = 0;
 	}
 
+  //char message[100];
 	
 	// check the tuning knob
 	struct field *f = get_field("r1:freq");
@@ -3046,10 +3055,15 @@ gboolean ui_tick(gpointer gook){
 	while (tuning_ticks > 0){
 		edit_field(f, MIN_KEY_DOWN);
 		tuning_ticks--;
+    //sprintf(message, "tune-\r\n");
+    //write_console(FONT_LOG, message);
+
 	}
 	while (tuning_ticks < 0){
 		edit_field(f, MIN_KEY_UP);
 		tuning_ticks++;
+    //sprintf(message, "tune+\r\n");
+    //write_console(FONT_LOG, message);
 	}
 
 	if (ticks == 100){ // k3ng 2022-08-16
