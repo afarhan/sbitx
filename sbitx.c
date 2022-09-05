@@ -417,8 +417,8 @@ double agc2(struct rx *r){
 //		printf("Ramping from %g ", r->agc_gain);
   	for (i = 0; i < MAX_BINS/2; i++){
 	  	__imag__ (r->fft_time[i+(MAX_BINS/2)]) *= r->agc_gain;
-			r->agc_gain += agc_ramp;
 		}
+		r->agc_gain += agc_ramp;		
 //		printf("by %g to %g ", agc_ramp, r->agc_gain);
 	}
 	else 
