@@ -418,7 +418,7 @@ double agc2(struct rx *r){
   	for (i = 0; i < MAX_BINS/2; i++){
 	  	__imag__ (r->fft_time[i+(MAX_BINS/2)]) *= r->agc_gain;
 		}
-	  r->agc_gain += agc_ramp; // k3ng - from pull request 10 from n3sb
+		r->agc_gain += agc_ramp;		
 //		printf("by %g to %g ", agc_ramp, r->agc_gain);
 	}
 	else 
