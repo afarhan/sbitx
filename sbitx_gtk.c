@@ -404,7 +404,6 @@ int screen_width, screen_height;
 int spectrum_span = 48000;
 
 int spectrum_freq_style = 0; // k3ng 2022-08-19
-int reverse_scrolling = 0; // k3ng 2022-08-22
 int tuning_acceleration = 1; // k3ng 2022-08-23
 long int tuning_accel_thresh1 = 10000; // k3ng 2022-08-23
 long int tuning_accel_thresh2 = 500;  // k3ng 2022-08-23
@@ -506,6 +505,10 @@ struct field main_controls[] = {
 		"", 0,0,0},
 	{"#off", NULL, 750, 0 ,50, 50, "OFF", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
 		"", 0,0,0},
+
+  // other settings - currently off screen
+  { "#reverse_scrolling", NULL, 1000, 1000, 50, 50, "REV SCROLL", 40, "ON", FIELD_TOGGLE, FONT_FIELD_VALUE,
+    "ON/OFF", 0,0,0},
 
 	/* band stack registers */
 	{"#10m", NULL, 400, 330, 50, 50, "10M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
@@ -609,7 +612,6 @@ struct field main_controls[] = {
 	{"#mfspot"	, do_macro, 260, 1440, 70, 40, "Spot", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
 
 	{"#mfkbd", do_macro, 330, 1440, 70, 40, "Kbd", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
-
 
 	//the last control has empty cmd field 
 	{"", NULL, 0, 0 ,0, 0, "#", 1, "Q", FIELD_BUTTON, FONT_FIELD_VALUE, "", 0,0,0},
@@ -875,21 +877,6 @@ void draw_field(GtkWidget *widget, cairo_t *gfx, struct field *f){
           draw_text(gfx, f->x+offset , f->y+25 , f->value , f->font_index);
       }
       break;
-/*
-
-      width = measure_text(gfx, f->label, FONT_FIELD_LABEL);
-      offset = f->width/2 - width/2;
-      draw_text(gfx, f->x + offset, f->y+5 ,  f->label, FONT_FIELD_LABEL);
-      width = measure_text(gfx, f->value, f->font_index);
-      offset = f->width/2 - width/2;
-      if (!strlen(f->label))
-        draw_text(gfx, f->x + offset , f->y+6, f->value, f->font_index);
-      else
-        draw_text(gfx, f->x+offset , f->y+25 , f->value , f->font_index);
-      break;
-
-*/
-
 		case FIELD_BUTTON:
 			width = measure_text(gfx, f->label, FONT_FIELD_LABEL);
 			offset = f->width/2 - width/2;
@@ -979,7 +966,6 @@ static void save_user_settings(int forced){
 	fprintf(f, "grid=%s\n", mygrid);
 	fprintf(f, "cw_delay=%d\n", cw_delay);
 	fprintf(f, "spectrum_freq_style=%d\n", spectrum_freq_style);
-	fprintf(f, "reverse_scrolling=%d\n", reverse_scrolling);
 	fprintf(f, "tuning_acceleration=%d\n", tuning_acceleration);
 	fprintf(f, "tuning_accel_thresh1=%d\n", tuning_accel_thresh1);
 	fprintf(f, "tuning_accel_thresh2=%d\n", tuning_accel_thresh2);
@@ -991,6 +977,7 @@ static void save_user_settings(int forced){
 	fprintf(f, "contest_serial=%d\n", contest_serial);
 	fprintf(f, "sent_exchange=%s\n", sent_exchange);
 
+  // save the field values
 	for (int i= 0; i < active_layout[i].cmd[0] > 0; i++)
 		fprintf(f, "%s=%s\n", active_layout[i].cmd, active_layout[i].value);
 
@@ -1046,23 +1033,6 @@ static int user_settings_handler(void* user, const char* section,
       } else {
         char error_message[100];
         sprintf(error_message, "Error: value must be 0, 1, or 2\r\n");
-        write_console(FONT_LOG, error_message);
-      }
-    } // k3ng - end 2022-08-19
-    else if (!strcmp(name, "reverse_scrolling")){
-      int temp_value = atoi(value);
-      if ((temp_value >= 0) && (temp_value < 2)){
-        reverse_scrolling = temp_value;
-        char success_message[100];
-        if (reverse_scrolling){
-          sprintf(success_message, "reverse scrolling on\r\n");
-        } else {
-          sprintf(success_message, "reverse scrolling off\r\n");
-        }
-        write_console(FONT_LOG, success_message);
-      } else {
-        char error_message[100];
-        sprintf(error_message, "Error: value must be 0 or 1\r\n");
         write_console(FONT_LOG, error_message);
       }
     } // k3ng - end 2022-08-19
@@ -1387,19 +1357,24 @@ void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
 		return;
 	}
 
+	pitch = atoi(get_field("#rx_pitch")->value);
+	struct field *mode_f = get_field("r1:mode");
 	freq = atol(get_field("r1:freq")->value);
+/*
+  if(!strcmp(mode_f->value, "CW")){
+    freq = freq + pitch; 
+  }
+*/
 	span = atof(get_field("#span")->value);
 	bw_high = atoi(get_field("r1:high")->value);
 	bw_low = atoi(get_field("r1:low")->value);
 	grid_height = f_spectrum->height - 10;
 	sub_division = f_spectrum->width / 10;
-	pitch = atoi(get_field("#rx_pitch")->value);
 
 	// the step is in khz, we multiply by 1000 and div 10(divisions) = 100 
 	freq_div = span * 100;  
 
-	//calcualte the position of bandwidth strip
-	struct field *mode_f = get_field("r1:mode");
+	//calculate the position of bandwidth strip
 	int filter_start, filter_width;
 
 	if(!strcmp(mode_f->value, "CWR") || !strcmp(mode_f->value, "LSB")){
@@ -2789,13 +2764,13 @@ static gboolean on_scroll (GtkWidget *widget, GdkEventScroll *event, gpointer da
 	
 	if (f_focus){
 		if (event->direction == 0){
-     if (reverse_scrolling){  // k3ng 2022-08-22
+     if (!strcmp(get_field("#reverse_scrolling")->value, "ON")){  // k3ng 2022-08-22
 	  		edit_field(f_focus, MIN_KEY_DOWN);
       } else {
 		  	edit_field(f_focus, MIN_KEY_UP);
       }
 		} else {
-      if (reverse_scrolling){
+      if (!strcmp(get_field("#reverse_scrolling")->value, "ON")){
 			  edit_field(f_focus, MIN_KEY_UP);
       } else {
 			  edit_field(f_focus, MIN_KEY_DOWN);
@@ -3704,11 +3679,12 @@ void cmd_exec(char *cmd){
     if (strlen(args)){
       int temp_value = atoi(args);
       if ((temp_value >= 0) && (temp_value < 2)){
-        reverse_scrolling = temp_value; 
-        if (reverse_scrolling){
+        if (temp_value){
           sprintf(success_message, "reverse scrolling on\r\n");
+          set_field("#reverse_scrolling","ON");
         } else {
           sprintf(success_message, "reverse scrolling off\r\n");
+          set_field("#reverse_scrolling","OFF");
         }
         write_console(FONT_LOG, success_message);
       } else {
@@ -3717,7 +3693,7 @@ void cmd_exec(char *cmd){
         write_console(FONT_LOG, error_message);
       }
     } else {
-      if (reverse_scrolling){
+      if (!strcmp(get_field("#reverse_scrolling")->value, "ON")){
         sprintf(success_message, "reverse scrolling is on\r\n");
       } else {
         sprintf(success_message, "reverse scrolling is off\r\n");
