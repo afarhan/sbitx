@@ -292,7 +292,8 @@ struct field {
 	char	value_type; //NUMBER, SELECTION, TEXT, TOGGLE, BUTTON
 	int 	font_index; //refers to font_style table
 	char  selection[1000];
-	int	 	min, max, step;
+	long int	 	min, max;
+  int step;
 };
 
 #define STACK_DEPTH 4
@@ -333,7 +334,7 @@ char*mode_name[MAX_MODES] = {
 
 static int serial_fd = -1;
 static int xit = 512; 
-static long int tuning_step = 1000; // k3ng 2022-08-16
+static long int tuning_step = 1000;
 static int tx_mode = MODE_USB;
 
 
@@ -403,12 +404,6 @@ static int redraw_flag = 1;
 int screen_width, screen_height;
 int spectrum_span = 48000;
 
-int spectrum_freq_style = 0; // k3ng 2022-08-19
-int tuning_acceleration = 1; // k3ng 2022-08-23
-long int tuning_accel_thresh1 = 10000; // k3ng 2022-08-23
-long int tuning_accel_thresh2 = 500;  // k3ng 2022-08-23
-char temp_str[11];  // k3ng 2022-08-16
-int mouse_pointer = 1; // k3ng
 
 void do_cmd(char *cmd);
 void cmd_exec(char *cmd);
@@ -445,7 +440,7 @@ struct field main_controls[] = {
 	{ "r1:low", NULL, 550, 330, 50, 50, "LOW", 40, "300", FIELD_NUMBER, FONT_FIELD_VALUE, 
 		"", 0,4000, 50},
 	{ "r1:high", NULL, 600, 330, 50, 50, "HIGH", 40, "3000", FIELD_NUMBER, FONT_FIELD_VALUE, 
-		"", 300, 10000, 50}, // k3ng 2022-08-16
+		"", 300, 10000, 50},
 
 	{ "r1:agc", NULL, 650, 330, 50, 50, "AGC", 40, "SLOW", FIELD_SELECTION, FONT_FIELD_VALUE, 
 		"OFF/SLOW/MED/FAST", 0, 1024, 1},
@@ -466,7 +461,7 @@ struct field main_controls[] = {
 		"ON/OFF", 0,0,0},
 	{ "#tx_wpm", NULL, 650, 380, 50, 50, "WPM", 40, "12", FIELD_NUMBER, FONT_FIELD_VALUE, 
 		"", 1, 50, 1},
-	{ "#rx_pitch", do_pitch, 700, 380, 50, 50, "PITCH", 40, "12", FIELD_NUMBER, FONT_FIELD_VALUE, 
+	{ "#rx_pitch", do_pitch, 700, 380, 50, 50, "PITCH", 40, "600", FIELD_NUMBER, FONT_FIELD_VALUE, 
 		"", 100, 3000, 10},
 	
 	{ "#tx", NULL, 600, 430, 50, 50, "TX", 40, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
@@ -479,7 +474,7 @@ struct field main_controls[] = {
 		"ON/OFF", 0,0, 0},
 
 	// top row
-	{"#step", NULL, 400, 0 ,50, 50, "STEP", 1, "50Hz", FIELD_SELECTION, FONT_FIELD_VALUE, 
+	{"#step", NULL, 400, 0 ,50, 50, "STEP", 1, "10Hz", FIELD_SELECTION, FONT_FIELD_VALUE, 
 		"1MHz/100KHz/10KHz/1KHz/100Hz/10Hz", 0,0,0},
 	{"#vfo", NULL, 450, 0 ,50, 50, "VFO", 1, "A", FIELD_SELECTION, FONT_FIELD_VALUE, 
 		"A/B", 0,0,0},
@@ -507,8 +502,16 @@ struct field main_controls[] = {
 		"", 0,0,0},
 
   // other settings - currently off screen
-  { "#reverse_scrolling", NULL, 1000, 1000, 50, 50, "REV SCROLL", 40, "ON", FIELD_TOGGLE, FONT_FIELD_VALUE,
+  { "reverse_scrolling", NULL, 1000, 1000, 50, 50, "RS", 40, "ON", FIELD_TOGGLE, FONT_FIELD_VALUE,
     "ON/OFF", 0,0,0},
+  { "tuning_acceleration", NULL, 1000, 1000, 50, 50, "TA", 40, "ON", FIELD_TOGGLE, FONT_FIELD_VALUE,
+    "ON/OFF", 0,0,0},
+  { "tuning_accel_thresh1", NULL, 1000, 1000, 50, 50, "TAT1", 40, "10000", FIELD_NUMBER, FONT_FIELD_VALUE,
+    "", 100,99999,100},
+  { "tuning_accel_thresh2", NULL, 1000, 1000, 50, 50, "TAT2", 40, "500", FIELD_NUMBER, FONT_FIELD_VALUE,
+    "", 100,99999,100},
+  { "mouse_pointer", NULL, 1000, 1000, 50, 50, "MP", 40, "LEFT", FIELD_SELECTION, FONT_FIELD_VALUE,
+    "BLANK/LEFT/RIGHT/CROSSHAIR", 0,0,0},
 
 	/* band stack registers */
 	{"#10m", NULL, 400, 330, 50, 50, "10M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
@@ -862,7 +865,7 @@ void draw_field(GtkWidget *widget, cairo_t *gfx, struct field *f){
 			offset = f->width/2 - width/2;
 			draw_text(gfx, f->x + offset, f->y+5 ,  f->label, FONT_FIELD_LABEL);
 			width = measure_text(gfx, f->value, f->font_index);
-      if (width >= f->width){ // k3ng 2022-08-30 automatic button font downsizing
+      if (width >= f->width){ // automatic button font downsizing
         width = measure_text(gfx, f->value, FONT_SMALL_FIELD_VALUE);
         offset = f->width/2 - width/2;
         if (!strlen(f->label))
@@ -965,11 +968,6 @@ static void save_user_settings(int forced){
 	fprintf(f, "callsign=%s\n", mycallsign);
 	fprintf(f, "grid=%s\n", mygrid);
 	fprintf(f, "cw_delay=%d\n", cw_delay);
-	fprintf(f, "spectrum_freq_style=%d\n", spectrum_freq_style);
-	fprintf(f, "tuning_acceleration=%d\n", tuning_acceleration);
-	fprintf(f, "tuning_accel_thresh1=%d\n", tuning_accel_thresh1);
-	fprintf(f, "tuning_accel_thresh2=%d\n", tuning_accel_thresh2);
-	fprintf(f, "mouse_pointer=%d\n", mouse_pointer);
 	fprintf(f, "data_delay=%d\n", data_delay);
 	fprintf(f, "cw_input_method=%d\n", cw_input_method);
 	fprintf(f, "current_macro=%s\n", current_macro);
@@ -1022,73 +1020,6 @@ static int user_settings_handler(void* user, const char* section,
 			strcpy(mycallsign, value);
 		else if (!strcmp(name, "grid"))
 			strcpy(mygrid, value);
-    //spectrum display    // k3ng 2022-08-19
-    else if (!strcmp(name, "spectrum_freq_style")){
-      int temp_value = atoi(value); 
-      if ((temp_value >= 0) && (temp_value < 4)){
-        spectrum_freq_style = temp_value;
-        char success_message[100];
-        sprintf(success_message, "spectrum_freq_style set to %d\r\n", temp_value);
-        write_console(FONT_LOG, success_message);
-      } else {
-        char error_message[100];
-        sprintf(error_message, "Error: value must be 0, 1, or 2\r\n");
-        write_console(FONT_LOG, error_message);
-      }
-    } // k3ng - end 2022-08-19
-    else if (!strcmp(name, "tuning_acceleration")){
-      int temp_value = atoi(value);
-      if ((temp_value >= 0) && (temp_value < 2)){
-        tuning_acceleration = temp_value;
-        char success_message[100];
-        if (tuning_acceleration){
-          sprintf(success_message, "tuning acceleration on\r\n");
-        } else {
-          sprintf(success_message, "tuning acceleration off\r\n");
-        }
-        write_console(FONT_LOG, success_message);
-      } else {
-        char error_message[100];
-        sprintf(error_message, "Error: value must be 0 or 1\r\n");
-        write_console(FONT_LOG, error_message);
-      }
-    } // k3ng - end 2022-08-19
-
-
-    else if (!strcmp(name, "tuning_accel_thresh1")){ // k3ng 2022-08-23
-      long int temp_value = atoi(value);
-      if ((temp_value > 99) && (temp_value < 100000)){
-        tuning_accel_thresh1 = temp_value;
-      } else {
-        char error_message[100];
-        sprintf(error_message, "Error: tuning_accel_thresh1 value must be > 99 and < 100000\r\n");
-        write_console(FONT_LOG, error_message);
-      }
-    } // k3ng - end 2022-08-23
-
-
-    else if (!strcmp(name, "tuning_accel_thresh2")){ // k3ng 2022-08-23
-      long int temp_value = atoi(value);
-      if ((temp_value > 99) && (temp_value < 100000)){
-        tuning_accel_thresh2 = temp_value;
-      } else {
-        char error_message[100];
-        sprintf(error_message, "Error: tuning_accel_thresh2 value must be > 99 and < 100000\r\n");
-        write_console(FONT_LOG, error_message);
-      }
-    } // k3ng - end 2022-08-23
-
-    else if (!strcmp(name, "mouse_pointer")){ // k3ng 2022-08-23
-      long int temp_value = atoi(value);
-      if ((temp_value >= 0) && (temp_value < 4)){
-        mouse_pointer = temp_value;
-      } else {
-        char error_message[100];
-        sprintf(error_message, "Error: invalid mouse_pointer value\r\n");
-        write_console(FONT_LOG, error_message);
-      }
-    } // k3ng - end 2022-08-23
-
 		//cw 
 		else if (!strcmp(name, "cw_delay"))
 			cw_delay = atoi(value);
@@ -1417,18 +1348,12 @@ void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
 			palette[COLOR_TEXT_MUTED][1], palette[COLOR_TEXT_MUTED][2]);
 	long f_start = freq - (4 * freq_div); 
 	for (i = f->width/10; i < f->width; i += f->width/10){
-    if (spectrum_freq_style == 0){ // k3ng 2022-08-19
-		  sprintf(freq_text, "%ld", f_start/100);
-    } else if (spectrum_freq_style == 1){
+    if ((span == 25) || (span == 10)){
 		  sprintf(freq_text, "%ld", f_start/1000);
-    } else if (spectrum_freq_style == 2){
-      int f_khz = (f_start - (int)(f_start/1000000) * 1000000) / 1000;
-		  sprintf(freq_text, "%ld", f_khz);
-    } else if (spectrum_freq_style == 3){
-      int f_khz = (f_start - (int)(f_start/1000000) * 1000000) / 1000;
-		  sprintf(freq_text, "%d.1", f_khz);
-    } // k3ng - end 2022-08-19
-
+    } else {
+      float f_start_temp = (((float)f_start/1000000.0) - ((int)(f_start/1000000))) *1000;
+		  sprintf(freq_text, "%5.1f", f_start_temp);
+    }
 		int off = measure_text(gfx, freq_text, FONT_SMALL)/2;
 		draw_text(gfx, f->x + i - off , f->y+grid_height , freq_text, FONT_SMALL);
 		f_start += freq_div;
@@ -1506,7 +1431,7 @@ int waterfall_fn(struct field *f, cairo_t *gfx, int event, int a, int b){
 	}
 }
 
-char* freq_with_separators(char* freq_str){ // k3ng 2022-08-16
+char* freq_with_separators(char* freq_str){
 
   int freq = atoi(freq_str);
   int f_mhz, f_khz, f_hz;
@@ -1538,7 +1463,7 @@ char* freq_with_separators(char* freq_str){ // k3ng 2022-08-16
   sprintf(temp_string,"%d",f_hz);
   strcat(return_string,temp_string);
   return return_string;
-} // k3ng 2022-08-16
+}
 
 void draw_dial(struct field *f, cairo_t *gfx){
 	struct font_style *s = font_table + 0;
@@ -1546,6 +1471,8 @@ void draw_dial(struct field *f, cairo_t *gfx){
 	struct field *split = get_field("#split");
 	struct field *vfo = get_field("#vfo");
 	char buff[20];
+
+  char temp_str[20];
 
 	fill_rect(gfx, f->x+1, f->y+1, f->width-2,f->height-2, COLOR_BACKGROUND);
 
@@ -1709,7 +1636,7 @@ static void edit_field(struct field *f, int action){
 		sprintf(f->value, "%d",  v);
 	}
 	else if (f->value_type == FIELD_SELECTION){
-		char *p, *prev, *next, b[100], *first, *last; // k3ng 2022-08-23 implemented field selection roll over
+		char *p, *prev, *next, b[100], *first, *last;
     // get the first and last selections
     strcpy(b, f->selection);
     p = strtok(b, "/");
@@ -1797,7 +1724,7 @@ static void focus_field(struct field *f){
 		edit_field(f_focus, MIN_KEY_DOWN);	
 
   //is it a selection field?
-  if (f_focus->value_type == FIELD_SELECTION)    // k3ng 2022-08-30 button press changes selection fields
+  if (f_focus->value_type == FIELD_SELECTION) 
     edit_field(f_focus, MIN_KEY_UP);
 
 	//if the button has been pressed, do the needful
@@ -1895,8 +1822,7 @@ int do_spectrum(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 		  f_span = get_field("#span");
 		  span = atof(f_span->value) * 1000;
 		  //a has the x position of the mouse
-		  //freq -= ((a - last_mouse_x) *tuning_step)/4;	//slow this down a bit
-		  freq -= ((a - last_mouse_x) * (span/f->width)); // method based on span rather than tuning_step - k3ng 2022-09-02
+		  freq -= ((a - last_mouse_x) * (span/f->width));
 		  sprintf(buff, "%ld", freq);
 		  set_field("r1:freq", buff);
 		  return 1;
@@ -2153,9 +2079,7 @@ static struct timespec last_change_time, this_change_time;
 
 	if (event == FIELD_EDIT){
 
-
- // k3ng 2022-08-22 tuning accleration
-  if (tuning_acceleration){
+  if (!strcmp(get_field("tuning_acceleration")->value, "ON")){
     clock_gettime(CLOCK_MONOTONIC_RAW, &this_change_time);
     uint64_t delta_us = (this_change_time.tv_sec - last_change_time.tv_sec) * 1000000 + (this_change_time.tv_nsec - last_change_time.tv_nsec) / 1000;
     char temp_char[100];
@@ -2163,13 +2087,13 @@ static struct timespec last_change_time, this_change_time;
     //strcat(temp_char,"\r\n");
     //write_console(FONT_LOG, temp_char);
     clock_gettime(CLOCK_MONOTONIC_RAW, &last_change_time);
-    if (delta_us < 500){
+    if (delta_us < atof(get_field("tuning_accel_thresh2")->value)){
       if (tuning_step < 10000){
         tuning_step = tuning_step * 100;
         //sprintf(temp_char, "x100 activated\r\n");
         //write_console(FONT_LOG, temp_char);
       }
-    } else if (delta_us < tuning_accel_thresh1){
+    } else if (delta_us < atof(get_field("tuning_accel_thresh1")->value)){
       if (tuning_step < 1000){
         tuning_step = tuning_step * 10;
         //printf(temp_char, "x10 activated\r\n");
@@ -2764,13 +2688,13 @@ static gboolean on_scroll (GtkWidget *widget, GdkEventScroll *event, gpointer da
 	
 	if (f_focus){
 		if (event->direction == 0){
-     if (!strcmp(get_field("#reverse_scrolling")->value, "ON")){  // k3ng 2022-08-22
+     if (!strcmp(get_field("reverse_scrolling")->value, "ON")){
 	  		edit_field(f_focus, MIN_KEY_DOWN);
       } else {
 		  	edit_field(f_focus, MIN_KEY_UP);
       }
 		} else {
-      if (!strcmp(get_field("#reverse_scrolling")->value, "ON")){
+      if (!strcmp(get_field("reverse_scrolling")->value, "ON")){
 			  edit_field(f_focus, MIN_KEY_UP);
       } else {
 			  edit_field(f_focus, MIN_KEY_DOWN);
@@ -2954,8 +2878,7 @@ void hw_init(){
 	enc_init(&enc_a, ENC_FAST, ENC1_B, ENC1_A);
 	enc_init(&enc_b, ENC_FAST, ENC2_A, ENC2_B);
 
-	int e = g_timeout_add(1, ui_tick, NULL); // k3ng 2022-08-16
-	//int e = g_timeout_add(10, ui_tick, NULL); // original
+	int e = g_timeout_add(1, ui_tick, NULL);
 
 	wiringPiISR(ENC2_A, INT_EDGE_BOTH, tuning_isr);
 	wiringPiISR(ENC2_B, INT_EDGE_BOTH, tuning_isr);
@@ -3041,8 +2964,7 @@ gboolean ui_tick(gpointer gook){
     //write_console(FONT_LOG, message);
 	}
 
-	if (ticks == 100){ // k3ng 2022-08-16
-	//if (ticks == 10){ // original 
+	if (ticks == 100){
 
 		struct field *f = get_field("spectrum");
 		update_field(f);	//move this each time the spectrum watefall index is moved
@@ -3071,11 +2993,32 @@ gboolean ui_tick(gpointer gook){
 			focus_since = millis();
 		}
 
-    // check if low and high settings are stepping on each other - k3ng 2022-09-03
+    // check if low and high settings are stepping on each other
     char new_value[20];
     while (atoi(get_field("r1:low")->value) > atoi(get_field("r1:high")->value)){
       sprintf(new_value, "%d", atoi(get_field("r1:high")->value)+get_field("r1:high")->step);
       set_field("r1:high",new_value);
+    }
+
+
+    static char last_mouse_pointer_value[16];
+
+    int cursor_type;
+
+    if (strcmp(get_field("mouse_pointer")->value, last_mouse_pointer_value)){
+      sprintf(last_mouse_pointer_value,get_field("mouse_pointer")->value);
+      if (!strcmp(last_mouse_pointer_value,"BLANK")){
+        cursor_type = GDK_BLANK_CURSOR;
+      } else if (!strcmp(last_mouse_pointer_value,"RIGHT")){
+        cursor_type = GDK_RIGHT_PTR;
+      } else if (!strcmp(last_mouse_pointer_value,"CROSSHAIR")){
+        cursor_type = GDK_CROSSHAIR;
+      } else {
+        cursor_type = GDK_LEFT_PTR;
+      }
+      GdkCursor* new_cursor;
+      new_cursor = gdk_cursor_new_for_display (gdk_display_get_default(),cursor_type);
+      gdk_window_set_cursor(gdk_get_default_root_window(), new_cursor);
     }
 
   }
@@ -3108,27 +3051,6 @@ gboolean ui_tick(gpointer gook){
 	return TRUE;
 }
 
-void update_cursor(int mode){  // k3ng 2022-09-02
-
-  int cursor_type;
-
-  if (mode == 255){  // ignore mouse_pointer setting and set to normal pointer
-    cursor_type = GDK_LEFT_PTR;
-  } else {
-    switch(mouse_pointer){
-      case 0: cursor_type = GDK_BLANK_CURSOR; break;
-      case 1: cursor_type = GDK_LEFT_PTR; break;
-      case 2: cursor_type = GDK_RIGHT_PTR; break;
-      case 3: cursor_type = GDK_CROSSHAIR; break;
-    }
-  }
-
-  GdkCursor* new_cursor;
-  new_cursor = gdk_cursor_new_for_display (gdk_display_get_default(),cursor_type);
-  gdk_window_set_cursor(gdk_get_default_root_window(), new_cursor);
-
-}
-
 void ui_init(int argc, char *argv[]){
  
   gtk_init( &argc, &argv );
@@ -3137,8 +3059,6 @@ void ui_init(int argc, char *argv[]){
   gtk_window_set_default_size(GTK_WINDOW(window), 800, 480);
   gtk_window_set_title( GTK_WINDOW(window), "sBITX" );
 	gtk_window_set_icon_from_file(GTK_WINDOW(window), "/home/pi/sbitx/sbitx_icon.png", NULL);
-
-  update_cursor(255);
 
   display_area = gtk_drawing_area_new();
   gtk_container_add( GTK_CONTAINER(window), display_area );
@@ -3465,6 +3385,7 @@ void do_cmd(char *cmd){
 	}
 	else if (!strcmp(request, "#mfqrz") && strlen(contact_callsign) > 0)
 		qrz(contact_callsign);
+
 	//this needs to directly pass on to the sdr core
 	else if(request[0] != '#'){
 		//translate the frequency of operating depending upon rit, split, etc.
@@ -3594,7 +3515,7 @@ void cmd_exec(char *cmd){
 		write_console(FONT_LOG, buff);
 	}
 
-  else if (!strcmp(exec, "exit")){  // k3ng 2022-08-26
+  else if (!strcmp(exec, "exit")){
     tx_off();
     set_field("#record", "OFF");
     save_user_settings(1);
@@ -3602,127 +3523,36 @@ void cmd_exec(char *cmd){
   }
 
 
-  else if ((!strcmp(exec, "lsb")) || (!strcmp(exec, "LSB"))){  // k3ng 2022-08-26
+  else if ((!strcmp(exec, "lsb")) || (!strcmp(exec, "LSB"))){
     set_mode("LSB");
   }
-  else if ((!strcmp(exec, "usb")) || (!strcmp(exec, "USB"))){  // k3ng 2022-08-26
+  else if ((!strcmp(exec, "usb")) || (!strcmp(exec, "USB"))){
     set_mode("USB"); 
   }
-  else if ((!strcmp(exec, "cw")) || (!strcmp(exec, "CW"))){  // k3ng 2022-08-26
+  else if ((!strcmp(exec, "cw")) || (!strcmp(exec, "CW"))){
     set_mode("CW"); 
   }
-  else if ((!strcmp(exec, "cwr")) || (!strcmp(exec, "CWR"))){  // k3ng 2022-08-29
+  else if ((!strcmp(exec, "cwr")) || (!strcmp(exec, "CWR"))){
     set_mode("CWR");
   }
-  else if ((!strcmp(exec, "rtty")) || (!strcmp(exec, "RTTY"))){  // k3ng 2022-08-29
+  else if ((!strcmp(exec, "rtty")) || (!strcmp(exec, "RTTY"))){
     set_mode("RTTY");
   }
-  else if ((!strcmp(exec, "ft8")) || (!strcmp(exec, "FT8"))){  // k3ng 2022-08-29
+  else if ((!strcmp(exec, "ft8")) || (!strcmp(exec, "FT8"))){
     set_mode("FT8");
   }
-  else if ((!strcmp(exec, "psk")) || (!strcmp(exec, "psk31")) || (!strcmp(exec, "PSK")) || (!strcmp(exec, "PSK31"))){  // k3ng 2022-08-29
+  else if ((!strcmp(exec, "psk")) || (!strcmp(exec, "psk31")) || (!strcmp(exec, "PSK")) || (!strcmp(exec, "PSK31"))){
     set_mode("PSK31");
   }
-  else if ((!strcmp(exec, "digital")) || (!strcmp(exec, "DIGITAL"))  || (!strcmp(exec, "dig")) || (!strcmp(exec, "DIG"))){  // k3ng 2022-08-29
+  else if ((!strcmp(exec, "digital")) || (!strcmp(exec, "DIGITAL"))  || (!strcmp(exec, "dig")) || (!strcmp(exec, "DIG"))){
     set_mode("DIGITAL");
   }
-  else if ((!strcmp(exec, "2tone")) || (!strcmp(exec, "2TONE"))){  // k3ng 2022-08-29
+  else if ((!strcmp(exec, "2tone")) || (!strcmp(exec, "2TONE"))){
     set_mode("2TONE");
   }
-  else if (!strcmp(exec, "sfs")){  // k3ng 2022-08-22
-    if (strlen(args)){
-      int temp_value = atoi(args);
-      if ((temp_value >= 0) && (temp_value < 4)){
-        spectrum_freq_style = temp_value; 
-        char success_message[100];
-        sprintf(success_message, "spectrum freq style set to %d", temp_value);
-        write_console(FONT_LOG, success_message);
-      } else {
-        char error_message[100];
-        sprintf(error_message, "Error: value must be 0, 1, 2, or 3");
-        write_console(FONT_LOG, error_message);
-      }
-    }
-  }
-  else if (!strcmp(exec, "mp")){  // k3ng 2022-09-02
-    if (strlen(args)){ 
-      int temp_value = atoi(args);
-      if ((temp_value >= 0) && (temp_value < 4)){
-        mouse_pointer = temp_value;
-        char success_message[100];
-        switch (mouse_pointer){
-          case 0: 
-            sprintf(success_message, "mouse pointer set to blank");
-            break;
-          case 1:
-            sprintf(success_message, "mouse pointer set to left pointer");
-            break;        
-          case 2:
-            sprintf(success_message, "mouse pointer set to right pointer");
-            break;
-          case 3:
-            sprintf(success_message, "mouse pointer set to crosshair");
-            break;
 
-        }
-        update_cursor(0);
-        write_console(FONT_LOG, success_message);
-      } else {
-        char error_message[100];
-        sprintf(error_message, "Error: invaled mouse pointer style");
-        write_console(FONT_LOG, error_message);
-      }
-    }
-  }
-  else if (!strcmp(exec, "rs")){  // k3ng 2022-08-22
-    char success_message[100];
-    if (strlen(args)){
-      int temp_value = atoi(args);
-      if ((temp_value >= 0) && (temp_value < 2)){
-        if (temp_value){
-          sprintf(success_message, "reverse scrolling on\r\n");
-          set_field("#reverse_scrolling","ON");
-        } else {
-          sprintf(success_message, "reverse scrolling off\r\n");
-          set_field("#reverse_scrolling","OFF");
-        }
-        write_console(FONT_LOG, success_message);
-      } else {
-        char error_message[100];
-        sprintf(error_message, "Error: value must be 0 or 1\r\n");
-        write_console(FONT_LOG, error_message);
-      }
-    } else {
-      if (!strcmp(get_field("#reverse_scrolling")->value, "ON")){
-        sprintf(success_message, "reverse scrolling is on\r\n");
-      } else {
-        sprintf(success_message, "reverse scrolling is off\r\n");
-      }
-      write_console(FONT_LOG, success_message);
-    }
-  }
-  else if (!strcmp(exec, "ta")){  // k3ng 2022-08-23
-    if (strlen(args)){
-      int temp_value = atoi(args);
-      if ((temp_value >= 0) && (temp_value < 2)){
-        tuning_acceleration = temp_value;
-        char success_message[100];
-        if (tuning_acceleration){
-          sprintf(success_message, "tuning acceleration on\r\n");
-        } else {
-          sprintf(success_message, "tuning acceleration off\r\n");
-        }
-        write_console(FONT_LOG, success_message);
-      } else {
-        char error_message[100];
-        sprintf(error_message, "Error: value must be 0 or 1\r\n");
-        write_console(FONT_LOG, error_message);
-      }
-    }
-  }
-
-  else if ((!strcmp(exec, "help")) || (!strcmp(exec, "?"))){  // k3ng 2022-08-24
-    write_console(FONT_LOG, "Help - UNDER CONSTRUCTION\r\n\r\n");
+  else if ((!strcmp(exec, "help")) || (!strcmp(exec, "?"))){
+    write_console(FONT_LOG, "Help\r\n\r\n");
     write_console(FONT_LOG, "\\audio\r\n");
     write_console(FONT_LOG, "\\callsign [your callsign]\r\n");
     write_console(FONT_LOG, "\\clear - clear the console display\r\n");
@@ -3748,47 +3578,39 @@ void cmd_exec(char *cmd){
     write_console(FONT_LOG, "Do \\h2 command for help page 2...\r\n");
   }
 
-  else if (!strcmp(exec, "h2")){  // k3ng 2022-08-24 
+  else if (!strcmp(exec, "h2")){ 
     write_console(FONT_LOG, "Help - Page 2\r\n\r\n");
     write_console(FONT_LOG, "\\exit\r\n\r\n");
-    write_console(FONT_LOG, "\\mp [0|1|2|3] - mouse pointer off/style\r\n");
-    write_console(FONT_LOG, "\\rs [0|1] - reverse scrolling\r\n\r\n");
-    write_console(FONT_LOG, "\\sfs [0|1|2|3] spectrum frequency style\r\n");
-    write_console(FONT_LOG, "\\ta [0|1] - Turns tuning acceleration on and off\r\n");
-    write_console(FONT_LOG, "\\tuning_thresh1 [99-99999] - 1st threshold at which acceleration occurs (default: 10,000)\r\n");
-    write_console(FONT_LOG, "\\tuning_thresh2 [99-99999] - 2nd threshold at which acceleration occurs (default: 500)\r\n\r\n");
+    write_console(FONT_LOG, "\\s - view settings\r\n");
+    write_console(FONT_LOG, "\\mp [BLANK|LEFT|RIGHT|CROSSHAIR] - mouse pointer style\r\n");
+    write_console(FONT_LOG, "\\rs [ON|OFF] - reverse scrolling\r\n\r\n");
+    write_console(FONT_LOG, "\\ta [ON|OFF] - Turns tuning acceleration on and off\r\n");
+    write_console(FONT_LOG, "\\tat1 [100-99999] - 1st threshold at which acceleration occurs (default: 10,000)\r\n");
+    write_console(FONT_LOG, "\\tat2 [100-99999] - 2nd threshold at which acceleration occurs (default: 500)\r\n\r\n");
     write_console(FONT_LOG, "\\cw \\cwr \\usb \\lsb \\rtty \\ft8 \\digital \\dig \\2tone\r\n");
   }
 
-    else if (!strcmp(exec, "tuning_thresh1")){ // k3ng 2022-08-23
-      long int temp_value = atoi(args);
-      if ((temp_value > 99) && (temp_value < 100000)){
-        tuning_accel_thresh1 = temp_value;
-        char success_message[100];
-        sprintf(success_message, "tuning acceleration first threshold set to %d\r\n", temp_value);
-        write_console(FONT_LOG, success_message);
-      } else {
-        char error_message[100];
-        sprintf(error_message, "Error: value must be > 99 and < 100000\r\n");
-        write_console(FONT_LOG, error_message);
-      }
-    } // k3ng - end 2022-08-23
+  else if ((!strcmp(exec, "s")) || (!strcmp(exec, "settings"))){
+    write_console(FONT_LOG, "Settings\r\n\r\n");
+    char temp_string[100];
+    sprintf(temp_string,"Reverse Scrolling: ");
+    strcat(temp_string,get_field("reverse_scrolling")->value);
+    write_console(FONT_LOG, temp_string);
+    sprintf(temp_string,"\r\nTuning Acceleration: ");
+    strcat(temp_string,get_field("reverse_scrolling")->value);
+    write_console(FONT_LOG, temp_string);
+    sprintf(temp_string,"\r\nTuning Acceleration Threshold 1: ");
+    strcat(temp_string,get_field("tuning_accel_thresh1")->value);
+    write_console(FONT_LOG, temp_string);
+    sprintf(temp_string,"\r\nTuning Acceleration Threshold 2: ");
+    strcat(temp_string,get_field("tuning_accel_thresh2")->value);
+    write_console(FONT_LOG, temp_string);
+    sprintf(temp_string,"Mouse Pointer: ");
+    strcat(temp_string,get_field("mouse_pointer")->value);
+    write_console(FONT_LOG, temp_string);
+    write_console(FONT_LOG, "\r\n");
 
-
-    else if (!strcmp(exec, "tuning_thresh2")){ // k3ng 2022-08-23
-      long int temp_value = atoi(args);
-      if ((temp_value > 99) && (temp_value < 100000)){
-        tuning_accel_thresh2 = temp_value;
-        char success_message[100];
-        sprintf(success_message, "tuning acceleration second threshold set to %d\r\n", temp_value);
-        write_console(FONT_LOG, success_message);
-      } else {
-        char error_message[100];
-        sprintf(error_message, "Error: value must be > 99 and < 100000\r\n");
-        write_console(FONT_LOG, error_message);
-      }
-    } // k3ng - end 2022-08-23
-
+  }
 
 	else if (!strcmp(exec, "ft8mode")){
 		switch(args[0]){
@@ -3887,8 +3709,15 @@ void cmd_exec(char *cmd){
 			//convert all the letters to uppercase
 			for(char *p = args; *p; p++)
 					*p = toupper(*p);
-			if(set_field(f->cmd, args))
-				write_console(FONT_LOG, "Invalid setting");
+			if(set_field(f->cmd, args)){
+				write_console(FONT_LOG, "Invalid setting\r\n");
+      } else {
+        write_console(FONT_LOG, "\\");
+        write_console(FONT_LOG, exec);
+        write_console(FONT_LOG, " ");
+        write_console(FONT_LOG, args);        
+        write_console(FONT_LOG, "\r\n");
+      }
 		}
 	}
 	save_user_settings(0);
@@ -3951,8 +3780,6 @@ int main( int argc, char* argv[] ) {
   if (ini_parse(directory, user_settings_handler, NULL)<0){
     printf("Unable to load ~/sbitx/data/user_settings.ini\n");
   }
-
-  update_cursor(0);
 
 	if (strlen(current_macro))
 		macro_load(current_macro);
