@@ -500,7 +500,7 @@ struct field main_controls[] = {
 		"", 0,0,0},
 	{"#off", NULL, 750, 0 ,50, 50, "OFF", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
 		"", 0,0,0},
-
+  
   // other settings - currently off screen
   { "reverse_scrolling", NULL, 1000, 1000, 50, 50, "RS", 40, "ON", FIELD_TOGGLE, FONT_FIELD_VALUE,
     "ON/OFF", 0,0,0},
@@ -1403,12 +1403,12 @@ void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
  
   if (pitch >= f_spectrum->x){
     cairo_set_source_rgb(gfx, palette[SPECTRUM_PITCH][0],palette[SPECTRUM_PITCH][1], palette[SPECTRUM_PITCH][2]);
-    if(!strcmp(mode_f->value, "CWR") || !strcmp(mode_f->value, "CW")){
-	    cairo_move_to(gfx, pitch, f->y);
-	    cairo_line_to(gfx, pitch, f->y + grid_height); 
-    } else {  // for modes other than CW, draw pitch line at center frequency - k3ng 2022-09-03
+    if(!strcmp(mode_f->value, "USB") || !strcmp(mode_f->value, "LSB")){ // for LSB and USB draw pitch line at center
 	    cairo_move_to(gfx, f->x + (f->width/2), f->y);
 	    cairo_line_to(gfx, f->x + (f->width/2), f->y + grid_height); 
+    } else {
+	    cairo_move_to(gfx, pitch, f->y);
+	    cairo_line_to(gfx, pitch, f->y + grid_height); 
     }
    	cairo_stroke(gfx);
   }
@@ -1828,7 +1828,7 @@ int do_spectrum(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 		  return 1;
 		break;
     case GDK_BUTTON_PRESS: 
-      if (c == GDK_BUTTON_SECONDARY){
+      if (c == GDK_BUTTON_SECONDARY){ // right click QSY
         f_freq = get_field("r1:freq");
         freq = atoi(f_freq->value);
         f_span = get_field("#span");
@@ -3605,7 +3605,7 @@ void cmd_exec(char *cmd){
     sprintf(temp_string,"\r\nTuning Acceleration Threshold 2: ");
     strcat(temp_string,get_field("tuning_accel_thresh2")->value);
     write_console(FONT_LOG, temp_string);
-    sprintf(temp_string,"Mouse Pointer: ");
+    sprintf(temp_string,"\r\nMouse Pointer: ");
     strcat(temp_string,get_field("mouse_pointer")->value);
     write_console(FONT_LOG, temp_string);
     write_console(FONT_LOG, "\r\n");
