@@ -1285,6 +1285,8 @@ void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
 	long	freq, freq_div;
 	char	freq_text[20];
 
+  static float last_span;
+
 	if (in_tx){
 		draw_modulation(f_spectrum, gfx);
 		return;
@@ -1295,12 +1297,16 @@ void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
   if(!strcmp(mode_f->value, "USB") || !strcmp(mode_f->value, "LSB")){ // for LSB and USB draw pitch line at center
     pitch = 0;
   }
-	freq = atol(get_field("r1:freq")->value);
-
-
-  freq = freq + spectrum_display_start_freq_adjustment; 
 
 	span = atof(get_field("#span")->value);
+
+  if (span != last_span){
+    spectrum_display_start_freq_adjustment = 0;
+     last_span = span;
+  }
+	freq = atol(get_field("r1:freq")->value);
+  freq = freq + spectrum_display_start_freq_adjustment; 
+
 	bw_high = atoi(get_field("r1:high")->value);
 	bw_low = atoi(get_field("r1:low")->value);
 	grid_height = f_spectrum->height - 10;
