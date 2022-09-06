@@ -621,6 +621,8 @@ struct field main_controls[] = {
 };
 
 
+int spectrum_display_start_freq_adjustment = 0;  // spectrum display variable start freq
+
 struct field *get_field(char *cmd);
 void update_field(struct field *f);
 void tx_on();
@@ -1290,12 +1292,14 @@ void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
 
 	pitch = atoi(get_field("#rx_pitch")->value);
 	struct field *mode_f = get_field("r1:mode");
-	freq = atol(get_field("r1:freq")->value);
-/*
-  if(!strcmp(mode_f->value, "CW")){
-    freq = freq + pitch; 
+  if(!strcmp(mode_f->value, "USB") || !strcmp(mode_f->value, "LSB")){ // for LSB and USB draw pitch line at center
+    pitch = 0;
   }
-*/
+	freq = atol(get_field("r1:freq")->value);
+
+
+  freq = freq + spectrum_display_start_freq_adjustment; 
+
 	span = atof(get_field("#span")->value);
 	bw_high = atoi(get_field("r1:high")->value);
 	bw_low = atoi(get_field("r1:low")->value);
@@ -1310,7 +1314,7 @@ void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
 
 	if(!strcmp(mode_f->value, "CWR") || !strcmp(mode_f->value, "LSB")){
 	 	filter_start = f_spectrum->x + (f_spectrum->width/2) - 
-			((f_spectrum->width * bw_high)/(span * 1000)); 
+			((f_spectrum->width * (bw_high + spectrum_display_start_freq_adjustment))/(span * 1000)); 
 		if (filter_start < f_spectrum->x){
 	 	  filter_width = ((f_spectrum->width * (bw_high -bw_low))/(span * 1000)) - (f_spectrum->x - filter_start); 
 			filter_start = f_spectrum->x;
@@ -1320,18 +1324,18 @@ void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
 		if (filter_width + filter_start > f_spectrum->x + f_spectrum->width)
 			filter_width = f_spectrum->x + f_spectrum->width - filter_start;
 		pitch = f_spectrum->x + (f_spectrum->width/2) -
-			((f_spectrum->width * pitch)/(span * 1000));
+			((f_spectrum->width * (pitch + spectrum_display_start_freq_adjustment))/(span * 1000));
 	}
 	else {
 		filter_start = f_spectrum->x + (f_spectrum->width/2) + 
-			((f_spectrum->width * bw_low)/(span * 1000)); 
+			((f_spectrum->width * (bw_low - spectrum_display_start_freq_adjustment))/(span * 1000)); 
 		if (filter_start < f_spectrum->x)
 			filter_start = f_spectrum->x;
 		filter_width = (f_spectrum->width * (bw_high-bw_low))/(span * 1000); 
 		if (filter_width + filter_start > f_spectrum->x + f_spectrum->width)
 			filter_width = f_spectrum->x + f_spectrum->width - filter_start;
 		pitch = f_spectrum->x + (f_spectrum->width/2) + 
-			((f_spectrum->width * pitch)/(span * 1000));
+			((f_spectrum->width * (pitch - spectrum_display_start_freq_adjustment))/(span * 1000));
 	}
 	// clear the spectrum	
 	f = f_spectrum;
@@ -1365,7 +1369,8 @@ void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
 	int n_bins = (int)((1.0 * spectrum_span) / 46.875);
 	//the center frequency is at the center of the lower sideband,
 	//i.e, three-fourth way up the bins.
-	int starting_bin = (3 *MAX_BINS)/4 - n_bins/2;
+	int starting_bin = ((3 * MAX_BINS)/4 - n_bins/2) - (int)((float)spectrum_display_start_freq_adjustment / 46.875);
+	//int starting_bin = (3 * MAX_BINS)/4 - n_bins/2;
 	int ending_bin = starting_bin + n_bins; 
 
 	float x_step = (1.0 * f->width )/n_bins;
@@ -1403,13 +1408,13 @@ void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
  
   if (pitch >= f_spectrum->x){
     cairo_set_source_rgb(gfx, palette[SPECTRUM_PITCH][0],palette[SPECTRUM_PITCH][1], palette[SPECTRUM_PITCH][2]);
-    if(!strcmp(mode_f->value, "USB") || !strcmp(mode_f->value, "LSB")){ // for LSB and USB draw pitch line at center
-	    cairo_move_to(gfx, f->x + (f->width/2), f->y);
-	    cairo_line_to(gfx, f->x + (f->width/2), f->y + grid_height); 
-    } else {
+    //if(!strcmp(mode_f->value, "USB") || !strcmp(mode_f->value, "LSB")){ // for LSB and USB draw pitch line at center
+	  //  cairo_move_to(gfx, f->x + (f->width/2) - spectrum_display_start_freq_adjustment, f->y);
+	  //  cairo_line_to(gfx, f->x + (f->width/2) - spectrum_display_start_freq_adjustment, f->y + grid_height); 
+    //} else {
 	    cairo_move_to(gfx, pitch, f->y);
 	    cairo_line_to(gfx, pitch, f->y + grid_height); 
-    }
+    //}
    	cairo_stroke(gfx);
   }
 
@@ -1822,9 +1827,13 @@ int do_spectrum(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 		  f_span = get_field("#span");
 		  span = atof(f_span->value) * 1000;
 		  //a has the x position of the mouse
-		  freq -= ((a - last_mouse_x) * (span/f->width));
-		  sprintf(buff, "%ld", freq);
-		  set_field("r1:freq", buff);
+      if (b < (f->y + f->height - 10)){ // if we're in the grid, QSY
+		    freq -= ((a - last_mouse_x) * (span/f->width));
+		    sprintf(buff, "%ld", freq);
+		    set_field("r1:freq", buff);
+      } else { // move the spectrum display
+        spectrum_display_start_freq_adjustment -= ((a - last_mouse_x) * (span/f->width));
+      }
 		  return 1;
 		break;
     case GDK_BUTTON_PRESS: 
@@ -1836,11 +1845,13 @@ int do_spectrum(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
         f_pitch = get_field("#rx_pitch");
         pitch = atoi(f_pitch->value);
         if (mode == MODE_CW){
-          freq += ((((float)(a - f->x) / (float)f->width) - 0.5) * (float)span) - pitch;
+          freq += ((((float)(a - f->x) / (float)f->width) - 0.5) * (float)span) - pitch + spectrum_display_start_freq_adjustment;
         } else if (mode == MODE_CWR){
-          freq += ((((float)(a - f->x) / (float)f->width) - 0.5) * (float)span) + pitch;
+          freq += ((((float)(a - f->x) / (float)f->width) - 0.5) * (float)span) + pitch + spectrum_display_start_freq_adjustment;
+        } else if (mode == MODE_LSB){
+          freq += ((((float)(a - f->x) / (float)f->width) - 0.5) * (float)span) + spectrum_display_start_freq_adjustment;
         } else { // other modes may need to be optimized - k3ng 2022-09-02
-          freq += (((float)(a - f->x) / (float)f->width) - 0.5) * (float)span;
+          freq += (((float)(a - f->x) / (float)f->width) - 0.5) * (float)span + spectrum_display_start_freq_adjustment;
         }
         sprintf(buff, "%ld", freq);
         set_field("r1:freq", buff);
