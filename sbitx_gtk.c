@@ -622,6 +622,8 @@ struct field main_controls[] = {
 
 
 int spectrum_display_start_freq_adjustment = 0;  // spectrum display variable start freq
+int spectrum_display_filter_low_position;
+int spectrum_display_filter_high_position;
 
 struct field *get_field(char *cmd);
 void update_field(struct field *f);
@@ -1331,6 +1333,8 @@ void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
 			filter_width = f_spectrum->x + f_spectrum->width - filter_start;
 		pitch = f_spectrum->x + (f_spectrum->width/2) -
 			((f_spectrum->width * (pitch + spectrum_display_start_freq_adjustment))/(span * 1000));
+    spectrum_display_filter_high_position = filter_start;
+    spectrum_display_filter_low_position = filter_start + filter_width;
 	}
 	else {
 		filter_start = f_spectrum->x + (f_spectrum->width/2) + 
@@ -1342,6 +1346,8 @@ void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
 			filter_width = f_spectrum->x + f_spectrum->width - filter_start;
 		pitch = f_spectrum->x + (f_spectrum->width/2) + 
 			((f_spectrum->width * (pitch - spectrum_display_start_freq_adjustment))/(span * 1000));
+    spectrum_display_filter_low_position = filter_start;
+    spectrum_display_filter_high_position = filter_start + filter_width;
 	}
 	// clear the spectrum	
 	f = f_spectrum;
@@ -1414,13 +1420,8 @@ void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
  
   if (pitch >= f_spectrum->x){
     cairo_set_source_rgb(gfx, palette[SPECTRUM_PITCH][0],palette[SPECTRUM_PITCH][1], palette[SPECTRUM_PITCH][2]);
-    //if(!strcmp(mode_f->value, "USB") || !strcmp(mode_f->value, "LSB")){ // for LSB and USB draw pitch line at center
-	  //  cairo_move_to(gfx, f->x + (f->width/2) - spectrum_display_start_freq_adjustment, f->y);
-	  //  cairo_line_to(gfx, f->x + (f->width/2) - spectrum_display_start_freq_adjustment, f->y + grid_height); 
-    //} else {
-	    cairo_move_to(gfx, pitch, f->y);
-	    cairo_line_to(gfx, pitch, f->y + grid_height); 
-    //}
+	  cairo_move_to(gfx, pitch, f->y);
+	  cairo_line_to(gfx, pitch, f->y + grid_height); 
    	cairo_stroke(gfx);
   }
 
@@ -1832,13 +1833,25 @@ int do_spectrum(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 		  freq = atoi(f_freq->value);
 		  f_span = get_field("#span");
 		  span = atof(f_span->value) * 1000;
-		  //a has the x position of the mouse
-      if (b < (f->y + f->height - 10)){ // if we're in the grid, QSY
-		    freq -= ((a - last_mouse_x) * (span/f->width));
-		    sprintf(buff, "%ld", freq);
-		    set_field("r1:freq", buff);
-      } else { // move the spectrum display
+		  //a has the x position of the mouse and b has the y position
+
+      //check if we're in the hot zone at the top of the grid near a filter start or end
+
+      if (b > (f->y + f->height - 10)){  // move the spectrum display if we're in the frequency below the grid
         spectrum_display_start_freq_adjustment -= ((a - last_mouse_x) * (span/f->width));
+      } else {  // move LOW or HIGH zzzzzz
+        if ((a > (spectrum_display_filter_low_position - 30)) && (a < (spectrum_display_filter_low_position + 30)) && (b < (f->y+20))){
+  
+        } else if ((a > (spectrum_display_filter_high_position - 30)) && (a < (spectrum_display_filter_high_position + 30)) && (b < (f->y+20))){
+          int new_value = atoi(get_field("r1:high")->value) + ((a - last_mouse_x) * (span/f->width));
+          char new_value_string[10];
+          sprintf(new_value_string, "%d", new_value);
+          set_field("r1:high",new_value_string);
+        } else { // we're in the grid and not near a filter start or end at the top, drag QSY
+          freq -= ((a - last_mouse_x) * (span/f->width));
+          sprintf(buff, "%ld", freq);
+          set_field("r1:freq", buff);
+        }   
       }
 		  return 1;
 		break;
