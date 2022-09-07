@@ -485,7 +485,7 @@ struct field main_controls[] = {
 		"", 0,0,0},  
 	{"#status", do_status, 400, 51, 400, 29, "00:00:00", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, 
 		"status", 0,0,0},  
-	{"waterfall", do_waterfall, 400, 180 , 400, 150, "Waterfall ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, 
+	{"waterfall", do_waterfall, 400, 181, 400, 148, "Waterfall ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, 
 		"", 0,0,0},
 	{"#console", do_console, 0, 0 , 400, 320, "console", 70, "console box", FIELD_CONSOLE, FONT_LOG, 
 		"nothing valuable", 0,0,0},
@@ -1818,10 +1818,15 @@ void band_stack_update_power(int power){
 
 int do_spectrum(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 	struct field *f_freq, *f_span, *f_pitch;
-	int span, pitch;
+	int span, pitch, new_value;
   long freq;
 	char buff[100];
   int mode = mode_id(get_field("r1:mode")->value);
+  int multiplier = 1;
+
+  if ((mode == MODE_LSB) || (mode == MODE_CWR)){
+    multiplier = -1;
+  }
 
 	switch(event){
 		case FIELD_DRAW:
@@ -1834,20 +1839,22 @@ int do_spectrum(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 		  f_span = get_field("#span");
 		  span = atof(f_span->value) * 1000;
 		  //a has the x position of the mouse and b has the y position
-
-      //check if we're in the hot zone at the top of the grid near a filter start or end
-
-      if (b > (f->y + f->height - 10)){  // move the spectrum display if we're in the frequency below the grid
+      // move the spectrum display if we're in the frequency below the grid
+      if (b > (f->y + f->height - 10)){
         spectrum_display_start_freq_adjustment -= ((a - last_mouse_x) * (span/f->width));
-      } else {  // move LOW or HIGH zzzzzz
-        if ((a > (spectrum_display_filter_low_position - 30)) && (a < (spectrum_display_filter_low_position + 30)) && (b < (f->y+20))){
-  
-        } else if ((a > (spectrum_display_filter_high_position - 30)) && (a < (spectrum_display_filter_high_position + 30)) && (b < (f->y+20))){
-          int new_value = atoi(get_field("r1:high")->value) + ((a - last_mouse_x) * (span/f->width));
-          char new_value_string[10];
-          sprintf(new_value_string, "%d", new_value);
-          set_field("r1:high",new_value_string);
-        } else { // we're in the grid and not near a filter start or end at the top, drag QSY
+      } else {
+        // are we in the LOW filter drag area?
+        if ((a > (spectrum_display_filter_low_position - 30)) && (a < (spectrum_display_filter_low_position + 30)) && (b < (f->y+(f->height/5)))){
+          new_value = atoi(get_field("r1:low")->value) + (multiplier * ((a - last_mouse_x) * (span/f->width)));
+          sprintf(buff, "%d", new_value);
+          set_field("r1:low", buff); 
+        // are we in the HIGH filter drag area?
+        } else if ((a > (spectrum_display_filter_high_position - 30)) && (a < (spectrum_display_filter_high_position + 30)) && (b < (f->y+(f->height/5)))){
+          new_value = atoi(get_field("r1:high")->value) + (multiplier * ((a - last_mouse_x) * (span/f->width)));
+          sprintf(buff, "%d", new_value);
+          set_field("r1:high", buff);
+        // we're in the grid and not the first division at the top, drag QSY
+        } else if (b > (f->y+(f->height/5))){
           freq -= ((a - last_mouse_x) * (span/f->width));
           sprintf(buff, "%ld", freq);
           set_field("r1:freq", buff);
