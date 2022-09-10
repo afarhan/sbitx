@@ -993,7 +993,6 @@ void sdr_request(char *request, char *response){
 			strcpy(response, "ok");
 			spectrum_reset();
 		//	rx_tx_ramp = 1;
-			puts("tx started");
 		}
 		else {
 			in_tx = 0;
@@ -1017,7 +1016,6 @@ void sdr_request(char *request, char *response){
 			sound_mixer(audio_card, "Capture", rx_gain);
 			spectrum_reset();
 			//rx_tx_ramp = 10;
-			puts("rx started");
 		}
 	}
 	else if (!strcmp(cmd, "tx_gain")){
