@@ -449,7 +449,7 @@ struct field main_controls[] = {
 
 	//tx 
 	{ "tx_power", NULL, 550, 430, 50, 50, "WATTS", 40, "40", FIELD_NUMBER, FONT_FIELD_VALUE, 
-		"", 1, 100, 1},
+		"", 0, 100, 1},
 	{ "tx_gain", NULL, 550, 380, 50, 50, "MIC", 40, "50", FIELD_NUMBER, FONT_FIELD_VALUE, 
 		"", 0, 100, 1},
 
@@ -624,6 +624,7 @@ struct field main_controls[] = {
 int spectrum_display_start_freq_adjustment = 0;  // spectrum display variable start freq
 int spectrum_display_filter_low_position;
 int spectrum_display_filter_high_position;
+int spectrum_display_pitch_position;
 
 struct field *get_field(char *cmd);
 void update_field(struct field *f);
@@ -1423,6 +1424,9 @@ void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
 	  cairo_move_to(gfx, pitch, f->y);
 	  cairo_line_to(gfx, pitch, f->y + grid_height); 
    	cairo_stroke(gfx);
+    spectrum_display_pitch_position = pitch;
+  } else {
+    spectrum_display_pitch_position = 0;
   }
 
 	//draw the needle
@@ -1842,24 +1846,29 @@ int do_spectrum(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
       // move the spectrum display if we're in the frequency below the grid
       if (b > (f->y + f->height - 10)){
         spectrum_display_start_freq_adjustment -= ((a - last_mouse_x) * (span/f->width));
-      } else {
-        // are we in the LOW filter drag area?
-        if ((a > (spectrum_display_filter_low_position - 30)) && (a < (spectrum_display_filter_low_position + 30)) && (b < (f->y+(f->height/5)))){
-          new_value = atoi(get_field("r1:low")->value) + (multiplier * ((a - last_mouse_x) * (span/f->width)));
-          sprintf(buff, "%d", new_value);
-          set_field("r1:low", buff); 
-        // are we in the HIGH filter drag area?
-        } else if ((a > (spectrum_display_filter_high_position - 30)) && (a < (spectrum_display_filter_high_position + 30)) && (b < (f->y+(f->height/5)))){
+      // are we in the pitch dragging area?
+      } else if ((spectrum_display_pitch_position > 0) && (a > (spectrum_display_pitch_position - 10)) &&
+        (a < (spectrum_display_pitch_position + 10)) && (b > (f->y + f->height - 10 - (f->height/5))) &&
+        (b < (f->y + f->height - 10)) && (mode != MODE_LSB) && (mode != MODE_USB)){
+        new_value = atoi(get_field("#rx_pitch")->value) + (multiplier * ((a - last_mouse_x) * (span/f->width)));
+        sprintf(buff, "%d", new_value);
+        set_field("#rx_pitch", buff); //zzzzzz
+      // are we in the LOW filter drag area?
+      } else if ((a > (spectrum_display_filter_low_position - 30)) && (a < (spectrum_display_filter_low_position + 30)) && (b < (f->y+(f->height/5)))){
+        new_value = atoi(get_field("r1:low")->value) + (multiplier * ((a - last_mouse_x) * (span/f->width)));
+        sprintf(buff, "%d", new_value);
+        set_field("r1:low", buff); 
+      // are we in the HIGH filter drag area?
+      } else if ((a > (spectrum_display_filter_high_position - 30)) && (a < (spectrum_display_filter_high_position + 30)) && (b < (f->y+(f->height/5)))){
           new_value = atoi(get_field("r1:high")->value) + (multiplier * ((a - last_mouse_x) * (span/f->width)));
           sprintf(buff, "%d", new_value);
           set_field("r1:high", buff);
-        // we're in the grid and not the first division at the top, drag QSY
-        } else if (b > (f->y+(f->height/5))){
-          freq -= ((a - last_mouse_x) * (span/f->width));
-          sprintf(buff, "%ld", freq);
-          set_field("r1:freq", buff);
-        }   
-      }
+      // we're in the grid and not the first division at the top, drag QSY
+      } else if (b > (f->y+(f->height/5))){
+        freq -= ((a - last_mouse_x) * (span/f->width));
+        sprintf(buff, "%ld", freq);
+        set_field("r1:freq", buff);
+      }   
 		  return 1;
 		break;
     case GDK_BUTTON_PRESS: 
