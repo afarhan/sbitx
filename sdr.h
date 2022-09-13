@@ -234,6 +234,9 @@ int	get_wpm();
 #define FT8_MANUAL 0
 void ft8_setmode(int config);
 
+int query_cw_paddle_isr_key_memory();
+void clear_cw_paddle_isr_key_memory();
+
 void telnet_open(char *server);
 int telnet_write(char *text);
 void telnet_close();

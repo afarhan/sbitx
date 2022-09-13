@@ -919,8 +919,8 @@ void sdr_request(char *request, char *response){
 
 		if (rx_list->mode == MODE_LSB || rx_list->mode == MODE_CWR){
 			filter_tune(rx_list->filter, 
-				(1.0 * -3000)/96000.0, 
-				(1.0 * -300)/96000.0 , 
+				(1.0 * -rx_list->high_hz)/96000.0, 
+				(1.0 * -rx_list->low_hz)/96000.0 , 
 				5);
 			//puts("\n\n\ntx filter ");
 			filter_tune(tx_list->filter, 
@@ -934,8 +934,8 @@ void sdr_request(char *request, char *response){
 		}
 		else { 
 			filter_tune(rx_list->filter, 
-				(1.0 * 300)/96000.0, 
-				(1.0 * 3000)/96000.0 , 
+				(1.0 * rx_list->low_hz)/96000.0, 
+				(1.0 * rx_list->high_hz)/96000.0 , 
 				5);
 			filter_tune(tx_list->filter, 
 				(1.0 * 300)/96000.0, 

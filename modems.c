@@ -378,8 +378,8 @@ static int keydown_count=0;			//counts down the pause afer a keydown is finished
 static int keyup_count = 0;			//counts down to how long a key is held down
 static float cw_envelope = 1;
 static int cw_pitch = 700;
-static int cw_tx_until = 0;
-static int data_tx_until = 0;
+static unsigned long cw_tx_until = 0;
+static unsigned long data_tx_until = 0;
 
 char cw_text[] = " cq cq dx de vu2ese A k";
 char *symbol_next = NULL;
@@ -543,7 +543,7 @@ float cw_get_sample(){
 			}
 		}
 
-		//we are converrting the keyup and keydwon counts to millis
+		//we are converting the keyup and keydown counts to millis
 		if (keydown_count){
 			cw_tx_until = millis() + ((keydown_count * 1000)/96000) + get_cw_delay();
 		}
@@ -553,15 +553,21 @@ float cw_get_sample(){
 			keydown_count += 1000;
 	}
 	//infrequently poll to see if the keyer has sent a new symbol while we were stil txing the last symbol
-	else if ((keydown_count > 0 || keyup_count) > 0 && !((keyup_count + keydown_count) & 0xFF) 
-			&& get_cw_input_method() == CW_IAMBIC){
-		char key = key_poll();
-		if (last_symbol == '-' && (key & CW_DOT))
-				symbol_memory = CW_DOT;
-		if (last_symbol == '.' && (key & CW_DASH))
-			symbol_memory = CW_DASH;
-	}
-	
+//	else if ((keydown_count > 0 || keyup_count) > 0 && !((keyup_count + keydown_count) & 0xFF)
+//			&& get_cw_input_method() == CW_IAMBIC){
+// zzzzzz  k3ng - in progress 2022-09-13
+  if (get_cw_input_method() == CW_IAMBIC){
+    // check if we had paddle keying while we were still sending the last symbol
+    if (last_symbol == '-' && ((query_cw_paddle_isr_key_memory()|key_poll()) & CW_DOT)){
+      clear_cw_paddle_isr_key_memory();
+      symbol_memory = CW_DOT;
+    }
+    if (last_symbol == '.' && ((query_cw_paddle_isr_key_memory()|key_poll()) & CW_DASH)){
+      clear_cw_paddle_isr_key_memory();
+      symbol_memory = CW_DASH;
+    }
+  }
+//}
 	if (keydown_count && cw_envelope < 0.999)
 		cw_envelope = ((vfo_read(&cw_env)/FLOAT_SCALE) + 1)/2; 
 	if (keydown_count == 0 && cw_envelope > 0.001)

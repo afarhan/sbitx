@@ -59,7 +59,7 @@ char pins[15] = {0, 2, 3, 6, 7,
 
 //time sync, when the NTP time is not synced, this tracks the number of seconds 
 //between the system cloc and the actual time set by \utc command
-static long time_delta = 0;
+static unsigned long time_delta = 0;
 
 //mouse/touch screen state
 static int mouse_down = 0;
@@ -74,6 +74,8 @@ struct encoder {
 	int history;
 };
 void tuning_isr(void);
+void cw_paddle_isr(void);
+volatile int cw_paddle_isr_key_memory = 0;
 
 #define COLOR_SELECTED_TEXT 0
 #define COLOR_TEXT 1
@@ -321,7 +323,7 @@ static struct field *f_hover = NULL;
 //variables to power up and down the tx
 static int in_tx = 0;
 static int key_down = 0;
-static int tx_start_time = 0;
+static unsigned long tx_start_time = 0;
 
 static int *tx_mod_buff = NULL;
 static int tx_mod_index = 0;
@@ -944,12 +946,12 @@ static int mode_id(char *mode_str){
 }
 
 static void save_user_settings(int forced){
-	static int last_save_at = 0;
+	static unsigned long last_save_at = 0;
 	char file_path[200];	//dangerous, find the MAX_PATH and replace 200 with it
 
 	//attempt to save settings only if it has been 30 seconds since the 
 	//last time the settings were saved
-	int now = millis();
+	unsigned long now = millis();
 	if ((now < last_save_at + 30000 ||  !settings_updated) && forced == 0)
 		return;
 
@@ -1852,7 +1854,7 @@ int do_spectrum(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
         (b < (f->y + f->height - 10)) && (mode != MODE_LSB) && (mode != MODE_USB)){
         new_value = atoi(get_field("#rx_pitch")->value) + (multiplier * ((a - last_mouse_x) * (span/f->width)));
         sprintf(buff, "%d", new_value);
-        set_field("#rx_pitch", buff); //zzzzzz
+        set_field("#rx_pitch", buff);
       // are we in the LOW filter drag area?
       } else if ((a > (spectrum_display_filter_low_position - 30)) && (a < (spectrum_display_filter_low_position + 30)) && (b < (f->y+(f->height/5)))){
         new_value = atoi(get_field("r1:low")->value) + (multiplier * ((a - last_mouse_x) * (span/f->width)));
@@ -2856,15 +2858,18 @@ int read_switch(int i){
 }
 
 int key_poll(){
+
 	int key = 0;
-	
 	if (digitalRead(PTT) == LOW)
 		key |= CW_DASH;
 	if (digitalRead(DASH) == LOW)
 		key |= CW_DOT;
-
+// zzzzzz
+// key |= query_cw_paddle_isr_key_memory();
+// clear_cw_paddle_isr_key_memory();
 	//printf("key %d\n", key);
 	return key;
+
 }
 
 void enc_init(struct encoder *e, int speed, int pin_a, int pin_b){
@@ -2928,6 +2933,30 @@ void hw_init(){
 
 	wiringPiISR(ENC2_A, INT_EDGE_BOTH, tuning_isr);
 	wiringPiISR(ENC2_B, INT_EDGE_BOTH, tuning_isr);
+	wiringPiISR(PTT, INT_EDGE_FALLING, cw_paddle_isr);
+	wiringPiISR(DASH, INT_EDGE_FALLING, cw_paddle_isr);
+}
+
+// zzzzz
+void cw_paddle_isr(void){
+
+
+  if (digitalRead(PTT) == LOW)
+    cw_paddle_isr_key_memory |= CW_DASH;
+  if (digitalRead(DASH) == LOW)
+    cw_paddle_isr_key_memory |= CW_DOT;
+}
+
+int query_cw_paddle_isr_key_memory(){
+
+  return cw_paddle_isr_key_memory;
+
+}
+
+void clear_cw_paddle_isr_key_memory(){
+
+  cw_paddle_isr_key_memory = 0;
+
 }
 
 void hamlib_tx(int tx_input){
@@ -2978,6 +3007,10 @@ void tuning_isr(void){
 }
 
 gboolean ui_tick(gpointer gook){
+
+
+  // this routine is executed every 1 mS
+
 	int static ticks = 0;
 
 	ticks++;
@@ -3010,7 +3043,7 @@ gboolean ui_tick(gpointer gook){
     //write_console(FONT_LOG, message);
 	}
 
-	if (ticks == 100){
+	if (ticks == 100){  // execute this stuff every 100 mS
 
 		struct field *f = get_field("spectrum");
 		update_field(f);	//move this each time the spectrum watefall index is moved
@@ -3068,6 +3101,9 @@ gboolean ui_tick(gpointer gook){
     }
 
   }
+
+  // this stuff executed every 1 mS
+
   modem_poll(mode_id(get_field("r1:mode")->value));
 	update_field(get_field("#text_in")); //modem might have extracted some text
 
@@ -3165,6 +3201,7 @@ void set_mode(char *mode){
 	}
 	else
 		write_console(FONT_LOG, "%s is not a mode\n");
+
 }
 
 void get_mode(char *mode){
@@ -3266,10 +3303,6 @@ void change_band(char *request){
 	set_operating_freq(band_stack[new_band].freq[stack], resp);
 	set_field("r1:freq", buff);	
 	set_field("r1:mode", mode_name[band_stack[new_band].mode[stack]]);	
-
-  // this fixes bug with filter settings not being applied after a band change, not sure why it's a bug - k3ng 2022-09-03
-  set_field("r1:low",get_field("r1:low")->value);
-  set_field("r1:high",get_field("r1:high")->value);
 
 	clear_tx_text_buffer();
 }
