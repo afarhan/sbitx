@@ -1,5 +1,7 @@
 /*
+
 The initial sync between the gui values, the core radio values, settings, et al are manually set.
+
 */
 
 #include <unistd.h>
@@ -76,6 +78,7 @@ struct encoder {
 void tuning_isr(void);
 void cw_paddle_isr(void);
 volatile int cw_paddle_isr_key_memory = 0;
+volatile int cw_paddle_current_state = 0;
 
 #define COLOR_SELECTED_TEXT 0
 #define COLOR_TEXT 1
@@ -295,7 +298,7 @@ struct field {
 	int 	font_index; //refers to font_style table
 	char  selection[1000];
 	long int	 	min, max;
-  int step;
+    int step;
 };
 
 #define STACK_DEPTH 4
@@ -2857,18 +2860,48 @@ int read_switch(int i){
 	return digitalRead(i) == HIGH ? 0 : 1;
 }
 
+
+void cw_paddle_isr(void){
+
+
+  if (digitalRead(PTT) == LOW){
+    cw_paddle_isr_key_memory |= CW_DASH;
+    cw_paddle_current_state |= CW_DASH;
+  } else {
+    cw_paddle_current_state &= CW_DOT;
+  }
+  if (digitalRead(DASH) == LOW){
+    cw_paddle_isr_key_memory |= CW_DOT;
+    cw_paddle_current_state |= CW_DOT;
+  } else {
+    cw_paddle_current_state &= CW_DASH;
+  }
+}
+
+int query_cw_paddle_isr_key_memory(){
+
+  return cw_paddle_isr_key_memory;
+
+}
+
+void clear_cw_paddle_isr_key_memory(int mask){
+
+  cw_paddle_isr_key_memory &= mask;
+
+}
+
+
 int key_poll(){
 
-	int key = 0;
-	if (digitalRead(PTT) == LOW)
-		key |= CW_DASH;
-	if (digitalRead(DASH) == LOW)
-		key |= CW_DOT;
-// zzzzzz
-// key |= query_cw_paddle_isr_key_memory();
-// clear_cw_paddle_isr_key_memory();
-	//printf("key %d\n", key);
-	return key;
+	// int key = 0;
+	// if (digitalRead(PTT) == LOW)
+	// 	key |= CW_DASH;
+	// if (digitalRead(DASH) == LOW)
+	// 	key |= CW_DOT;
+	//	//printf("key %d\n", key);
+	//return key;
+
+	return cw_paddle_current_state;
 
 }
 
@@ -2933,31 +2966,10 @@ void hw_init(){
 
 	wiringPiISR(ENC2_A, INT_EDGE_BOTH, tuning_isr);
 	wiringPiISR(ENC2_B, INT_EDGE_BOTH, tuning_isr);
-	wiringPiISR(PTT, INT_EDGE_FALLING, cw_paddle_isr);
-	wiringPiISR(DASH, INT_EDGE_FALLING, cw_paddle_isr);
+	wiringPiISR(PTT, INT_EDGE_BOTH, cw_paddle_isr);
+	wiringPiISR(DASH, INT_EDGE_BOTH, cw_paddle_isr);
 }
 
-// zzzzz
-void cw_paddle_isr(void){
-
-
-  if (digitalRead(PTT) == LOW)
-    cw_paddle_isr_key_memory |= CW_DASH;
-  if (digitalRead(DASH) == LOW)
-    cw_paddle_isr_key_memory |= CW_DOT;
-}
-
-int query_cw_paddle_isr_key_memory(){
-
-  return cw_paddle_isr_key_memory;
-
-}
-
-void clear_cw_paddle_isr_key_memory(){
-
-  cw_paddle_isr_key_memory = 0;
-
-}
 
 void hamlib_tx(int tx_input){
   if (tx_input){
@@ -3066,7 +3078,7 @@ gboolean ui_tick(gpointer gook){
 						&& !strncmp(f_focus->cmd, "#kbd_", 5) && mouse_down){
 			//emit the symbol
 			struct field *f_text = get_field("#text_in");
-			//replace the previous character with teh shifted one
+			//replace the previous character with the shifted one
 			edit_field(f_text,MIN_KEY_BACKSPACE); 
 			edit_field(f_text, f_focus->label[0]);
 			focus_since = millis();

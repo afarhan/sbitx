@@ -26,6 +26,8 @@
 #include "sdr_ui.h"
 #include "sound.h"
 
+//#define DEBUG_CW
+
 typedef float float32_t;
 extern char mycallsign[];
 extern char contact_callsign[];
@@ -35,6 +37,7 @@ extern char sent_exchange[];
 extern char received_exchange[];
 extern char mygrid[];
 extern char contact_grid[];
+
 
 /*
 	This file implements modems for :
@@ -374,17 +377,22 @@ struct morse morse_table[] = {
 
 int cw_period;
 static struct vfo cw_tone, cw_env;
-static int keydown_count=0;			//counts down the pause afer a keydown is finished
+static int keydown_count = 0;			//counts down the pause afer a keydown is finished
 static int keyup_count = 0;			//counts down to how long a key is held down
 static float cw_envelope = 1;
 static int cw_pitch = 700;
 static unsigned long cw_tx_until = 0;
 static unsigned long data_tx_until = 0;
+int cw_ready = 0;
+#define CW_MAX_SYMBOLS 12
+char cw_key_letter[CW_MAX_SYMBOLS];
+
 
 char cw_text[] = " cq cq dx de vu2ese A k";
 char *symbol_next = NULL;
 char paddle_next = 0;
 
+int symbol_memory = 0;
 
 //when symbol_next is NULL, it reads the next letter from the input
 static char cw_get_next_kbd_symbol(){
@@ -399,7 +407,10 @@ static char cw_get_next_kbd_symbol(){
 		char b[2];
 		b[0]= c;
 		b[1] = 0;
-//		write_console(FONT_LOG_TX, b);
+		#if defined(DEBUG_CW)
+      printf("cw_get_next_kbd_symbol: b:%s\n",b);
+    #endif
+    //write_console(FONT_LOG_TX, b);
 
 		for (int i = 0; i < sizeof(morse_table)/sizeof(struct morse); i++)
 			if (morse_table[i].c == tolower(c))
@@ -408,28 +419,34 @@ static char cw_get_next_kbd_symbol(){
 
 	if (!*symbol_next){ 		//send the letter seperator
 		symbol_next = NULL;
-//		printf("symbol_next set to NULL, returning / \n");
+		#if defined(DEBUG_CW)
+      printf("cw_get_next_kbd_symbol: symbol_next set to NULL, returning / \n");
+    #endif
 		return '/';
 	}
 	else{
-//		printf("cw_kbd_read returning %c\n", *symbol_next);
+		#if defined(DEBUG_CW)
+		  printf("cw_get_next_kbd_symbol: cw_kbd_read returning %c\n", *symbol_next);
+    #endif
 		return *symbol_next++;
 	}
 }
 
-#define CW_MAX_SYMBOLS 12
-char cw_key_letter[CW_MAX_SYMBOLS];
-static int symbol_memory = 0;
-
 
 //when symbol_next is NULL, it reads the next letter from the input
 float cw_get_sample(){
+
 	float sample = 0;
 	static char last_symbol = 0;
+	int len = 0;
 
 
 	//start new symbol, if any
-	if (!keydown_count && !keyup_count){
+	if (!keydown_count && !keyup_count && cw_ready  && tx_on){
+
+		#if defined(DEBUG_CW)
+      printf("cw_get_sample: new symbol start\r\n");
+    #endif
 
 		if (cw_tone.freq_hz != get_cw_tx_pitch())
 			vfo_start(&cw_tone, get_cw_tx_pitch(), 0);
@@ -475,11 +492,17 @@ float cw_get_sample(){
 					c = '-';
 				}
 
+
+				#if defined(DEBUG_CW)
+		      printf("cw_get_sample: key or symbol memory c: %\r\n",c);
+		    #endif
+
+
 				symbol_memory = 0; //clean out the last symbol memory
 			}
-			else if (!c){ //no activty on the keyer and no symbol from the keyboard either
+			else if (!c){ // no activity on the keyer and no symbol from the keyboard either
 				if (last_symbol == '/'){
-					 c = ' ';
+					c = ' ';
 				}
 				else {
 					c = '/';
@@ -491,55 +514,95 @@ float cw_get_sample(){
 				keydown_count = cw_period;
 				keyup_count = cw_period;
 				last_symbol = '.';
-
+				#if defined(DEBUG_CW)
+		      printf("cw_get_sample: keydown_count,keyup_count setup: .\r\n");
+		    #endif				
 				break;
 			case '-':
 				keydown_count = cw_period * 3;
 				keyup_count = cw_period;
 				last_symbol = '-';
+				#if defined(DEBUG_CW)
+		      printf("cw_get_sample: keydown_count,keyup_count setup: -\r\n");
+		    #endif				
 				break;
 			case '/':
 				keydown_count = 0;
 				keyup_count = cw_period * 2; // 1 (passed) + 2 
 				last_symbol = '/';
+				#if defined(DEBUG_CW)
+		      printf("cw_get_sample: keydown_count,keyup_count setup: /\r\n");
+		    #endif				
 				break;
 			case ' ':
 				keydown_count = 0;
 				keyup_count = cw_period * 2; //3 periods already passed 
 				last_symbol = ' ';
+				#if defined(DEBUG_CW)
+		      printf("cw_get_sample: keydown_count,keyup_count setup: <space>\r\n");
+		    #endif				
 				break;
 			}
 
+		  #if defined(DEBUG_CW)
+		    printf("cw_get_sample: keydown_count: %d\r\n",keydown_count);
+		    printf("cw_get_sample: keyup_count: %d\r\n",keydown_count);
+		  #endif						
+
 			//decode iambic letters	
-			int len = strlen(cw_key_letter);
-			if (len < CW_MAX_SYMBOLS-1 && (c == '.' || c == '-')){
+			len = strlen(cw_key_letter);
+			if ((len < CW_MAX_SYMBOLS - 1) && (c == '.' || c == '-')){
+				#if defined(DEBUG_CW)
+		      printf("cw_get_sample: c:%c cw_key_letter:%s$ len:%d\r\n",c,cw_key_letter,len);
+		    #endif			
 				cw_key_letter[len++] = c;
 				cw_key_letter[len] = 0;	
+				#if defined(DEBUG_CW)
+		      printf("cw_get_sample: c:%c cw_key_letter:%s$ len:%d\r\n",c,cw_key_letter,len);
+		    #endif						
 			}		
 			else if (last_symbol  == ' '){
 				write_console(FONT_LOG_TX, " ");
 				cw_key_letter[0] = 0;
+				#if defined(DEBUG_CW)
+		      printf("cw_get_sample: cw_key_letter cleared - last_symbol <space>\r\n");
+		    #endif					
 			}
 			else if (last_symbol == '/'){
 				//search for the letter match in cw table and emit it
+				#if defined(DEBUG_CW)
+		      printf("cw_get_sample: search: cw_key_letter:%s$\r\n",cw_key_letter);
+		    #endif	
 				for (int i = 0; i < sizeof(morse_table)/sizeof(struct morse); i++)
 					if (strlen(cw_key_letter) && !strcmp(morse_table[i].code, cw_key_letter)){
 						char buff[2];
 						buff[0] = morse_table[i].c;
 						buff[1] = 0;
 						write_console(FONT_LOG_TX, buff);
+						#if defined(DEBUG_CW)
+		          printf("cw_get_sample: morse_table:%s\r\n",buff);
+		        #endif	
 					}
 				cw_key_letter[0] = 0;
+				#if defined(DEBUG_CW)
+		      printf("cw_get_sample: cw_key_letter cleared - last_symbol /\r\n");
+		    #endif									
 			} 
-		}
+		} // if (get_cw_input_method() == CW_KBD || get_cw_input_method() == CW_IAMBIC)
 		else if (get_cw_input_method() == CW_STRAIGHT){
 			if (key_poll()){
 				keydown_count = 2000; //add a few samples, to debounce 
 				keyup_count = 0;
+				#if defined(DEBUG_CW)
+		      printf("cw_get_sample: CW_STRAIGHT: keydown_count = 2000 keyup_count = 0\r\n");
+		    #endif		
 			}
 			else {
 				keydown_count = 0;
 				keyup_count = 0;
+				#if defined(DEBUG_CW)
+		      printf("cw_get_sample: CW_STRAIGHT: keydown_count = 0 keyup_count = 0\r\n");
+		    #endif		
 			}
 		}
 
@@ -549,25 +612,32 @@ float cw_get_sample(){
 		}
 	}
 	else if ((!(keydown_count + keyup_count) & 0xFF) && get_cw_input_method() == CW_STRAIGHT){
-		if (key_poll())
-			keydown_count += 1000;
+		if (key_poll()){
+			  keydown_count += 1000;
+			  #if defined(DEBUG_CW)
+		      printf("cw_get_sample: CW_STRAIGHT: keydown_count += 1000\r\n");
+		    #endif		
+		}
 	}
+
 	//infrequently poll to see if the keyer has sent a new symbol while we were stil txing the last symbol
-//	else if ((keydown_count > 0 || keyup_count) > 0 && !((keyup_count + keydown_count) & 0xFF)
-//			&& get_cw_input_method() == CW_IAMBIC){
-// zzzzzz  k3ng - in progress 2022-09-13
-  if (get_cw_input_method() == CW_IAMBIC){
+  //	else if ((keydown_count > 0 || keyup_count) > 0 && !((keyup_count + keydown_count) & 0xFF)
+  //			&& get_cw_input_method() == CW_IAMBIC){
+
+
+  // iambic symbol insertion - still needs work - k3ng 2022-09-15
+  if ((get_cw_input_method() == CW_IAMBIC) && (keydown_count > 0 || keyup_count > 0)){
     // check if we had paddle keying while we were still sending the last symbol
     if (last_symbol == '-' && ((query_cw_paddle_isr_key_memory()|key_poll()) & CW_DOT)){
-      clear_cw_paddle_isr_key_memory();
+      clear_cw_paddle_isr_key_memory(CW_DASH);
       symbol_memory = CW_DOT;
     }
     if (last_symbol == '.' && ((query_cw_paddle_isr_key_memory()|key_poll()) & CW_DASH)){
-      clear_cw_paddle_isr_key_memory();
+      clear_cw_paddle_isr_key_memory(CW_DOT);
       symbol_memory = CW_DASH;
     }
   }
-//}
+
 	if (keydown_count && cw_envelope < 0.999)
 		cw_envelope = ((vfo_read(&cw_env)/FLOAT_SCALE) + 1)/2; 
 	if (keydown_count == 0 && cw_envelope > 0.001)
@@ -580,13 +650,18 @@ float cw_get_sample(){
 	if (keyup_count > 0 && keydown_count == 0)
 		keyup_count--;
 
-//	printf("keydown %d keyup %d \n", keydown_count, keyup_count);
+  //printf("keydown %d keyup %d \n", keydown_count, keyup_count);
 	sample = (vfo_read(&cw_tone)/FLOAT_SCALE) * cw_envelope;
 
 	return sample / 8;
 }
 
 void cw_init(){
+
+  #if defined(DEBUG_CW)
+    printf("cw_init: called\r\n");
+  #endif		
+
 	//init cw with some reasonable values
 	vfo_start(&cw_env, 50, 49044); //start in the third quardrant, 270 degree
 	vfo_start(&cw_tone, 700, 0);
@@ -595,6 +670,7 @@ void cw_init(){
 	keydown_count = 0;
 	keyup_count = 0;
 	cw_envelope = 0;
+	cw_ready = 1;
 }
 
 
@@ -979,13 +1055,21 @@ void modem_poll(int mode){
 	case MODE_CWR:
 		key_status = key_poll();
 		if (!tx_is_on && (bytes_available || key_status) > 0){
-			tx_on();
-			cw_init();
+      #if defined(DEBUG_CW)
+		    printf("modem_poll: calling tx_on, cw_init\r\n");
+		  #endif	
 			symbol_memory = key_status;
 			cw_tx_until = millis() + get_cw_delay();; //at least for 200 msec to  begin with
+			cw_init();
+			tx_on();
+			cw_ready = 1;
 		}
 		else if (tx_is_on && cw_tx_until < millis()){
-				tx_off();
+      #if defined(DEBUG_CW)
+		    printf("modem_poll: calling tx_off\r\n");
+		  #endif				
+			tx_off();
+			cw_ready = 0;
 		}
 	break;
 
