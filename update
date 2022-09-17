@@ -1,6 +1,32 @@
+#!/bin/bash
+
 F=$@
 echo ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
+
 date
-cd /home/pi/sbitx
+
+rm ./sbitx
+
+echo -e "Do you want to preserve your user_settings.ini file [Y,N] ?"
+
+read USERINPUT
+
+USERINPUT_CAPS=`echo "$USERINPUT" | tr '[:lower:]' '[:upper:]'`
+
+if [[ $USERINPUT_CAPS = "N" ]]; then
+  echo -e "\r\nOverwriting user_settings.ini, but creating a backup: ./data/user_settings.ini.backup\r\n"
+  mv -f ./data/user_settings.ini ./data/user_settings.ini.backup
+else
+  echo -e "\r\nPreserving user_settings.ini\r\n"
+  mv -f ./data/user_settings.ini ./data/user_settings.ini.temp
+fi
+
 git pull
+
+if [[ $USERINPUT_CAPS = "Y" ]]; then
+  mv -f ./data/user_settings.ini.temp ./data/user_settings.ini
+fi
+
+./build sbitx
+
 echo "<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<"
