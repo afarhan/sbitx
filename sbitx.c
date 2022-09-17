@@ -31,6 +31,7 @@ FILE *pf_debug = NULL;
 #define LPF_C 10
 #define LPF_D 11
 
+
 float fft_bins[MAX_BINS]; // spectrum ampltiudes  
 fftw_complex *fft_spectrum;
 fftw_plan plan_spectrum;

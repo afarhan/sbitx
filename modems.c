@@ -28,6 +28,12 @@
 
 //#define DEBUG_CW
 
+#define PADDLE_CURRENT_STATE 0
+#define PADDLE_QUERY_QUEUE 1
+#define PADDLE_GET_NEXT_QUEUED_ACTION 2
+#define PADDLE_CLEAR_QUEUE 3
+#define PADDLE_CURRENT_STATE_CLEAR_QUEUE 4
+
 typedef float float32_t;
 extern char mycallsign[];
 extern char contact_callsign[];
@@ -457,7 +463,7 @@ float cw_get_sample(){
 
 			//check if we have a symbol coming in from the keyboard
 			c = cw_get_next_kbd_symbol();
-			key = key_poll();
+			key = key_poll(PADDLE_CURRENT_STATE);
 
 			if ((key || symbol_memory) && !c){
 			
@@ -590,7 +596,7 @@ float cw_get_sample(){
 			} 
 		} // if (get_cw_input_method() == CW_KBD || get_cw_input_method() == CW_IAMBIC)
 		else if (get_cw_input_method() == CW_STRAIGHT){
-			if (key_poll()){
+			if (key_poll(PADDLE_CURRENT_STATE_CLEAR_QUEUE)){
 				keydown_count = 2000; //add a few samples, to debounce 
 				keyup_count = 0;
 				#if defined(DEBUG_CW)
@@ -612,7 +618,7 @@ float cw_get_sample(){
 		}
 	}
 	else if ((!(keydown_count + keyup_count) & 0xFF) && get_cw_input_method() == CW_STRAIGHT){
-		if (key_poll()){
+		if (key_poll(PADDLE_CURRENT_STATE_CLEAR_QUEUE)){
 			  keydown_count += 1000;
 			  #if defined(DEBUG_CW)
 		      printf("cw_get_sample: CW_STRAIGHT: keydown_count += 1000\r\n");
@@ -625,15 +631,19 @@ float cw_get_sample(){
   //			&& get_cw_input_method() == CW_IAMBIC){
 
 
+
+
   // iambic symbol insertion - still needs work - k3ng 2022-09-15
   if ((get_cw_input_method() == CW_IAMBIC) && (keydown_count > 0 || keyup_count > 0)){
     // check if we had paddle keying while we were still sending the last symbol
-    if (last_symbol == '-' && ((query_cw_paddle_isr_key_memory()|key_poll()) & CW_DOT)){
-      clear_cw_paddle_isr_key_memory(CW_DASH);
+    if (last_symbol == '-' && (key_poll(PADDLE_CURRENT_STATE) & CW_DOT)){
+    // if (last_symbol == '-' && ((query_cw_paddle_isr_key_memory()|key_poll()) & CW_DOT)){	
+      // clear_cw_paddle_isr_key_memory(CW_DASH);
       symbol_memory = CW_DOT;
     }
-    if (last_symbol == '.' && ((query_cw_paddle_isr_key_memory()|key_poll()) & CW_DASH)){
-      clear_cw_paddle_isr_key_memory(CW_DOT);
+    // if (last_symbol == '.' && ((query_cw_paddle_isr_key_memory()|key_poll()) & CW_DASH)){
+    if (last_symbol == '.' && (key_poll(PADDLE_CURRENT_STATE) & CW_DASH)){	
+      // clear_cw_paddle_isr_key_memory(CW_DOT);
       symbol_memory = CW_DASH;
     }
   }
@@ -1053,7 +1063,7 @@ void modem_poll(int mode){
 	break;
 	case MODE_CW:
 	case MODE_CWR:
-		key_status = key_poll();
+		key_status = key_poll(PADDLE_CURRENT_STATE);
 		if (!tx_is_on && (bytes_available || key_status) > 0){
       #if defined(DEBUG_CW)
 		    printf("modem_poll: calling tx_on, cw_init\r\n");

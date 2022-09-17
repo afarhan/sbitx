@@ -75,7 +75,9 @@ struct encoder {
 	int prev_state;
 	int history;
 };
+
 void tuning_isr(void);
+void paddle_actions_queue_add(int action_to_add);
 void cw_paddle_isr(void);
 volatile int cw_paddle_isr_key_memory = 0;
 volatile int cw_paddle_current_state = 0;
@@ -517,6 +519,8 @@ struct field main_controls[] = {
     "", 100,99999,100},
   { "mouse_pointer", NULL, 1000, 1000, 50, 50, "MP", 40, "LEFT", FIELD_SELECTION, FONT_FIELD_VALUE,
     "BLANK/LEFT/RIGHT/CROSSHAIR", 0,0,0},
+  { "freq_disp_adds_cw_pitch", NULL, 1000, 1000, 50, 50, "ADDCWPITCH", 40, "ON", FIELD_TOGGLE, FONT_FIELD_VALUE,
+    "ON/OFF", 0,0,0},
 
 	/* band stack registers */
 	{"#10m", NULL, 400, 330, 50, 50, "10M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
@@ -1302,16 +1306,24 @@ void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
 
 	pitch = atoi(get_field("#rx_pitch")->value);
 	struct field *mode_f = get_field("r1:mode");
-  if(!strcmp(mode_f->value, "USB") || !strcmp(mode_f->value, "LSB")){ // for LSB and USB draw pitch line at center
+  if(!strcmp(mode_f->value, "USB") || !strcmp(mode_f->value, "LSB")){ 
+  	// for LSB and USB draw pitch line at center
     pitch = 0;
   }
 
 	span = atof(get_field("#span")->value);
 
   if (span != last_span){
-    spectrum_display_start_freq_adjustment = 0;
+  	if (!strcmp(mode_f->value, "CW")) {
+  		spectrum_display_start_freq_adjustment = atoi(get_field("#rx_pitch")->value);
+    } else if(!strcmp(mode_f->value, "CWR")) {
+    	spectrum_display_start_freq_adjustment = -atoi(get_field("#rx_pitch")->value);
+  	} else {	
+	    spectrum_display_start_freq_adjustment = 0;
+	  }
      last_span = span;
   }
+
 	freq = atol(get_field("r1:freq")->value);
   freq = freq + spectrum_display_start_freq_adjustment; 
 
@@ -1767,22 +1779,48 @@ time_t time_sbitx(){
 void set_operating_freq(int dial_freq, char *response){
 	struct field *rit = get_field("#rit");
 	struct field *split = get_field("#split");
+	struct field *freq_disp_adds_cw_pitch = get_field("freq_disp_adds_cw_pitch");
+	struct field *rx_pitch = get_field("#rx_pitch");
+  struct field *r1_mode = get_field("r1:mode");
 	char freq_request[30];
  
-	if (!strcmp(rit->value, "ON")){
-		if (!in_tx)
-			sprintf(freq_request, "r1:freq=%d", dial_freq + rit_delta); 		
+  if ((!strcmp(freq_disp_adds_cw_pitch->value, "ON")) && 
+  	((!strcmp(r1_mode->value, "CW")) || (!strcmp(r1_mode->value, "CWR")))){
+  	// include pitch when in CW mode
+  	int pitch_value = atoi(rx_pitch->value);
+    if (!strcmp(r1_mode->value, "CW")){
+    	pitch_value = pitch_value * -1;
+    }
+		if (!strcmp(rit->value, "ON")){
+			if (!in_tx)
+				sprintf(freq_request, "r1:freq=%d", dial_freq + rit_delta + pitch_value); 		
+			else
+				sprintf(freq_request, "r1:freq=%d", dial_freq + pitch_value); 		
+		}
+		else if (!strcmp(split->value, "ON")){
+			if (!in_tx)
+				sprintf(freq_request, "r1:freq=%d", vfo_b_freq + pitch_value);
+			else
+				sprintf(freq_request, "r1:freq=%d", dial_freq + pitch_value);
+		}
 		else
-			sprintf(freq_request, "r1:freq=%d", dial_freq); 		
-	}
-	else if (!strcmp(split->value, "ON")){
-		if (!in_tx)
-			sprintf(freq_request, "r1:freq=%d", vfo_b_freq);
+				sprintf(freq_request, "r1:freq=%d", dial_freq + pitch_value);
+  } else { // regular mode - do not add CW pitch
+		if (!strcmp(rit->value, "ON")){
+			if (!in_tx)
+				sprintf(freq_request, "r1:freq=%d", dial_freq + rit_delta); 		
+			else
+				sprintf(freq_request, "r1:freq=%d", dial_freq); 		
+		}
+		else if (!strcmp(split->value, "ON")){
+			if (!in_tx)
+				sprintf(freq_request, "r1:freq=%d", vfo_b_freq);
+			else
+				sprintf(freq_request, "r1:freq=%d", dial_freq);
+		}
 		else
-			sprintf(freq_request, "r1:freq=%d", dial_freq);
+				sprintf(freq_request, "r1:freq=%d", dial_freq);
 	}
-	else
-			sprintf(freq_request, "r1:freq=%d", dial_freq);
 
 	//set the power levels
 	long operating_freq = atoi(freq_request + strlen("r1:freq="));
@@ -2861,49 +2899,142 @@ int read_switch(int i){
 }
 
 
+// void cw_paddle_isr(void){
+
+
+//   if (digitalRead(PTT) == LOW){
+//     cw_paddle_isr_key_memory |= CW_DASH;
+//     cw_paddle_current_state |= CW_DASH;
+//   } else {
+//     cw_paddle_current_state &= CW_DOT;
+//   }
+//   if (digitalRead(DASH) == LOW){
+//     cw_paddle_isr_key_memory |= CW_DOT;
+//     cw_paddle_current_state |= CW_DOT;
+//   } else {
+//     cw_paddle_current_state &= CW_DASH;
+//   }
+// }
+
+// int query_cw_paddle_isr_key_memory(){
+
+//   return cw_paddle_isr_key_memory;
+
+// }
+
+// void clear_cw_paddle_isr_key_memory(int mask){
+
+//   cw_paddle_isr_key_memory &= mask;
+
+// }
+
+// int key_poll(int action){
+
+// 	// int key = 0;
+// 	// if (digitalRead(PTT) == LOW)
+// 	// 	key |= CW_DASH;
+// 	// if (digitalRead(DASH) == LOW)
+// 	// 	key |= CW_DOT;
+// 	//	//printf("key %d\n", key);
+// 	//return key;
+
+// 	return cw_paddle_current_state;
+
+// }
+
+#define PADDLE_CURRENT_STATE 0
+#define PADDLE_QUERY_QUEUE 1
+#define PADDLE_GET_NEXT_QUEUED_ACTION 2
+#define PADDLE_CLEAR_QUEUE 3
+#define PADDLE_CURRENT_STATE_CLEAR_QUEUE 4
+
+#define MAX_PADDLE_ACTIONS_QUEUE 10
+
+volatile int paddle_actions_queue[MAX_PADDLE_ACTIONS_QUEUE];
+volatile int paddle_actions_queue_count = 0;
+volatile int last_ptt_state = HIGH;
+volatile int last_dash_state = HIGH;
+
 void cw_paddle_isr(void){
 
+  static int previous_ptt_state = 0;
+  static int previous_dash_state = 0;
 
-  if (digitalRead(PTT) == LOW){
-    cw_paddle_isr_key_memory |= CW_DASH;
+  int ptt_state = digitalRead(PTT);
+  int dash_state = digitalRead(DASH);
+
+  if (ptt_state == LOW){
     cw_paddle_current_state |= CW_DASH;
+    if (previous_ptt_state != ptt_state){
+    	paddle_actions_queue_add(CW_DASH);
+    }
   } else {
     cw_paddle_current_state &= CW_DOT;
   }
-  if (digitalRead(DASH) == LOW){
-    cw_paddle_isr_key_memory |= CW_DOT;
+  if (dash_state == LOW){
     cw_paddle_current_state |= CW_DOT;
+    if (previous_dash_state != dash_state){
+    	paddle_actions_queue_add(CW_DOT);
+    }
   } else {
     cw_paddle_current_state &= CW_DASH;
   }
-}
 
-int query_cw_paddle_isr_key_memory(){
-
-  return cw_paddle_isr_key_memory;
-
-}
-
-void clear_cw_paddle_isr_key_memory(int mask){
-
-  cw_paddle_isr_key_memory &= mask;
+  previous_ptt_state = ptt_state;
+  previous_dash_state = dash_state;
+ 
 
 }
 
+void paddle_actions_queue_add(int action_to_add){
 
-int key_poll(){
-
-	// int key = 0;
-	// if (digitalRead(PTT) == LOW)
-	// 	key |= CW_DASH;
-	// if (digitalRead(DASH) == LOW)
-	// 	key |= CW_DOT;
-	//	//printf("key %d\n", key);
-	//return key;
-
-	return cw_paddle_current_state;
+  if (paddle_actions_queue_count < (MAX_PADDLE_ACTIONS_QUEUE - 1)){
+  	paddle_actions_queue[paddle_actions_queue_count];
+  	paddle_actions_queue_count++;
+  }
 
 }
+
+int paddle_actions_queue_get(){
+
+  int return_value = 0;
+
+  if (paddle_actions_queue_count){
+  	return_value = paddle_actions_queue[0];
+  	paddle_actions_queue_count--;
+  	for (int x = 0;x < paddle_actions_queue_count;x++){
+      paddle_actions_queue[x] = paddle_actions_queue[x+1];
+  	}
+  	
+  }
+
+  return return_value;
+
+}
+
+int key_poll(int action){
+
+  int return_value = 0;
+
+  if (action == PADDLE_CURRENT_STATE_CLEAR_QUEUE){
+    paddle_actions_queue_count = 0;
+    return_value = cw_paddle_current_state;
+  } else if (action == PADDLE_CURRENT_STATE){
+	  return_value = cw_paddle_current_state;
+	} else if (action == PADDLE_QUERY_QUEUE){
+		if (paddle_actions_queue_count){
+      return_value = paddle_actions_queue[0];
+    }
+	} else if (action == PADDLE_GET_NEXT_QUEUED_ACTION){
+    return_value = paddle_actions_queue_get();
+	} else if (action == PADDLE_CLEAR_QUEUE){
+    paddle_actions_queue_count = 0;
+	}
+
+  return return_value;
+
+}
+
 
 void enc_init(struct encoder *e, int speed, int pin_a, int pin_b){
 	e->pin_a = pin_a;
@@ -3025,6 +3156,8 @@ gboolean ui_tick(gpointer gook){
 
 	int static ticks = 0;
 
+
+
 	ticks++;
 
 	//update all the fields, we should instead mark fields dirty and update only those
@@ -3110,6 +3243,20 @@ gboolean ui_tick(gpointer gook){
       GdkCursor* new_cursor;
       new_cursor = gdk_cursor_new_for_display (gdk_display_get_default(),cursor_type);
       gdk_window_set_cursor(gdk_get_default_root_window(), new_cursor);
+    }
+
+    // has the freq_disp_adds_cw_pitch field changed?
+    static char last_freq_disp_adds_cw_pitch_setting[4];
+    // struct field *freq_disp_adds_cw_pitch = get_field("freq_disp_adds_cw_pitch");
+    f = get_field("freq_disp_adds_cw_pitch");
+    if (strcmp(last_freq_disp_adds_cw_pitch_setting,f->value)){
+    	// update_field(get_field("r1:freq"));
+    	sprintf(last_freq_disp_adds_cw_pitch_setting,"%s", f->value);
+    	f = get_field("r1:freq");
+    	char dummy_char[30];
+    	set_operating_freq(atoi(f->value), dummy_char);
+    	
+    	//puts("ui_tick: change of freq_disp_adds_cw_pitch\r\n");
     }
 
   }
@@ -3673,6 +3820,7 @@ void cmd_exec(char *cmd){
     write_console(FONT_LOG, "Help - Page 2\r\n\r\n");
     write_console(FONT_LOG, "\\exit\r\n\r\n");
     write_console(FONT_LOG, "\\s - view settings\r\n");
+    write_console(FONT_LOG, "\\addcwpitch [ON|OFF]\r\n");
     write_console(FONT_LOG, "\\mp [BLANK|LEFT|RIGHT|CROSSHAIR] - mouse pointer style\r\n");
     write_console(FONT_LOG, "\\rs [ON|OFF] - reverse scrolling\r\n\r\n");
     write_console(FONT_LOG, "\\ta [ON|OFF] - Turns tuning acceleration on and off\r\n");
