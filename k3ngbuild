@@ -23,4 +23,6 @@ gcc -g -o $F \
 		ft8_lib/libft8.a \
 	-lwiringPi -lasound -lm -lfftw3 -lfftw3f -pthread -lncurses \
 	`pkg-config --cflags gtk+-3.0` `pkg-config --libs gtk+-3.0`
+GCC_RETURN_CODE=$?
+if (test $GCC_RETURN_CODE -eq 0); then ./sbitx; fi
 echo "<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<"
