@@ -31,6 +31,8 @@ FILE *pf_debug = NULL;
 #define LPF_C 10
 #define LPF_D 11
 
+#define DEBUG_TX_POWER
+
 
 float fft_bins[MAX_BINS]; // spectrum ampltiudes  
 fftw_complex *fft_spectrum;
@@ -757,13 +759,13 @@ struct power_settings {
 
 struct power_settings band_power[] ={
 	{ 3500000,  4000000, 40, 80, 0.005},
-	{ 7000000,  7300000, 40,82, 0.006},
+	{ 7000000,  7300000, 40, 82, 0.006},
 	{10000000, 10200000, 30, 81, 0.008},
 	{14000000, 14300000, 30, 91, 0.022},
 	{18000000, 18200000, 25, 93, 0.03},
 	{21000000, 21450000, 20, 93, 0.05},
 	{24800000, 25000000, 10, 94, 0.1},
-	{28000000, 29700000,  10, 95, 0.1}  
+	{28000000, 29700000, 10, 95, 0.1}  
 };
 
 /*
@@ -771,8 +773,6 @@ struct power_settings band_power[] ={
  	here we adjust the drive levels to keep it up, almost level
 */
 void set_tx_power_levels(){
- // printf("Setting tx_power to %d, gain to %d\n", tx_power_watts, tx_gain);
-	int tx_power_gain = 0;
 
 	//search for power in the approved bands
 	for (int i = 0; i < sizeof(band_power)/sizeof(struct power_settings); i++){
@@ -784,33 +784,37 @@ void set_tx_power_levels(){
 			tx_amp = (1.0 * tx_power_watts * band_power[i].scale);  
 		}	
 	}
-//	printf("tx_gain_compensation is set to %g for %d watts\n", tx_amp, tx_power_watts);
+	#if defined(DEBUG_TX_POWER)
+    //printf("set_tx_power_levels: tx_gain_compensation is set to %g for %d watts\n", tx_amp, tx_power_watts);
+	  printf("set_tx_power_levels: tx_power_watts:%d tx_amp:%g tx_gain(MIC):%d\n", tx_power_watts, tx_amp, tx_gain);
+  #endif
+
 	//we keep the audio card output 'volume' constant'
 	sound_mixer(audio_card, "Master", 95);
 	sound_mixer(audio_card, "Capture", tx_gain);
 }
 
 
-void set_tx_power_levels_old(){
-//  printf("Setting tx_power to %d, gain to %d\n", tx_power_watts, tx_gain);
-	int tx_power_gain = 0;
+// void set_tx_power_levels_old(){
+// //  printf("Setting tx_power to %d, gain to %d\n", tx_power_watts, tx_gain);
+// 	int tx_power_gain = 0;
 
-	//search for power in the approved bands
-	for (int i = 0; i < sizeof(band_power)/sizeof(struct power_settings); i++){
-		if (band_power[i].f_start <= freq_hdr && freq_hdr <= band_power[i].f_stop){
-			if (tx_power_watts > band_power[i].max_watts)
-				tx_power_watts = band_power[i].max_watts;
+// 	//search for power in the approved bands
+// 	for (int i = 0; i < sizeof(band_power)/sizeof(struct power_settings); i++){
+// 		if (band_power[i].f_start <= freq_hdr && freq_hdr <= band_power[i].f_stop){
+// 			if (tx_power_watts > band_power[i].max_watts)
+// 				tx_power_watts = band_power[i].max_watts;
 		
-			//next we do a decimal coversion of the power reduction needed
-			int attenuation = 
-			(20*log10((1.0*tx_power_watts)/(1.0*band_power[i].max_watts))); 
-			tx_power_gain = band_power[i].tx_scale + attenuation; 
-		}	
-	}
-	printf("tx_power_gain set to %d for %d watts\n", tx_power_gain, tx_power_watts);
-	sound_mixer(audio_card, "Master", tx_power_gain);
-	sound_mixer(audio_card, "Capture", tx_gain);
-}
+// 			//next we do a decimal coversion of the power reduction needed
+// 			int attenuation = 
+// 			(20*log10((1.0*tx_power_watts)/(1.0*band_power[i].max_watts))); 
+// 			tx_power_gain = band_power[i].tx_scale + attenuation; 
+// 		}	
+// 	}
+// 	printf("tx_power_gain set to %d for %d watts\n", tx_power_gain, tx_power_watts);
+// 	sound_mixer(audio_card, "Master", tx_power_gain);
+// 	sound_mixer(audio_card, "Capture", tx_gain);
+// }
 
 /* 
 This is the one-time initialization code 
@@ -976,7 +980,7 @@ void sdr_request(char *request, char *response){
 			set_tx_power_levels();
 			strcpy(response, "ok");
 			spectrum_reset();
-		//	rx_tx_ramp = 1;
+		  //rx_tx_ramp = 1;
 		}
 		else {
 			in_tx = 0;

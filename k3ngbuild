@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 F=$@
 WORKING_DIRECTORY=`pwd`
 echo ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
@@ -6,7 +6,13 @@ date
 mkdir -p "/home/pi/sbitx/audio"
 mkdir -p "/home/pi/sbitx/data"
 
+# assume the user wants to build sbitx if they don't tell us
+if [[ $F = "" ]]; then
+	F="sbitx"
+fi
+
 if [ -e ./release_notes.txt ]; then
+	echo -e "\r\n\r\n"
 	cat ./release_notes.txt
 fi
 

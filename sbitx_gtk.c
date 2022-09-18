@@ -427,6 +427,7 @@ int do_kbd(struct field *f, cairo_t *gfx, int event, int a, int b, int c);
 int do_mouse_move(struct field *f, cairo_t *gfx, int event, int a, int b, int c);
 int do_macro(struct field *f, cairo_t *gfx, int event, int a, int b, int c);
 int do_record(struct field *f, cairo_t *gfx, int event, int a, int b, int c);
+int do_freq_disp_adds_cw_pitch(struct field *f, cairo_t *gfx, int event, int a, int b, int c);
 
 struct field *active_layout = NULL;
 char settings_updated = 0;
@@ -519,7 +520,7 @@ struct field main_controls[] = {
     "", 100,99999,100},
   { "mouse_pointer", NULL, 1000, 1000, 50, 50, "MP", 40, "LEFT", FIELD_SELECTION, FONT_FIELD_VALUE,
     "BLANK/LEFT/RIGHT/CROSSHAIR", 0,0,0},
-  { "freq_disp_adds_cw_pitch", NULL, 1000, 1000, 50, 50, "ADDCWPITCH", 40, "ON", FIELD_TOGGLE, FONT_FIELD_VALUE,
+  { "freq_disp_adds_cw_pitch", do_freq_disp_adds_cw_pitch, 1000, 1000, 50, 50, "ADDCWPITCH", 40, "ON", FIELD_TOGGLE, FONT_FIELD_VALUE,
     "ON/OFF", 0,0,0},
 
 	/* band stack registers */
@@ -1314,6 +1315,7 @@ void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
 	span = atof(get_field("#span")->value);
 
   if (span != last_span){
+  	// has the spectrum display SPAN changed?
   	if (!strcmp(mode_f->value, "CW")) {
   		spectrum_display_start_freq_adjustment = atoi(get_field("#rx_pitch")->value);
     } else if(!strcmp(mode_f->value, "CWR")) {
@@ -2518,6 +2520,33 @@ int do_record(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 	return 0;
 }
 
+int do_freq_disp_adds_cw_pitch(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
+
+
+  // this is not firing off with a \command, not sure why - k3ng 2022-09-18
+
+	//if (event == FIELD_EDIT){
+
+
+  static char last_freq_disp_adds_cw_pitch_setting[4];
+
+  //if (strcmp(last_freq_disp_adds_cw_pitch_setting,f->value)){
+  	sprintf(last_freq_disp_adds_cw_pitch_setting,"%s", f->value);
+  	struct field *r1_freq = get_field("r1:freq");
+  	char dummy_char[30];
+  	set_operating_freq(atoi(r1_freq->value), dummy_char);
+  	return 1;
+  	
+  	puts("do_freq_disp_adds_cw_pitch: change of freq_disp_adds_cw_pitch\r\n");
+  //} else {
+    return 0;
+  //}
+
+
+	//}
+	
+}
+
 void tx_on(){
 	char response[100];
 
@@ -2723,7 +2752,7 @@ static gboolean on_key_press (GtkWidget *widget, GdkEventKey *event, gpointer us
 		return FALSE;
 	}
 		
-//	printf("keyPress %x %x\n", event->keyval, event->state);
+  //printf("keyPress %x %x\n", event->keyval, event->state);
 	//key_modifier = event->keyval;
 	switch(event->keyval){
 		case MIN_KEY_ESC:
@@ -2899,6 +2928,7 @@ int read_switch(int i){
 }
 
 
+// k3ng - work in progress on iambic paddle operation
 // void cw_paddle_isr(void){
 
 
@@ -3246,17 +3276,16 @@ gboolean ui_tick(gpointer gook){
     }
 
     // has the freq_disp_adds_cw_pitch field changed?
+    // trying to convert to do_freq_disp_adds_cw_pitch() - k3ng 2022-09-18
     static char last_freq_disp_adds_cw_pitch_setting[4];
-    // struct field *freq_disp_adds_cw_pitch = get_field("freq_disp_adds_cw_pitch");
     f = get_field("freq_disp_adds_cw_pitch");
     if (strcmp(last_freq_disp_adds_cw_pitch_setting,f->value)){
-    	// update_field(get_field("r1:freq"));
     	sprintf(last_freq_disp_adds_cw_pitch_setting,"%s", f->value);
     	f = get_field("r1:freq");
     	char dummy_char[30];
     	set_operating_freq(atoi(f->value), dummy_char);
     	
-    	//puts("ui_tick: change of freq_disp_adds_cw_pitch\r\n");
+      puts("ui_tick: change of freq_disp_adds_cw_pitch\r\n");
     }
 
   }

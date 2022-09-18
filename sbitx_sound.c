@@ -7,6 +7,8 @@
 #include "sound.h"
 #include "sdr.h"
 
+//#define DEBUG_SBITX_SOUND
+
 /* follows the tutorial at http://alsamodular.sourceforge.net/alsa_programming_howto.html
 Next thing to try is http://www.saunalahti.fi/~s7l/blog/2005/08/21/Full%20Duplex%20ALSA
 
@@ -148,8 +150,11 @@ static int	sound_thread_continue = 0;
 pthread_t sound_thread, loopback_thread;
 
 #define LOOPBACK_LEVEL_DIVISOR 8				// Constant used to reduce audio level to the loopback channel (FLDIGI)
-static int play_write_error = 0;				// count play channel write errors
-static int loopback_write_error = 0;			// count loopback channel write errors
+
+#if defined(DEBUG_SBITX_SOUND)
+  static int play_write_error = 0;				// count play channel write errors
+  static int loopback_write_error = 0;		// count loopback channel write errors
+#endif
 // Note: Error messages appear when the sbitx program is started from the command line
 
 int use_virtual_cable = 0;
@@ -644,8 +649,10 @@ int sound_loop(){
 		pcmreturn = snd_pcm_writei(pcm_play_handle, data_out + offset, framesize);
 		if((pcmreturn < 0) && (pcmreturn != -11))	// also ignore "temporarily unavailable" errors
 		{
-			// Handle an error condition from the snd_pcm_writei function
-			printf("Play PCM Write Error: %s  count = %d\n",snd_strerror(pcmreturn), play_write_error++);
+      #if defined(DEBUG_SBITX_SOUND)
+  			// Handle an error condition from the snd_pcm_writei function
+  			printf("Play PCM Write Error: %s  count = %d\n",snd_strerror(pcmreturn), play_write_error++);
+      #endif
 			snd_pcm_prepare(pcm_play_handle);		
 		}
 		
@@ -693,7 +700,9 @@ int sound_loop(){
 		pcmreturn = snd_pcm_writei(loopback_play_handle, line_out + offset, framesize);
 		if(pcmreturn < 0)
 		{
-			printf("Loopback PCM Write Error: %s  count = %d\n",snd_strerror(pcmreturn), loopback_write_error++);
+      #if defined(DEBUG_SBITX_SOUND)
+  			printf("Loopback PCM Write Error: %s  count = %d\n",snd_strerror(pcmreturn), loopback_write_error++);
+      #endif  
 			// Handle an error condition from the snd_pcm_writei function
 			snd_pcm_prepare(loopback_play_handle);
 		}
