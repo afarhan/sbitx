@@ -31,7 +31,7 @@ FILE *pf_debug = NULL;
 #define LPF_C 10
 #define LPF_D 11
 
-#define DEBUG_TX_POWER
+//#define DEBUG_TX_POWER
 
 
 float fft_bins[MAX_BINS]; // spectrum ampltiudes  

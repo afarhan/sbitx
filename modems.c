@@ -626,27 +626,18 @@ float cw_get_sample(){
 		}
 	}
 
-	//infrequently poll to see if the keyer has sent a new symbol while we were stil txing the last symbol
-  //	else if ((keydown_count > 0 || keyup_count) > 0 && !((keyup_count + keydown_count) & 0xFF)
-  //			&& get_cw_input_method() == CW_IAMBIC){
+	//poll to see if the keyer has sent a new symbol while we were stil TXing the last symbol
+  int key_poll_queue = key_poll(PADDLE_GET_NEXT_QUEUED_ACTION);
 
-
-
-
-  // iambic symbol insertion - still needs work - k3ng 2022-09-15
   if ((get_cw_input_method() == CW_IAMBIC) && (keydown_count > 0 || keyup_count > 0)){
-    // check if we had paddle keying while we were still sending the last symbol
-    if (last_symbol == '-' && (key_poll(PADDLE_CURRENT_STATE) & CW_DOT)){
-    // if (last_symbol == '-' && ((query_cw_paddle_isr_key_memory()|key_poll()) & CW_DOT)){	
-      // clear_cw_paddle_isr_key_memory(CW_DASH);
+    if (last_symbol == '-' && ((key_poll(PADDLE_CURRENT_STATE) & CW_DOT) || (key_poll_queue & CW_DOT))){
       symbol_memory = CW_DOT;
     }
-    // if (last_symbol == '.' && ((query_cw_paddle_isr_key_memory()|key_poll()) & CW_DASH)){
-    if (last_symbol == '.' && (key_poll(PADDLE_CURRENT_STATE) & CW_DASH)){	
-      // clear_cw_paddle_isr_key_memory(CW_DOT);
+    if (last_symbol == '.' && ((key_poll(PADDLE_CURRENT_STATE) & CW_DASH) || (key_poll_queue & CW_DOT))){	
       symbol_memory = CW_DASH;
     }
   }
+
 
 	if (keydown_count && cw_envelope < 0.999)
 		cw_envelope = ((vfo_read(&cw_env)/FLOAT_SCALE) + 1)/2; 
@@ -1069,9 +1060,11 @@ void modem_poll(int mode){
 		    printf("modem_poll: calling tx_on, cw_init\r\n");
 		  #endif	
 			symbol_memory = key_status;
-			cw_tx_until = millis() + get_cw_delay();; //at least for 200 msec to  begin with
+			cw_tx_until = millis() + get_cw_delay();; //at least for 200 msec to begin with
 			cw_init();
 			tx_on();
+			// spin lock to make sure cw_init() completes prior to ui_tick()
+			// firing off cw_get_sample()
 			cw_ready = 1;
 		}
 		else if (tx_is_on && cw_tx_until < millis()){

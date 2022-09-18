@@ -38,6 +38,7 @@ The initial sync between the gui values, the core radio values, settings, et al 
 #include "remote.h"
 #include "remote.h"
 #include "wsjtx.h"
+#include <linux/limits.h>
 
 /* Front Panel controls */
 char pins[15] = {0, 2, 3, 6, 7, 
@@ -743,7 +744,7 @@ int console_init_next_line(){
 }
 
 void write_console(int style, char *text){
-	char directory[200];	//dangerous, find the MAX_PATH and replace 200 with it
+	char directory[PATH_MAX];
 	char *path = getenv("HOME");
 	strcpy(directory, path);
 	strcat(directory, "/sbitx/data/display_log.txt");
@@ -955,7 +956,7 @@ static int mode_id(char *mode_str){
 
 static void save_user_settings(int forced){
 	static unsigned long last_save_at = 0;
-	char file_path[200];	//dangerous, find the MAX_PATH and replace 200 with it
+	char file_path[PATH_MAX];
 
 	//attempt to save settings only if it has been 30 seconds since the 
 	//last time the settings were saved
@@ -2255,7 +2256,7 @@ int do_kbd(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 }
 
 void write_call_log(){
-	char fullpath[200];	//dangerous, find the MAX_PATH and replace 200 with it
+	char fullpath[PATH_MAX];
 
 	char *path = getenv("HOME");
 	sprintf(fullpath, "%s/sbitx/data/logbook.txt", path); 
@@ -2927,51 +2928,6 @@ int read_switch(int i){
 	return digitalRead(i) == HIGH ? 0 : 1;
 }
 
-
-// k3ng - work in progress on iambic paddle operation
-// void cw_paddle_isr(void){
-
-
-//   if (digitalRead(PTT) == LOW){
-//     cw_paddle_isr_key_memory |= CW_DASH;
-//     cw_paddle_current_state |= CW_DASH;
-//   } else {
-//     cw_paddle_current_state &= CW_DOT;
-//   }
-//   if (digitalRead(DASH) == LOW){
-//     cw_paddle_isr_key_memory |= CW_DOT;
-//     cw_paddle_current_state |= CW_DOT;
-//   } else {
-//     cw_paddle_current_state &= CW_DASH;
-//   }
-// }
-
-// int query_cw_paddle_isr_key_memory(){
-
-//   return cw_paddle_isr_key_memory;
-
-// }
-
-// void clear_cw_paddle_isr_key_memory(int mask){
-
-//   cw_paddle_isr_key_memory &= mask;
-
-// }
-
-// int key_poll(int action){
-
-// 	// int key = 0;
-// 	// if (digitalRead(PTT) == LOW)
-// 	// 	key |= CW_DASH;
-// 	// if (digitalRead(DASH) == LOW)
-// 	// 	key |= CW_DOT;
-// 	//	//printf("key %d\n", key);
-// 	//return key;
-
-// 	return cw_paddle_current_state;
-
-// }
-
 #define PADDLE_CURRENT_STATE 0
 #define PADDLE_QUERY_QUEUE 1
 #define PADDLE_GET_NEXT_QUEUED_ACTION 2
@@ -2984,6 +2940,37 @@ volatile int paddle_actions_queue[MAX_PADDLE_ACTIONS_QUEUE];
 volatile int paddle_actions_queue_count = 0;
 volatile int last_ptt_state = HIGH;
 volatile int last_dash_state = HIGH;
+
+// void cw_paddle_isr(void){
+
+//   static int previous_ptt_state = 0;
+//   static int previous_dash_state = 0;
+
+//   int ptt_state = digitalRead(PTT);
+//   int dash_state = digitalRead(DASH);
+
+//   if (ptt_state == LOW){
+//     cw_paddle_current_state |= CW_DASH;
+//     if (previous_ptt_state != ptt_state){
+//     	paddle_actions_queue_add(CW_DASH);
+//     }
+//   } else {
+//     cw_paddle_current_state &= CW_DOT;
+//   }
+//   if (dash_state == LOW){
+//     cw_paddle_current_state |= CW_DOT;
+//     if (previous_dash_state != dash_state){
+//     	paddle_actions_queue_add(CW_DOT);
+//     }
+//   } else {
+//     cw_paddle_current_state &= CW_DASH;
+//   }
+
+//   previous_ptt_state = ptt_state;
+//   previous_dash_state = dash_state; 
+
+// }
+
 
 void cw_paddle_isr(void){
 
@@ -3010,9 +2997,13 @@ void cw_paddle_isr(void){
     cw_paddle_current_state &= CW_DASH;
   }
 
+  if ((previous_ptt_state != ptt_state) || (previous_dash_state != dash_state)){
+  	// it's crazy, Jim, but it might just work!
+  	modem_poll(mode_id(get_field("r1:mode")->value));
+  }
+
   previous_ptt_state = ptt_state;
-  previous_dash_state = dash_state;
- 
+  previous_dash_state = dash_state; 
 
 }
 
@@ -3043,6 +3034,16 @@ int paddle_actions_queue_get(){
 }
 
 int key_poll(int action){
+
+	/* action:
+
+	PADDLE_CURRENT_STATE 0
+  PADDLE_QUERY_QUEUE 1
+  PADDLE_GET_NEXT_QUEUED_ACTION 2
+  PADDLE_CLEAR_QUEUE 3
+  PADDLE_CURRENT_STATE_CLEAR_QUEUE 4
+
+  */
 
   int return_value = 0;
 
@@ -3187,8 +3188,12 @@ gboolean ui_tick(gpointer gook){
 	int static ticks = 0;
 
 
+  // do this right away to make paddle more responsive
+	if (key_poll(PADDLE_QUERY_QUEUE) || key_poll(PADDLE_CURRENT_STATE)){ //zzzzzz
+		modem_poll(mode_id(get_field("r1:mode")->value));
+	}
 
-	ticks++;
+  ticks++;
 
 	//update all the fields, we should instead mark fields dirty and update only those
 	if (redraw_flag){
@@ -3285,7 +3290,7 @@ gboolean ui_tick(gpointer gook){
     	char dummy_char[30];
     	set_operating_freq(atoi(f->value), dummy_char);
     	
-      puts("ui_tick: change of freq_disp_adds_cw_pitch\r\n");
+      // puts("ui_tick: change of freq_disp_adds_cw_pitch\r\n");
     }
 
   }
@@ -3630,7 +3635,7 @@ void do_cmd(char *cmd){
 		change_band(request);		
 	}
 	else if (!strcmp(request, "#record=ON")){
-		char fullpath[200];	//dangerous, find the MAX_PATH and replace 200 with it
+		char fullpath[PATH_MAX];
 
 		char *path = getenv("HOME");
 		time(&record_start);
@@ -3712,7 +3717,7 @@ void cmd_exec(char *cmd){
 		update_log_ed();
 	}
 	else if (!strcmp(exec, "logbook")){
-		char fullpath[200];	//dangerous, find the MAX_PATH and replace 200 with it
+		char fullpath[PATH_MAX];
 		char *path = getenv("HOME");
 		sprintf(fullpath, "mousepad %s/sbitx/data/logbook.txt", path); 
 		execute_app(fullpath);
@@ -4041,7 +4046,7 @@ int main( int argc, char* argv[] ) {
 	set_field("r1:gain", "41");
 	set_field("r1:volume", "85");
 
-	char directory[200];	//dangerous, find the MAX_PATH and replace 200 with it
+	char directory[PATH_MAX];
 	char *path = getenv("HOME");
 	strcpy(directory, path);
 	strcat(directory, "/sbitx/data/user_settings.ini");
