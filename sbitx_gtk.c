@@ -3107,17 +3107,17 @@ int enc_read(struct encoder *e) {
 void wake_up_the_screen(){
 
 
-  // k3ng - zzzzzz
+  // k3ng - zzzzzz - disabled - this is buggy buggy buggy
 
   static unsigned long last_time_key_sent = 0;
 
 	// send a fake trivial keystroke
-	if ((millis() - last_time_key_sent) > 30000){
-		gtk_widget_show_all( window );
-	  gtk_window_fullscreen(GTK_WINDOW(window));
-	  gtk_test_widget_send_key(window,GDK_KEY_Scroll_Lock,0);
-	  last_time_key_sent = millis();
-	}
+	// if ((millis() - last_time_key_sent) > 30000){
+	// 	gtk_widget_show_all( window );
+	//   gtk_window_fullscreen(GTK_WINDOW(window));
+	//   gtk_test_widget_send_key(window,GDK_KEY_Scroll_Lock,0);
+	//   last_time_key_sent = millis();
+	// }
 
 }
 
