@@ -83,6 +83,10 @@ void cw_paddle_isr(void);
 volatile int cw_paddle_isr_key_memory = 0;
 volatile int cw_paddle_current_state = 0;
 
+void wake_up_the_screen(void);
+
+
+
 #define COLOR_SELECTED_TEXT 0
 #define COLOR_TEXT 1
 #define COLOR_TEXT_MUTED 2
@@ -523,6 +527,8 @@ struct field main_controls[] = {
     "BLANK/LEFT/RIGHT/CROSSHAIR", 0,0,0},
   { "freq_disp_adds_cw_pitch", do_freq_disp_adds_cw_pitch, 1000, 1000, 50, 50, "ADDCWPITCH", 40, "ON", FIELD_TOGGLE, FONT_FIELD_VALUE,
     "ON/OFF", 0,0,0},
+  { "freq_calibration", NULL, 1000, 1000, 50, 50, "FC", 40, "0", FIELD_NUMBER, FONT_FIELD_VALUE,
+    "", -999999,999999,1},    
 
 	/* band stack registers */
 	{"#10m", NULL, 400, 330, 50, 50, "10M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
@@ -1300,6 +1306,7 @@ void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
 	char	freq_text[20];
 
   static float last_span;
+  static char last_mode[16];
 
 	if (in_tx){
 		draw_modulation(f_spectrum, gfx);
@@ -1315,8 +1322,9 @@ void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
 
 	span = atof(get_field("#span")->value);
 
-  if (span != last_span){
-  	// has the spectrum display SPAN changed?
+  // has the spectrum display SPAN or MODE changed?
+  if ((span != last_span) || (strcmp(mode_f->value, last_mode))){
+  	sprintf(last_mode, mode_f->value);
   	if (!strcmp(mode_f->value, "CW")) {
   		spectrum_display_start_freq_adjustment = atoi(get_field("#rx_pitch")->value);
     } else if(!strcmp(mode_f->value, "CWR")) {
@@ -1324,7 +1332,7 @@ void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
   	} else {	
 	    spectrum_display_start_freq_adjustment = 0;
 	  }
-     last_span = span;
+    last_span = span;
   }
 
 	freq = atol(get_field("r1:freq")->value);
@@ -1796,18 +1804,22 @@ void set_operating_freq(int dial_freq, char *response){
     }
 		if (!strcmp(rit->value, "ON")){
 			if (!in_tx)
-				sprintf(freq_request, "r1:freq=%d", dial_freq + rit_delta + pitch_value); 		
+				sprintf(freq_request, "r1:freq=%d", dial_freq + rit_delta); 		
 			else
 				sprintf(freq_request, "r1:freq=%d", dial_freq + pitch_value); 		
 		}
 		else if (!strcmp(split->value, "ON")){
 			if (!in_tx)
-				sprintf(freq_request, "r1:freq=%d", vfo_b_freq + pitch_value);
+				sprintf(freq_request, "r1:freq=%d", vfo_b_freq);
 			else
 				sprintf(freq_request, "r1:freq=%d", dial_freq + pitch_value);
 		}
-		else
+		else {
+			if (!in_tx)
+				sprintf(freq_request, "r1:freq=%d", dial_freq);
+			else
 				sprintf(freq_request, "r1:freq=%d", dial_freq + pitch_value);
+			}
   } else { // regular mode - do not add CW pitch
 		if (!strcmp(rit->value, "ON")){
 			if (!in_tx)
@@ -2941,36 +2953,6 @@ volatile int paddle_actions_queue_count = 0;
 volatile int last_ptt_state = HIGH;
 volatile int last_dash_state = HIGH;
 
-// void cw_paddle_isr(void){
-
-//   static int previous_ptt_state = 0;
-//   static int previous_dash_state = 0;
-
-//   int ptt_state = digitalRead(PTT);
-//   int dash_state = digitalRead(DASH);
-
-//   if (ptt_state == LOW){
-//     cw_paddle_current_state |= CW_DASH;
-//     if (previous_ptt_state != ptt_state){
-//     	paddle_actions_queue_add(CW_DASH);
-//     }
-//   } else {
-//     cw_paddle_current_state &= CW_DOT;
-//   }
-//   if (dash_state == LOW){
-//     cw_paddle_current_state |= CW_DOT;
-//     if (previous_dash_state != dash_state){
-//     	paddle_actions_queue_add(CW_DOT);
-//     }
-//   } else {
-//     cw_paddle_current_state &= CW_DASH;
-//   }
-
-//   previous_ptt_state = ptt_state;
-//   previous_dash_state = dash_state; 
-
-// }
-
 
 void cw_paddle_isr(void){
 
@@ -3114,7 +3096,19 @@ int enc_read(struct encoder *e) {
     result = -1;
     e->history = 0;
   }
+
+    if (result != 0){ 
+    wake_up_the_screen();
+  }
+
   return result;
+}
+
+void wake_up_the_screen(){
+
+	// send a fake trivial keystroke
+	gtk_test_widget_send_key(window,GDK_KEY_Scroll_Lock,0);
+
 }
 
 void hw_init(){
@@ -3291,7 +3285,7 @@ gboolean ui_tick(gpointer gook){
     	set_operating_freq(atoi(f->value), dummy_char);
     	
       // puts("ui_tick: change of freq_disp_adds_cw_pitch\r\n");
-      
+
     }
 
   }
@@ -3995,6 +3989,13 @@ void cmd_exec(char *cmd){
 		}
 	}
 	save_user_settings(0);
+}
+
+float frequency_calibration(){
+
+	struct field *frequency_calibration_field = get_field("freq_calibration");
+  return (atoi(frequency_calibration_field->value)/10000000.0);
+
 }
 
 int main( int argc, char* argv[] ) {

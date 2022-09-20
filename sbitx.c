@@ -80,8 +80,14 @@ int32_t modulation_buff[MAX_BINS];
 int fserial = 0;
 
 
+// void radio_tune_to(u_int32_t f){
+//   si5351bx_setfreq(2, f + bfo_freq - 24000 + TUNING_SHIFT);
+//   //printf("Setting radio to %d\n", f);
+// }
+
 void radio_tune_to(u_int32_t f){
-  si5351bx_setfreq(2, f + bfo_freq - 24000 + TUNING_SHIFT);
+  //si5351bx_setfreq(2, f + bfo_freq - 24000 + TUNING_SHIFT + (frequency_calibration() * f) );
+  si5351bx_setfreq(2, f + bfo_freq - 24000 + TUNING_SHIFT + (frequency_calibration() * 10000000.0) );
   //printf("Setting radio to %d\n", f);
 }
 
