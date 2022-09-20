@@ -3291,6 +3291,7 @@ gboolean ui_tick(gpointer gook){
     	set_operating_freq(atoi(f->value), dummy_char);
     	
       // puts("ui_tick: change of freq_disp_adds_cw_pitch\r\n");
+      
     }
 
   }
