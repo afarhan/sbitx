@@ -3097,7 +3097,7 @@ int enc_read(struct encoder *e) {
     e->history = 0;
   }
 
-    if (result != 0){ 
+  if (result != 0){ 
     wake_up_the_screen();
   }
 
@@ -3106,8 +3106,13 @@ int enc_read(struct encoder *e) {
 
 void wake_up_the_screen(){
 
+  static unsigned long last_time_key_sent = 0;
+
 	// send a fake trivial keystroke
-	gtk_test_widget_send_key(window,GDK_KEY_Scroll_Lock,0);
+	if ((millis() - last_time_key_sent) > 30000){
+	  gtk_test_widget_send_key(window,GDK_KEY_Scroll_Lock,0);
+	  last_time_key_sent = millis();
+	}
 
 }
 
