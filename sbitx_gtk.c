@@ -4067,8 +4067,8 @@ int main( int argc, char* argv[] ) {
   do_cmd("#span=25KHZ");
 	strcpy(vfo_a_mode, "USB");
 	strcpy(vfo_b_mode, "LSB");
-	strcpy(mycallsign, "vu2lch");
-	strcpy(mygrid, "Mk97fj");
+	strcpy(mycallsign, "N0BDY");
+	strcpy(mygrid, "AA00aa");
 	current_macro[0] = 0;
 	vfo_a_freq = 14000000;
 	vfo_b_freq = 7000000;
@@ -4108,9 +4108,10 @@ int main( int argc, char* argv[] ) {
 		sprintf(buff, "\nWelcome %s your grid is %s\n", mycallsign, mygrid);
 		write_console(FONT_LOG, buff);
 	}
-	else 
-		write_console(FONT_LOG, "Set your with '\\callsign [yourcallsign]'\n"
-		"Set your 6 letter grid with '\\grid [yourgrid]\n");
+	else {
+		write_console(FONT_LOG, "Set your callsign with '\\callsign [yourcallsign]'\n"
+		"Set your 6 letter grid with '\\grid [yourgrid]'\n");
+  }
 
 	set_field("#text_in", "");
 
@@ -4128,7 +4129,7 @@ int main( int argc, char* argv[] ) {
 
 	if (not_synchronized)
 		write_console(FONT_LOG, "Enter the precise UTC time using \\utc command\n"
-		"ex: \\utc 2022/07/15 23:034:00\n"
+		"ex: \\utc 2022/09/15 23:34:00\n"
 		"Hit enter for the command at the exact time\n");
 
   gtk_main();
