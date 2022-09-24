@@ -85,6 +85,11 @@ void cw_paddle_isr(void);
 volatile int cw_paddle_isr_key_memory = 0;
 volatile int cw_paddle_current_state = 0;
 
+#if defined(INCLUDE_REBOOT_AND_SHUTDOWN_COMMANDS)
+  unsigned long reboot_flag = 0;
+  unsigned long shutdown_flag = 0;
+#endif
+
 void wake_up_the_screen(void);
 
 
@@ -3267,7 +3272,17 @@ gboolean ui_tick(gpointer gook){
 
     }
 
-  }
+    if ((reboot_flag > 0) && (millis() > reboot_flag)){
+      execute_app("sleep 3;shutdown -r now");
+      cmd_exec("exit");
+    }
+
+    if ((shutdown_flag > 0) && (millis() > shutdown_flag)){
+      execute_app("sleep 3;shutdown -h now");
+      cmd_exec("exit");
+    }
+
+  } // end of stuff executed every 100 mS
 
   // this stuff executed every 1 mS
 
@@ -3957,22 +3972,18 @@ void cmd_exec(char *cmd){
 	//k3ng - playing around - 2022-09-24
 	#if defined(INCLUDE_REBOOT_AND_SHUTDOWN_COMMANDS)
 		else if (!strcmp(exec, "reboot")){
-	     write_console(FONT_LOG, "Rebooting...");
-	     tx_off();
-	     set_field("#record", "OFF");
-	     save_user_settings(1);    
-	     sleep(3);
-	     execute_app("shutdown -r now");
-	     exit(0);
+			tx_off();
+			set_field("#record", "OFF");
+			save_user_settings(1);    
+			reboot_flag = millis() + 3000;
+			write_console(FONT_LOG, "Rebooting...\r\n");
 		}
 		else if (!strcmp(exec, "shutdown")){
-	     write_console(FONT_LOG, "Shutting down...");
-	     tx_off();
-	     set_field("#record", "OFF");
-	     save_user_settings(1);    
-	     sleep(3);
-	     execute_app("shutdown -h now");
-	     exit(0);
+			tx_off();
+			set_field("#record", "OFF");
+			save_user_settings(1);    
+			shutdown_flag = millis() + 3000;
+			write_console(FONT_LOG, "Shutting down...\r\n");
 		}	
 	#endif //if defined(INCLUDE_REBOOT_AND_SHUTDOWN_COMMANDS)
 
