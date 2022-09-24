@@ -40,6 +40,8 @@ The initial sync between the gui values, the core radio values, settings, et al 
 #include "wsjtx.h"
 #include <linux/limits.h>
 
+#define INCLUDE_REBOOT_AND_SHUTDOWN_COMMANDS
+
 /* Front Panel controls */
 char pins[15] = {0, 2, 3, 6, 7, 
 								10, 11, 12, 13, 14, 
@@ -433,7 +435,6 @@ int do_kbd(struct field *f, cairo_t *gfx, int event, int a, int b, int c);
 int do_mouse_move(struct field *f, cairo_t *gfx, int event, int a, int b, int c);
 int do_macro(struct field *f, cairo_t *gfx, int event, int a, int b, int c);
 int do_record(struct field *f, cairo_t *gfx, int event, int a, int b, int c);
-int do_freq_disp_adds_cw_pitch(struct field *f, cairo_t *gfx, int event, int a, int b, int c);
 
 struct field *active_layout = NULL;
 char settings_updated = 0;
@@ -524,7 +525,7 @@ struct field main_controls[] = {
     FONT_SMALL_FIELD_VALUE, "", 100,99999,100},
   { "mouse_pointer", NULL, 1000, 1000, 50, 50, "MP", 40, "LEFT", FIELD_SELECTION, FONT_FIELD_VALUE,
     FONT_SMALL_FIELD_VALUE, "BLANK/LEFT/RIGHT/CROSSHAIR", 0,0,0},
-  { "freq_disp_adds_cw_pitch", do_freq_disp_adds_cw_pitch, 1000, 1000, 50, 50, "ADDCWPITCH", 40, "ON", FIELD_TOGGLE, FONT_FIELD_VALUE,
+  { "freq_disp_adds_cw_pitch", NULL, 1000, 1000, 50, 50, "ADDCWPITCH", 40, "ON", FIELD_TOGGLE, FONT_FIELD_VALUE,
     FONT_SMALL_FIELD_VALUE, "ON/OFF", 0,0,0},
   { "freq_calibration", NULL, 1000, 1000, 50, 50, "FC", 40, "0", FIELD_NUMBER, FONT_FIELD_VALUE,
     FONT_SMALL_FIELD_VALUE, "", -999999,999999,1},    
@@ -2532,32 +2533,7 @@ int do_record(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 	return 0;
 }
 
-int do_freq_disp_adds_cw_pitch(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 
-
-  // this is not firing off with a \command, not sure why - k3ng 2022-09-18
-
-	//if (event == FIELD_EDIT){
-
-
-  static char last_freq_disp_adds_cw_pitch_setting[4];
-
-  //if (strcmp(last_freq_disp_adds_cw_pitch_setting,f->value)){
-  	sprintf(last_freq_disp_adds_cw_pitch_setting,"%s", f->value);
-  	struct field *r1_freq = get_field("r1:freq");
-  	char dummy_char[30];
-  	set_operating_freq(atoi(r1_freq->value), dummy_char);
-  	return 1;
-  	
-  	puts("do_freq_disp_adds_cw_pitch: change of freq_disp_adds_cw_pitch\r\n");
-  //} else {
-    return 0;
-  //}
-
-
-	//}
-	
-}
 
 void tx_on(){
 	char response[100];
@@ -3104,9 +3080,6 @@ int enc_read(struct encoder *e) {
 }
 
 void wake_up_the_screen(){
-
-
-  // k3ng - zzzzzz
 
   static unsigned long last_time_reset = 0;
 
@@ -3854,6 +3827,10 @@ void cmd_exec(char *cmd){
   else if (!strcmp(exec, "h2")){ 
     write_console(FONT_LOG, "Help - Page 2\r\n\r\n");
     write_console(FONT_LOG, "\\exit\r\n\r\n");
+    #if defined(INCLUDE_REBOOT_AND_SHUTDOWN_COMMANDS)
+	    write_console(FONT_LOG, "\\reboot\r\n\r\n");
+	    write_console(FONT_LOG, "\\shutdown\r\n\r\n");
+    #endif
     write_console(FONT_LOG, "\\s - view settings\r\n");
     write_console(FONT_LOG, "\\addcwpitch [ON|OFF]\r\n");
     write_console(FONT_LOG, "\\mp [BLANK|LEFT|RIGHT|CROSSHAIR] - mouse pointer style\r\n");
@@ -3861,6 +3838,7 @@ void cmd_exec(char *cmd){
     write_console(FONT_LOG, "\\ta [ON|OFF] - Turns tuning acceleration on and off\r\n");
     write_console(FONT_LOG, "\\tat1 [100-99999] - 1st threshold at which acceleration occurs (default: 10,000)\r\n");
     write_console(FONT_LOG, "\\tat2 [100-99999] - 2nd threshold at which acceleration occurs (default: 500)\r\n\r\n");
+
     write_console(FONT_LOG, "\\cw \\cwr \\usb \\lsb \\rtty \\ft8 \\digital \\dig \\2tone\r\n");
   }
 
@@ -3975,6 +3953,45 @@ void cmd_exec(char *cmd){
 		write_console(FONT_LOG, buff);
 		redraw_flag++;
 	}
+
+	//k3ng - playing around - 2022-09-24
+	#if defined(INCLUDE_REBOOT_AND_SHUTDOWN_COMMANDS)
+		else if (!strcmp(exec, "reboot")){
+	     write_console(FONT_LOG, "Rebooting...");
+	     tx_off();
+	     set_field("#record", "OFF");
+	     save_user_settings(1);    
+	     sleep(3);
+	     execute_app("shutdown -r now");
+	     exit(0);
+		}
+		else if (!strcmp(exec, "shutdown")){
+	     write_console(FONT_LOG, "Shutting down...");
+	     tx_off();
+	     set_field("#record", "OFF");
+	     save_user_settings(1);    
+	     sleep(3);
+	     execute_app("shutdown -h now");
+	     exit(0);
+		}	
+	#endif //if defined(INCLUDE_REBOOT_AND_SHUTDOWN_COMMANDS)
+
+  else if (!strcmp(exec, "fc")){
+  	struct field *f = get_field("freq_calibration");
+		if(set_field(f->cmd, args)){
+			write_console(FONT_LOG, "Invalid setting\r\n");
+    } else {
+      write_console(FONT_LOG, "Frequency calibration set\r\n");
+      f = get_field("r1:freq");
+      // invoke a dummy frequency change to make the freq calibration go into effect
+      // set_field(f->value,f->value); 
+      // update_field(f);
+      char buff[32];
+      sprintf(buff,"r1:freq=%s",f->value);
+      do_cmd(buff);
+    }
+  }
+
 	else {
 		//see if it matches any of the fields of the UI that have FIELD_NUMBER 
 		char field_name[32];
@@ -3992,6 +4009,8 @@ void cmd_exec(char *cmd){
         write_console(FONT_LOG, args);        
         write_console(FONT_LOG, "\r\n");
       }
+		} else {
+			write_console(FONT_LOG, "Invalid command\r\n");
 		}
 	}
 	save_user_settings(0);
