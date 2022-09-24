@@ -3813,6 +3813,7 @@ void cmd_exec(char *cmd){
   }
 
   else if ((!strcmp(exec, "help")) || (!strcmp(exec, "?"))){
+  	console_init();
     write_console(FONT_LOG, "Help\r\n\r\n");
     write_console(FONT_LOG, "\\audio\r\n");
     write_console(FONT_LOG, "\\callsign [your callsign]\r\n");
@@ -3821,7 +3822,7 @@ void cmd_exec(char *cmd){
     write_console(FONT_LOG, "\\cwdelay\r\n");
     write_console(FONT_LOG, "\\cw_tx_pitch\r\n");
     write_console(FONT_LOG, "\\exchange\r\n");
-    write_console(FONT_LOG, "\\freq\r\n");
+    write_console(FONT_LOG, "\\freq [frequency]    \\f [frequency]\r\n");
     write_console(FONT_LOG, "\\ft8mode [auto|semiauto|manual]\r\n");
     write_console(FONT_LOG, "\\grid [your grid]\r\n");
     write_console(FONT_LOG, "\\l [callsign] [rst]\r\n");
@@ -3837,24 +3838,27 @@ void cmd_exec(char *cmd){
     write_console(FONT_LOG, "\\txpitch [100-3000]\r\n");
     write_console(FONT_LOG, "\\wpm [cw words per minute]\r\n");
     write_console(FONT_LOG, "Do \\h2 command for help page 2...\r\n");
+    redraw_flag++;
   }
 
   else if (!strcmp(exec, "h2")){ 
+    console_init();
     write_console(FONT_LOG, "Help - Page 2\r\n\r\n");
-    write_console(FONT_LOG, "\\exit\r\n\r\n");
+    write_console(FONT_LOG, "\\exit\r\n");
     #if defined(INCLUDE_REBOOT_AND_SHUTDOWN_COMMANDS)
-	    write_console(FONT_LOG, "\\reboot\r\n\r\n");
-	    write_console(FONT_LOG, "\\shutdown\r\n\r\n");
+	    write_console(FONT_LOG, "\\reboot\r\n");
+	    write_console(FONT_LOG, "\\shutdown\r\n");
     #endif
     write_console(FONT_LOG, "\\s - view settings\r\n");
+    write_console(FONT_LOG, "\\fc [hertz] - freq calibration\r\n");
     write_console(FONT_LOG, "\\addcwpitch [ON|OFF]\r\n");
     write_console(FONT_LOG, "\\mp [BLANK|LEFT|RIGHT|CROSSHAIR] - mouse pointer style\r\n");
-    write_console(FONT_LOG, "\\rs [ON|OFF] - reverse scrolling\r\n\r\n");
+    write_console(FONT_LOG, "\\rs [ON|OFF] - reverse scrolling\r\n");
     write_console(FONT_LOG, "\\ta [ON|OFF] - Turns tuning acceleration on and off\r\n");
     write_console(FONT_LOG, "\\tat1 [100-99999] - 1st threshold at which acceleration occurs (default: 10,000)\r\n");
     write_console(FONT_LOG, "\\tat2 [100-99999] - 2nd threshold at which acceleration occurs (default: 500)\r\n\r\n");
-
     write_console(FONT_LOG, "\\cw \\cwr \\usb \\lsb \\rtty \\ft8 \\digital \\dig \\2tone\r\n");
+    redraw_flag++;
   }
 
   else if ((!strcmp(exec, "s")) || (!strcmp(exec, "settings"))){
