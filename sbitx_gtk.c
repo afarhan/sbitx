@@ -47,6 +47,7 @@ The initial sync between the gui values, the core radio values, settings, et al 
 
 #define INCLUDE_REBOOT_AND_SHUTDOWN_COMMANDS
 
+
 /* Front Panel controls */
 char pins[15] = {0, 2, 3, 6, 7, 
 								10, 11, 12, 13, 14, 
@@ -1670,6 +1671,7 @@ static gboolean on_resize(GtkWidget *widget, GdkEventConfigure *event, gpointer 
 	screen_width = event->width;
 	screen_height = event->height;
 }
+
 
 void update_field(struct field *f){
 	GdkRectangle r;
@@ -4147,6 +4149,7 @@ int sbitx_process_lock(int action){
   }
 
 }
+
 
 static uint8_t bcd2dec(uint8_t val){return ((val/16 * 10) + (val % 16));}
 

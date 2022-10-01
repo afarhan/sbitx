@@ -765,6 +765,7 @@ struct power_settings {
 	double scale;
 };
 
+
 struct power_settings band_power[] ={
 	{ 3500000,  4000000, 40, 80, 0.005},
 	{ 7000000,  7300000, 40, 82, 0.006},
@@ -775,6 +776,8 @@ struct power_settings band_power[] ={
 	{24800000, 25000000, 10, 94, 0.1},
 	{28000000, 29700000, 10, 95, 0.1}  
 };
+
+
 
 /*
 	 the PA gain varies across the band from 3.5 MHz to 30 MHz
