@@ -39,6 +39,10 @@ The initial sync between the gui values, the core radio values, settings, et al 
 #include "remote.h"
 #include "wsjtx.h"
 #include <linux/limits.h>
+#include <sys/stat.h>
+
+#define OPEN_LOCK 1
+#define CLOSE_LOCK 2
 
 #define INCLUDE_REBOOT_AND_SHUTDOWN_COMMANDS
 
@@ -92,6 +96,7 @@ volatile int cw_paddle_current_state = 0;
 
 void wake_up_the_screen(void);
 
+int spectrum_size_adjust_y = 0;
 
 
 #define COLOR_SELECTED_TEXT 0
@@ -652,6 +657,8 @@ struct field *get_field(char *cmd);
 void update_field(struct field *f);
 void tx_on();
 void tx_off();
+
+int sbitx_process_lock(int action);
 
 //#define MAX_CONSOLE_LINES 1000
 //char *console_lines[MAX_CONSOLE_LINES];
@@ -1231,6 +1238,9 @@ void init_waterfall(){
 
 void draw_waterfall(struct field *f, cairo_t *gfx){
 
+
+//return;	
+
 	memmove(waterfall_map + f->width * 3, waterfall_map, 
 		f->width * (f->height - 1) * 3);
 
@@ -1275,6 +1285,21 @@ void draw_waterfall(struct field *f, cairo_t *gfx){
 void draw_spectrum_grid(struct field *f_spectrum, cairo_t *gfx){
 	int sub_division, grid_height;
 	struct field *f = f_spectrum;
+	struct field *f_waterfall = get_field("waterfall");
+
+//zzzzzz k3ng
+
+	if (spectrum_size_adjust_y){
+    f->height += spectrum_size_adjust_y;
+    f_waterfall->y += spectrum_size_adjust_y;
+    f_waterfall->height -= spectrum_size_adjust_y;
+		spectrum_size_adjust_y = 0;
+		update_field(f);
+		update_field(f_waterfall);
+		init_waterfall();
+		redraw_flag++;
+		return;
+	}
 
 	sub_division = f->width / 10;
 	grid_height = f->height - 10;
@@ -2707,6 +2732,7 @@ static gboolean on_key_press (GtkWidget *widget, GdkEventKey *event, gpointer us
 				tx_off();
 				set_field("#record", "OFF");
 				save_user_settings(1);
+				sbitx_process_lock(CLOSE_LOCK);
 				exit(0);
 				break;
 			case 'c':
@@ -3167,7 +3193,8 @@ gboolean ui_tick(gpointer gook){
 
 
   // do this right away to make paddle more responsive
-	if (key_poll(PADDLE_QUERY_QUEUE) || key_poll(PADDLE_CURRENT_STATE)){ //zzzzzz
+  // k3ng - still testing this for side effects
+	if (key_poll(PADDLE_QUERY_QUEUE) || key_poll(PADDLE_CURRENT_STATE)){ 
 		modem_poll(mode_id(get_field("r1:mode")->value));
 	}
 
@@ -3273,12 +3300,12 @@ gboolean ui_tick(gpointer gook){
     }
 
     if ((reboot_flag > 0) && (millis() > reboot_flag)){
-      execute_app("sleep 3;shutdown -r now");
+      execute_app("sleep 5;shutdown -r now");
       cmd_exec("exit");
     }
 
     if ((shutdown_flag > 0) && (millis() > shutdown_flag)){
-      execute_app("sleep 3;shutdown -h now");
+      execute_app("sleep 5;shutdown -h now");
       cmd_exec("exit");
     }
 
@@ -3552,6 +3579,7 @@ void do_cmd(char *cmd){
 		tx_off();
 		set_field("#record", "OFF");
 		save_user_settings(1);
+		sbitx_process_lock(CLOSE_LOCK);
 		exit(0);
 	}
 	else if (!strcmp(request, "#tx")){	
@@ -3780,6 +3808,7 @@ void cmd_exec(char *cmd){
     tx_off();
     set_field("#record", "OFF");
     save_user_settings(1);
+    sbitx_process_lock(CLOSE_LOCK);
     exit(0);
   }
 
@@ -3973,7 +4002,6 @@ void cmd_exec(char *cmd){
 		redraw_flag++;
 	}
 
-	//k3ng - playing around - 2022-09-24
 	#if defined(INCLUDE_REBOOT_AND_SHUTDOWN_COMMANDS)
 		else if (!strcmp(exec, "reboot")){
 			tx_off();
@@ -3990,6 +4018,11 @@ void cmd_exec(char *cmd){
 			write_console(FONT_LOG, "Shutting down...\r\n");
 		}	
 	#endif //if defined(INCLUDE_REBOOT_AND_SHUTDOWN_COMMANDS)
+
+  //k3ng - playing around - 2022-09-25 zzzzzz
+	else if (!strcmp(exec, "test")){
+    spectrum_size_adjust_y = atoi(args);
+	}
 
   else if (!strcmp(exec, "fc")){
   	struct field *f = get_field("freq_calibration");
@@ -4038,9 +4071,69 @@ float frequency_calibration(){
 
 }
 
+int sbitx_process_lock(int action){
+
+  // if action is OPEN_LOCK
+  //   0 is returned if there is a process already locking  
+  //   1 is returned if lock was established
+
+
+  static int fd;
+  static struct flock fl;
+
+  if (action == OPEN_LOCK){
+
+    // attempt to create a lock file
+    fd = open("/var/tmp/sbitx.lock", O_CREAT|O_RDWR, S_IRWXU);
+
+    if (errno == 13){
+    	// lock file already exists
+      fd = open("/var/tmp/sbitx.lock", O_RDWR);
+    }
+
+    if (fd == -1){
+      // we got some sort of problem, just return 1
+      fprintf(stderr,"sbitx_process_lock: Issue with lock file: Error:%d\r\n",errno);
+      return 1;
+    }
+
+    fl.l_type = F_WRLCK;
+    fl.l_whence = SEEK_SET;
+    fl.l_start = 0;        
+    fl.l_len = 0;        
+    fl.l_pid = getpid();
+
+    // attempt to create a file lock
+    if (fcntl(fd, F_SETLK, &fl) == -1){
+      // it's already locked
+      if ((errno == EACCES) || (errno == EAGAIN)){
+        return 0;
+      }
+    }
+
+    return 1;
+
+  } else if (action == CLOSE_LOCK){
+    if (fd){
+      close(fd);
+      fd = 0;
+    }
+  } else {
+    return -1;
+  }
+
+}
+
 int main( int argc, char* argv[] ) {
 
 	puts(VER_STR);
+
+
+	if (!sbitx_process_lock(OPEN_LOCK)){
+	  fprintf(stderr,"There is another sBitx running.  Exiting.\r\n");
+	  exit(0);
+	}
+
 	active_layout = main_controls;
 
 	//unlink any pending ft8 transmission
@@ -4137,6 +4230,8 @@ int main( int argc, char* argv[] ) {
 		"Hit enter for the command at the exact time\n");
 
   gtk_main();
+
+  sbitx_process_lock(CLOSE_LOCK);
   
   return 0;
 }
