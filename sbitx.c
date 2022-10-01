@@ -25,6 +25,7 @@ FILE *pf_debug = NULL;
 //unsigned int	wallclock = 0;
 
 #define TX_LINE 4
+#define TX_POWER 27
 #define BAND_SELECT 5
 #define LPF_A 5
 #define LPF_B 6
@@ -178,7 +179,8 @@ void set_lpf_40mhz(int frequency){
 		lpf = LPF_D;
 	else if (frequency < 10500000)		
 		lpf = LPF_C;
-	else if (frequency < 18500000)		
+	else if (frequency < 18500000)	
+//	else if (frequency < 21500000)	
 		lpf = LPF_B;
 	else if (frequency < 30000000)
 		lpf = LPF_A; 
@@ -829,6 +831,7 @@ void setup(){
 
 	//setup the LPF and the gpio pins
 	pinMode(TX_LINE, OUTPUT);
+	pinMode(TX_POWER, OUTPUT);
 	pinMode(LPF_A, OUTPUT);
 	pinMode(LPF_B, OUTPUT);
 	pinMode(LPF_C, OUTPUT);
@@ -838,6 +841,7 @@ void setup(){
   digitalWrite(LPF_C, LOW);
   digitalWrite(LPF_D, LOW);
 	digitalWrite(TX_LINE, LOW);
+	digitalWrite(TX_POWER, LOW);
 
 	fft_init();
 	vfo_init_phase_table();
@@ -979,21 +983,42 @@ void sdr_request(char *request, char *response){
 	else if (!strcmp(cmd, "tx")){
 		if (!strcmp(value, "on")){
 			in_tx = 1;
+			//mute it all and hang on for a millisecond
+			sound_mixer(audio_card, "Master", 0);
+			sound_mixer(audio_card, "Capture", 0);
+			delay(1);
+
+			//now switch of the signal back
+			//now ramp up after 5 msecs
+			digitalWrite(TX_LINE, HIGH);
 			mute_count = 20;
       fft_reset_m_bins();
-			digitalWrite(TX_LINE, HIGH);
-      delay(50);
+			//give time for the reed relay to switch
+      delay(2);
 			set_tx_power_levels();
+			//finally ramp up the power 
+			digitalWrite(TX_POWER, HIGH);			
 			strcpy(response, "ok");
 			spectrum_reset();
 		  //rx_tx_ramp = 1;
 		}
 		else {
 			in_tx = 0;
+			//mute it all and hang on
+			sound_mixer(audio_card, "Master", 0);
+			sound_mixer(audio_card, "Capture", 0);
+			delay(1);
       fft_reset_m_bins();
 			mute_count = MUTE_MAX;
 			strcpy(response, "ok");
+			//power down the PA chain to null any gain
+			digitalWrite(TX_POWER, LOW);
+			delay(2);
+
+			//drive the tx line low, switching the signal path 
 			digitalWrite(TX_LINE, LOW);
+			delay(5); 
+			//audio codec is back on
 			sound_mixer(audio_card, "Master", rx_vol);
 			sound_mixer(audio_card, "Capture", rx_gain);
 			spectrum_reset();

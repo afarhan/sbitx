@@ -38,6 +38,7 @@ The initial sync between the gui values, the core radio values, settings, et al 
 #include "remote.h"
 #include "remote.h"
 #include "wsjtx.h"
+#include "i2cbb.h"
 #include <linux/limits.h>
 #include <sys/stat.h>
 
@@ -66,6 +67,7 @@ char pins[15] = {0, 2, 3, 6, 7,
 #define ENC_FAST 1
 #define ENC_SLOW 5
 
+#define DS1307_I2C_ADD 0x68
 //time sync, when the NTP time is not synced, this tracks the number of seconds 
 //between the system cloc and the actual time set by \utc command
 static unsigned long time_delta = 0;
@@ -387,7 +389,7 @@ struct band band_stack[] = {
 		{21010000, 21040000, 21074000, 21250000}, {MODE_CW, MODE_CW, MODE_USB, MODE_USB}},
 	{"12m", 24890000, 24990000, 10, 10, 0,
 		{24890000, 24910000, 24950000, 24990000}, {MODE_CW, MODE_CW, MODE_USB, MODE_USB}},
-	{"10m", 28000000, 29700000, 6, 6, 0,
+	{"10m", 28000000, 29700000, 6, 40, 0,
 		{28000000, 28040000, 28074000, 28250000}, {MODE_CW, MODE_CW, MODE_USB, MODE_USB}},
 };
 
@@ -684,7 +686,7 @@ int set_field(char *id, char *value){
 	int v;
 
 	if (!f){
-		printf("*Error: field[%s] not found. Check for typo?\n", id);
+		fprintf(stderr, "set_field: Error: field[%s] not found. Check for typo?\n", id);
 		return 1;
 	}
 
@@ -1627,6 +1629,11 @@ void draw_dial(struct field *f, cairo_t *gfx){
   }
 }
 
+void invalidate_rect(int x, int y, int width, int height){
+	if (display_area){
+		gtk_widget_queue_draw_area(display_area, x, y, width, height);
+	}
+}
 
 void redraw_main_screen(GtkWidget *widget, cairo_t *gfx){
 	double dx1, dy1, dx2, dy2;
@@ -1672,9 +1679,7 @@ void update_field(struct field *f){
 	r.height = f->height+2;
 	//the update_field could be triggered from the sdr's waterfall update
 	//which starts before the display_area is called 
-	if (display_area){
-		gtk_widget_queue_draw_area(display_area, r.x, r.y, r.width, r.height);
-	}
+	invalidate_rect(r.x, r.y, r.width, r.height);
 } 
 
 static void hover_field(struct field *f){
@@ -2589,8 +2594,6 @@ void tx_on(){
 	}
 
 	if (in_tx == 0){
-		//tx line on/off is handled by sbitx.c
-		//digitalWrite(TX_LINE, HIGH);
 		sdr_request("tx=on", response);	
 		in_tx = 1;
 		char response[20];
@@ -2611,8 +2614,6 @@ void tx_off(){
 	modem_abort();
 
 	if (in_tx == 1){
-		//the tx_line on/off is done by the sbitx.c
-		//digitalWrite(TX_LINE, LOW);
 		sdr_request("tx=off", response);	
 		in_tx = 0;
 		sdr_request("key=up", response);
@@ -3516,7 +3517,27 @@ void change_band(char *request){
 	clear_tx_text_buffer();
 }
 
+uint8_t dec2bcd(uint8_t val){
+	return ((val/10 * 16) + (val %10));
+}
 
+/*
+void rtc_write(int year, int month, int day, int hours, int minutes, int seconds){
+	uint8_t rtc_time[10];
+	rtc_time[0] = dec2bcd(seconds);
+	rtc_time[1] = dec2bcd(minutes);
+	rtc_time[2] = dec2bcd(hours);
+	rtc_time[3] = 0;
+	rtc_time[4] = dec2bcd(day);
+	rtc_time[5] = dec2bcd(month);
+	rtc_time[6] = dec2bcd(year - 2000);
+	int e =  i2cbb_write_i2c_block_data(DS1307_I2C_ADD, 0, 7, rtc_time);
+	if (e <= 0){
+		printf("RTC not written\n");
+		return;
+	}
+}
+*/
 
 void utc_set(char *args){
 	int n[7], i;
@@ -3548,6 +3569,9 @@ void utc_set(char *args){
 			"ex: \\utc 2022 07 14 8:40:00\n"); 
 			return;
 	}
+
+	//rtc_write(n[0], n[1], n[2], n[3], n[4], n[5], n[6]);
+
 	if (n[0] < 2000)
 		n[0] += 2000;
 	t.tm_year = n[0] - 1900;
@@ -4124,6 +4148,37 @@ int sbitx_process_lock(int action){
 
 }
 
+static uint8_t bcd2dec(uint8_t val){return ((val/16 * 10) + (val % 16));}
+
+void rtc_read(){
+	uint8_t rtc_time[10];
+
+	int e =  i2cbb_read_i2c_block_data(DS1307_I2C_ADD, 0, 7, rtc_time);
+	if (e <= 0){
+		printf("RTC not detected\n");
+		return;
+	}
+	printf("RTC time is :");
+	for (int i = 0; i < 7; i++) 
+		printf("%d ", bcd2dec(rtc_time[i]));
+	printf("\n");
+}
+
+void rtc_write(){
+	uint8_t rtc_time[10];
+
+	int e =  i2cbb_read_i2c_block_data(DS1307_I2C_ADD, 0, 7, rtc_time);
+	if (e <= 0){
+		printf("RTC not detected\n");
+		return;
+	}
+	printf("RTC time is :");
+	for (int i = 0; i < 7; i++) 
+		printf("%d ", bcd2dec(rtc_time[i]));
+	printf("\n");
+}
+
+
 int main( int argc, char* argv[] ) {
 
 	puts(VER_STR);
@@ -4186,7 +4241,7 @@ int main( int argc, char* argv[] ) {
 	strcpy(directory, path);
 	strcat(directory, "/sbitx/data/user_settings.ini");
   if (ini_parse(directory, user_settings_handler, NULL)<0){
-    printf("Unable to load ~/sbitx/data/user_settings.ini\n");
+    fprintf(stderr, "main: Unable to load ~/sbitx/data/user_settings.ini\n");
   }
 
 	if (strlen(current_macro))
@@ -4228,6 +4283,8 @@ int main( int argc, char* argv[] ) {
 		write_console(FONT_LOG, "Enter the precise UTC time using \\utc command\n"
 		"ex: \\utc 2022/09/15 23:34:00\n"
 		"Hit enter for the command at the exact time\n");
+
+	//read_rtc();
 
   gtk_main();
 
