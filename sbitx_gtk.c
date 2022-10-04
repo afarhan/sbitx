@@ -45,6 +45,12 @@ The initial sync between the gui values, the core radio values, settings, et al 
 #define OPEN_LOCK 1
 #define CLOSE_LOCK 2
 
+#define DISABLED 0
+#define ENABLED 1
+
+#define ABSOLUTE 0
+#define RELATIVE 1
+
 #define INCLUDE_REBOOT_AND_SHUTDOWN_COMMANDS
 
 
@@ -89,6 +95,7 @@ struct encoder {
 void tuning_isr(void);
 void paddle_actions_queue_add(int action_to_add);
 void cw_paddle_isr(void);
+int map(long x, int in_min, int in_max, int out_min, int out_max);
 volatile int cw_paddle_isr_key_memory = 0;
 volatile int cw_paddle_current_state = 0;
 
@@ -99,8 +106,10 @@ volatile int cw_paddle_current_state = 0;
 
 void wake_up_the_screen(void);
 
-int spectrum_size_adjust_y = 0;
-
+#define WINDOW_X 800
+#define WINDOW_Y 480
+#define WINDOW_X_SPLIT (WINDOW_X/2)
+//#define WINDOW_X_SPLIT (WINDOW_X-500)
 
 #define COLOR_SELECTED_TEXT 0
 #define COLOR_TEXT 1
@@ -164,7 +173,8 @@ struct font_style font_table[] = {
 	{FONT_SMALL_FIELD_VALUE, 1, 1, 1, "Mono", 11, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
 };
 
-struct encoder enc_a, enc_b;
+// enc_1 is small knob (volume & other controls), enc_2 is big knob (tuning)
+struct encoder enc_1, enc_2;
 
 #define MAX_FIELD_LENGTH 128
 
@@ -321,7 +331,13 @@ struct field {
 	int   alternate_font_index;
 	char  selection[1000];
 	long int	 	min, max;
-    int step;
+  int step;
+  int enabled;
+  int size_or_position_change_flag;
+  int new_x;
+  int new_y;
+  int new_width;
+  int new_height;
 };
 
 #define STACK_DEPTH 4
@@ -448,6 +464,7 @@ int do_kbd(struct field *f, cairo_t *gfx, int event, int a, int b, int c);
 int do_mouse_move(struct field *f, cairo_t *gfx, int event, int a, int b, int c);
 int do_macro(struct field *f, cairo_t *gfx, int event, int a, int b, int c);
 int do_record(struct field *f, cairo_t *gfx, int event, int a, int b, int c);
+int do_spectrum_display_height(struct field *f, cairo_t *gfx, int event, int a, int b, int c);
 
 struct field *active_layout = NULL;
 char settings_updated = 0;
@@ -458,196 +475,198 @@ int current_layout = LAYOUT_KBD;
 // the cmd fields that have '#' are not to be sent to the sdr
 struct field main_controls[] = {
 	{ "r1:freq", do_tuning, 600, 0, 150, 49, "", 5, "14000000", FIELD_NUMBER, FONT_LARGE_VALUE, 
-		FONT_SMALL_FIELD_VALUE, "", 500000, 30000000, 100},
+		FONT_SMALL_FIELD_VALUE, "", 500000, 30000000, 100, ENABLED, 0,0,0,0,0},
 
 	// Main RX
 	{ "r1:volume", NULL, 750, 330, 50, 50, "AUDIO", 40, "60", FIELD_NUMBER, FONT_FIELD_VALUE, 
-		FONT_SMALL_FIELD_VALUE, "", 0, 100, 1},
+		FONT_SMALL_FIELD_VALUE, "", 0, 100, 1, ENABLED, 0,0,0,0,0},
 	{ "r1:mode", NULL, 500, 330, 50, 50, "MODE", 40, "USB", FIELD_SELECTION, FONT_FIELD_VALUE, 
-		FONT_SMALL_FIELD_VALUE, "USB/LSB/CW/CWR/FT8/PSK31/RTTY/DIGITAL/2TONE", 0,0, 0},
+		FONT_SMALL_FIELD_VALUE, "USB/LSB/CW/CWR/FT8/PSK31/RTTY/DIGITAL/2TONE", 0,0, 0, ENABLED, 0,0,0,0,0},
 	{ "r1:low", NULL, 550, 330, 50, 50, "LOW", 40, "300", FIELD_NUMBER, FONT_FIELD_VALUE, 
-		FONT_SMALL_FIELD_VALUE, "", 0,4000, 50},
+		FONT_SMALL_FIELD_VALUE, "", 0,4000, 50, ENABLED, 0,0,0,0,0},
 	{ "r1:high", NULL, 600, 330, 50, 50, "HIGH", 40, "3000", FIELD_NUMBER, FONT_FIELD_VALUE, 
-		FONT_SMALL_FIELD_VALUE, "", 300, 10000, 50},
+		FONT_SMALL_FIELD_VALUE, "", 300, 10000, 50, ENABLED, 0,0,0,0,0},
 
 	{ "r1:agc", NULL, 650, 330, 50, 50, "AGC", 40, "SLOW", FIELD_SELECTION, FONT_FIELD_VALUE, 
-		FONT_SMALL_FIELD_VALUE, "OFF/SLOW/MED/FAST", 0, 1024, 1},
+		FONT_SMALL_FIELD_VALUE, "OFF/SLOW/MED/FAST", 0, 1024, 1, ENABLED, 0,0,0,0,0},
 	{ "r1:gain", NULL, 700, 330, 50, 50, "IF", 40, "60", FIELD_NUMBER, FONT_FIELD_VALUE, 
-		FONT_SMALL_FIELD_VALUE, "", 0, 100, 1},
+		FONT_SMALL_FIELD_VALUE, "", 0, 100, 1, ENABLED, 0,0,0,0,0},
 
 	//tx 
 	{ "tx_power", NULL, 550, 430, 50, 50, "WATTS", 40, "40", FIELD_NUMBER, FONT_FIELD_VALUE, 
-		FONT_SMALL_FIELD_VALUE, "", 0, 100, 1},
+		FONT_SMALL_FIELD_VALUE, "", 0, 100, 1, ENABLED, 0,0,0,0,0},
 	{ "tx_gain", NULL, 550, 380, 50, 50, "MIC", 40, "50", FIELD_NUMBER, FONT_FIELD_VALUE, 
-		FONT_SMALL_FIELD_VALUE, "", 0, 100, 1},
+		FONT_SMALL_FIELD_VALUE, "", 0, 100, 1, ENABLED, 0,0,0,0,0},
 
 	{ "#split", NULL, 750, 380, 50, 50, "SPLIT", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, 
-		FONT_SMALL_FIELD_VALUE, "ON/OFF", 0,0,0},
+		FONT_SMALL_FIELD_VALUE, "ON/OFF", 0,0,0, ENABLED, 0,0,0,0,0},
 	{ "tx_compress", NULL, 600, 380, 50, 50, "COMP", 40, "0", FIELD_NUMBER, FONT_FIELD_VALUE, 
-		FONT_SMALL_FIELD_VALUE, "ON/OFF", 0,100,10},
+		FONT_SMALL_FIELD_VALUE, "ON/OFF", 0,100,10, ENABLED, 0,0,0,0,0},
 	{"#rit", NULL, 550, 0, 50, 50, "RIT", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, 
-		FONT_SMALL_FIELD_VALUE, "ON/OFF", 0,0,0},
+		FONT_SMALL_FIELD_VALUE, "ON/OFF", 0,0,0, ENABLED, 0,0,0,0,0},
 	{ "#tx_wpm", NULL, 650, 380, 50, 50, "WPM", 40, "12", FIELD_NUMBER, FONT_FIELD_VALUE, 
-		FONT_SMALL_FIELD_VALUE, "", 1, 50, 1},
+		FONT_SMALL_FIELD_VALUE, "", 1, 50, 1, ENABLED, 0,0,0,0,0},
 	{ "#rx_pitch", do_pitch, 700, 380, 50, 50, "PITCH", 40, "600", FIELD_NUMBER, FONT_FIELD_VALUE, 
-		FONT_SMALL_FIELD_VALUE, "", 100, 3000, 10},
+		FONT_SMALL_FIELD_VALUE, "", 100, 3000, 10, ENABLED, 0,0,0,0,0},
 	
 	{ "#tx", NULL, 600, 430, 50, 50, "TX", 40, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
-		FONT_SMALL_FIELD_VALUE, "RX/TX", 0,0, 0},
+		FONT_SMALL_FIELD_VALUE, "RX/TX", 0, 0, 0, ENABLED, 0,0,0,0,0},
 
 	{ "#rx", NULL, 650, 430, 50, 50, "RX", 40, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
-		FONT_SMALL_FIELD_VALUE, "RX/TX", 0,0, 0},
+		FONT_SMALL_FIELD_VALUE, "RX/TX", 0, 0, 0, ENABLED, 0,0,0,0,0},
 	
 	{ "#record", do_record, 700, 430, 50, 50, "REC", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, 
-		FONT_SMALL_FIELD_VALUE, "ON/OFF", 0,0, 0},
+		FONT_SMALL_FIELD_VALUE, "ON/OFF", 0, 0, 0, ENABLED, 0,0,0,0,0},
 
 	// top row
 	{"#step", NULL, 400, 0 ,50, 50, "STEP", 1, "10Hz", FIELD_SELECTION, FONT_FIELD_VALUE, 
-		FONT_SMALL_FIELD_VALUE, "1MHz/100KHz/10KHz/1KHz/100Hz/10Hz", 0,0,0},
+		FONT_SMALL_FIELD_VALUE, "1MHz/100KHz/10KHz/1KHz/100Hz/10Hz", 0,0,0, ENABLED, 0,0,0,0,0},
 	{"#vfo", NULL, 450, 0 ,50, 50, "VFO", 1, "A", FIELD_SELECTION, FONT_FIELD_VALUE, 
-		FONT_SMALL_FIELD_VALUE, "A/B", 0,0,0},
+		FONT_SMALL_FIELD_VALUE, "A/B", 0,0,0, ENABLED, 0,0,0,0,0},
 	{"#span", NULL, 500, 0 ,50, 50, "SPAN", 1, "25KHz", FIELD_SELECTION, FONT_FIELD_VALUE, 
-		FONT_SMALL_FIELD_VALUE, "25KHz/10KHz/6KHz/2.5KHz", 0,0,0},
+		FONT_SMALL_FIELD_VALUE, "25KHz/10KHz/6KHz/2.5KHz", 0,0,0, ENABLED, 0,0,0,0,0},
 
-	{"spectrum", do_spectrum, 400, 80, 400, 100, "Spectrum ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, 
-		FONT_SMALL_FIELD_VALUE, "", 0,0,0},  
-	{"#status", do_status, 400, 51, 400, 29, "00:00:00", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, 
-		FONT_SMALL_FIELD_VALUE, "status", 0,0,0},  
-	{"waterfall", do_waterfall, 400, 181, 400, 148, "Waterfall ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, 
-		FONT_SMALL_FIELD_VALUE, "", 0,0,0},
-	{"#console", do_console, 0, 0 , 400, 320, "console", 70, "console box", FIELD_CONSOLE, FONT_LOG, 
-		FONT_SMALL_FIELD_VALUE, "nothing valuable", 0,0,0},
-	{"#log_ed", NULL, 0, 320, 400, 20, "", 70, "", FIELD_STATIC, FONT_LOG, 
-		FONT_SMALL_FIELD_VALUE, "nothing valuable", 0,128,0},
-	{"#text_in", do_text, 0, 340, 398, 20, "text", 70, "text box", FIELD_TEXT, FONT_LOG, 
-		FONT_SMALL_FIELD_VALUE, "nothing valuable", 0,128,0},
+	{"spectrum", do_spectrum, WINDOW_X_SPLIT, 80, WINDOW_X-WINDOW_X_SPLIT, 100, "Spectrum ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, 
+		FONT_SMALL_FIELD_VALUE, "", 0,0,0, ENABLED, 0,0,0,0,0},  
+	{"#status", do_status, WINDOW_X_SPLIT, 51, WINDOW_X-WINDOW_X_SPLIT, 29, "00:00:00", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, 
+		FONT_SMALL_FIELD_VALUE, "status", 0,0,0, ENABLED, 0,0,0,0,0},  
+	{"waterfall", do_waterfall, WINDOW_X_SPLIT, 181, WINDOW_X-WINDOW_X_SPLIT, 148, "Waterfall ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, 
+		FONT_SMALL_FIELD_VALUE, "", 0,0,0, ENABLED, 0,0,0,0,0},
+	{"#console", do_console, 0, 0 , WINDOW_X_SPLIT-2, 320, "console", 70, "console box", FIELD_CONSOLE, FONT_LOG, 
+		FONT_SMALL_FIELD_VALUE, "nothing valuable", 0,0,0, ENABLED, 0,0,0,0,0},
+	{"#log_ed", NULL, 0, 320, WINDOW_X_SPLIT-2, 20, "", 70, "", FIELD_STATIC, FONT_LOG, 
+		FONT_SMALL_FIELD_VALUE, "nothing valuable", 0,128,0, ENABLED, 0,0,0,0,0},
+	{"#text_in", do_text, 0, 340, WINDOW_X_SPLIT-2, 20, "text", 70, "text box", FIELD_TEXT, FONT_LOG, 
+		FONT_SMALL_FIELD_VALUE, "nothing valuable", 0,128,0, ENABLED, 0,0,0,0,0},
 
 	{"#close", NULL, 750, 430 ,50, 50, "CLOSE", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
-		FONT_SMALL_FIELD_VALUE, "", 0,0,0},
+		FONT_SMALL_FIELD_VALUE, "", 0,0,0, ENABLED, 0,0,0,0,0},
 	{"#off", NULL, 750, 0 ,50, 50, "OFF", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
-		FONT_SMALL_FIELD_VALUE, "", 0,0,0},
+		FONT_SMALL_FIELD_VALUE, "", 0,0,0, ENABLED, 0,0,0,0,0},
   
   // other settings - currently off screen
   { "reverse_scrolling", NULL, 1000, 1000, 50, 50, "RS", 40, "ON", FIELD_TOGGLE, FONT_FIELD_VALUE,
-    FONT_SMALL_FIELD_VALUE, "ON/OFF", 0,0,0},
+    FONT_SMALL_FIELD_VALUE, "ON/OFF", 0,0,0, ENABLED, 0,0,0,0,0},
   { "tuning_acceleration", NULL, 1000, 1000, 50, 50, "TA", 40, "ON", FIELD_TOGGLE, FONT_FIELD_VALUE,
-    FONT_SMALL_FIELD_VALUE, "ON/OFF", 0,0,0},
+    FONT_SMALL_FIELD_VALUE, "ON/OFF", 0,0,0, ENABLED, 0,0,0,0,0},
   { "tuning_accel_thresh1", NULL, 1000, 1000, 50, 50, "TAT1", 40, "10000", FIELD_NUMBER, FONT_FIELD_VALUE,
-    FONT_SMALL_FIELD_VALUE, "", 100,99999,100},
+    FONT_SMALL_FIELD_VALUE, "", 100,99999,100, ENABLED, 0,0,0,0,0},
   { "tuning_accel_thresh2", NULL, 1000, 1000, 50, 50, "TAT2", 40, "500", FIELD_NUMBER, FONT_FIELD_VALUE,
-    FONT_SMALL_FIELD_VALUE, "", 100,99999,100},
+    FONT_SMALL_FIELD_VALUE, "", 100,99999,100, ENABLED, 0,0,0,0,0},
   { "mouse_pointer", NULL, 1000, 1000, 50, 50, "MP", 40, "LEFT", FIELD_SELECTION, FONT_FIELD_VALUE,
-    FONT_SMALL_FIELD_VALUE, "BLANK/LEFT/RIGHT/CROSSHAIR", 0,0,0},
+    FONT_SMALL_FIELD_VALUE, "BLANK/LEFT/RIGHT/CROSSHAIR", 0,0,0, ENABLED, 0,0,0,0,0},
   { "freq_disp_adds_cw_pitch", NULL, 1000, 1000, 50, 50, "ADDCWPITCH", 40, "ON", FIELD_TOGGLE, FONT_FIELD_VALUE,
-    FONT_SMALL_FIELD_VALUE, "ON/OFF", 0,0,0},
+    FONT_SMALL_FIELD_VALUE, "ON/OFF", 0,0,0, ENABLED, 0,0,0,0,0},
   { "freq_calibration", NULL, 1000, 1000, 50, 50, "FC", 40, "0", FIELD_NUMBER, FONT_FIELD_VALUE,
-    FONT_SMALL_FIELD_VALUE, "", -999999,999999,1},    
+    FONT_SMALL_FIELD_VALUE, "", -999999,999999,1, ENABLED, 0,0,0,0,0},    
+  { "spectrum_display_height", do_spectrum_display_height, 1000, 1000, 50, 50, "SDH", 40, "40", FIELD_NUMBER, FONT_FIELD_VALUE,
+    FONT_SMALL_FIELD_VALUE, "", 5,100, 5, ENABLED, 0,0,0,0,0},     
 
 	/* band stack registers */
 	{"#10m", NULL, 400, 330, 50, 50, "10M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
-		FONT_SMALL_FIELD_VALUE, "", 0,0,0},
+		FONT_SMALL_FIELD_VALUE, "", 0,0,0, ENABLED, 0,0,0,0,0},
 	{"#12m", NULL, 450, 330, 50, 50, "12M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
-		FONT_SMALL_FIELD_VALUE, "", 0,0,0},
+		FONT_SMALL_FIELD_VALUE, "", 0,0,0, ENABLED, 0,0,0,0,0},
 	{"#15m", NULL, 400, 380, 50, 50, "15M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
-		FONT_SMALL_FIELD_VALUE, "", 0,0,0},
+		FONT_SMALL_FIELD_VALUE, "", 0,0,0, ENABLED, 0,0,0,0,0},
 	{"#17m", NULL, 450, 380, 50, 50, "17M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
-		FONT_SMALL_FIELD_VALUE, "", 0,0,0},
+		FONT_SMALL_FIELD_VALUE, "", 0,0,0, ENABLED, 0,0,0,0,0},
 	{"#20m", NULL, 500, 380, 50, 50, "20M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
-		FONT_SMALL_FIELD_VALUE, "", 0,0,0},
+		FONT_SMALL_FIELD_VALUE, "", 0,0,0, ENABLED, 0,0,0,0,0},
 	{"#30m", NULL, 400, 430, 50, 50, "30M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
-		FONT_SMALL_FIELD_VALUE, "", 0,0,0},
+		FONT_SMALL_FIELD_VALUE, "", 0,0,0, ENABLED, 0,0,0,0,0},
 	{"#40m", NULL, 450, 430, 50, 50, "40M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
-		FONT_SMALL_FIELD_VALUE, "", 0,0,0},
+		FONT_SMALL_FIELD_VALUE, "", 0,0,0, ENABLED, 0,0,0,0,0},
 	{"#80m", NULL, 500, 430, 50, 50, "80M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
-		FONT_SMALL_FIELD_VALUE, "", 0,0,0},
+		FONT_SMALL_FIELD_VALUE, "", 0,0,0, ENABLED, 0,0,0,0,0},
 
 	//soft keyboard
-	{"#kbd_q", do_kbd, 0, 360 ,40, 30, "#", 1, "q", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_w", do_kbd, 40, 360, 40, 30, "1", 1, "w", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_e", do_kbd, 80, 360, 40, 30, "2", 1, "e", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_r", do_kbd, 120, 360, 40, 30, "3", 1, "r", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_t", do_kbd, 160, 360, 40, 30, "(", 1, "t", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_y", do_kbd, 200, 360, 40, 30, ")", 1, "y", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_u", do_kbd, 240, 360, 40, 30, "_", 1, "u", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_i", do_kbd, 280, 360, 40, 30, "-", 1, "i", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_o", do_kbd, 320, 360, 40, 30, "+", 1, "o", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_q", do_kbd, 0, 360 ,40, 30, "#", 1, "q", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
+	{"#kbd_w", do_kbd, 40, 360, 40, 30, "1", 1, "w", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
+	{"#kbd_e", do_kbd, 80, 360, 40, 30, "2", 1, "e", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
+	{"#kbd_r", do_kbd, 120, 360, 40, 30, "3", 1, "r", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
+	{"#kbd_t", do_kbd, 160, 360, 40, 30, "(", 1, "t", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
+	{"#kbd_y", do_kbd, 200, 360, 40, 30, ")", 1, "y", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
+	{"#kbd_u", do_kbd, 240, 360, 40, 30, "_", 1, "u", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
+	{"#kbd_i", do_kbd, 280, 360, 40, 30, "-", 1, "i", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
+	{"#kbd_o", do_kbd, 320, 360, 40, 30, "+", 1, "o", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
 
-	{"#kbd_p", do_kbd, 360, 360, 40, 30, "@", 1, "p", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_p", do_kbd, 360, 360, 40, 30, "@", 1, "p", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
 
-	{"#kbd_a", do_kbd, 0, 390 ,40, 30, "*", 1, "a", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_s", do_kbd, 40, 390, 40, 30, "4", 1, "s", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_d", do_kbd, 80, 390, 40, 30, "5", 1, "d", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_f", do_kbd, 120, 390, 40, 30, "6", 1, "f", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_g", do_kbd, 160, 390, 40, 30, "/", 1, "g", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_h", do_kbd, 200, 390, 40, 30, ":", 1, "h", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_j", do_kbd, 240, 390, 40, 30, ";", 1, "j", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_k", do_kbd, 280, 390, 40, 30, "'", 1, "k", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_l", do_kbd, 320, 390, 40, 30, "\"", 1, "l", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_bs", do_kbd, 360, 390, 40, 30, "", 1, "DEL", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0},
+	{"#kbd_a", do_kbd, 0, 390 ,40, 30, "*", 1, "a", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
+	{"#kbd_s", do_kbd, 40, 390, 40, 30, "4", 1, "s", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
+	{"#kbd_d", do_kbd, 80, 390, 40, 30, "5", 1, "d", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
+	{"#kbd_f", do_kbd, 120, 390, 40, 30, "6", 1, "f", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
+	{"#kbd_g", do_kbd, 160, 390, 40, 30, "/", 1, "g", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
+	{"#kbd_h", do_kbd, 200, 390, 40, 30, ":", 1, "h", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
+	{"#kbd_j", do_kbd, 240, 390, 40, 30, ";", 1, "j", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
+	{"#kbd_k", do_kbd, 280, 390, 40, 30, "'", 1, "k", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
+	{"#kbd_l", do_kbd, 320, 390, 40, 30, "\"", 1, "l", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
+	{"#kbd_bs", do_kbd, 360, 390, 40, 30, "", 1, "DEL", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0},
  
-	{"#kbd_alt", do_kbd, 0, 420 ,40, 30, "", 1, "Alt", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_z", do_kbd, 40, 420, 40, 30, "7", 1, "z", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_x", do_kbd, 80, 420, 40, 30, "8", 1, "x", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_c", do_kbd, 120, 420, 40, 30, "9", 1, "c", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_v", do_kbd, 160, 420, 40, 30, "?", 1, "v", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_b", do_kbd, 200, 420, 40, 30, "!", 1, "b", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_n", do_kbd, 240, 420, 40, 30, ",", 1, "n", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_m", do_kbd, 280, 420, 40, 30, ".", 1, "m", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_enter", do_kbd, 320, 420, 80, 30, "", 1, "Enter", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_alt", do_kbd, 0, 420 ,40, 30, "", 1, "Alt", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
+	{"#kbd_z", do_kbd, 40, 420, 40, 30, "7", 1, "z", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
+	{"#kbd_x", do_kbd, 80, 420, 40, 30, "8", 1, "x", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
+	{"#kbd_c", do_kbd, 120, 420, 40, 30, "9", 1, "c", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
+	{"#kbd_v", do_kbd, 160, 420, 40, 30, "?", 1, "v", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
+	{"#kbd_b", do_kbd, 200, 420, 40, 30, "!", 1, "b", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
+	{"#kbd_n", do_kbd, 240, 420, 40, 30, ",", 1, "n", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
+	{"#kbd_m", do_kbd, 280, 420, 40, 30, ".", 1, "m", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
+	{"#kbd_enter", do_kbd, 320, 420, 80, 30, "", 1, "Enter", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
 
-	{"#kbd_cmd", do_kbd, 0, 450, 80, 30, "", 1, "\\cmd", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_0", do_kbd, 80, 450, 40, 30, "", 1, "0", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_ ", do_kbd, 120, 450, 120, 30, "", 1, " SPACE ", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_.", do_kbd, 240, 450, 40, 30, "\"", 1, ".", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_?", do_kbd, 280, 450, 40, 30, "?", 1, "?", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
-	{"#kbd_macro", do_kbd, 320, 450, 80, 30, "", 1, "Macro", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
+	{"#kbd_cmd", do_kbd, 0, 450, 80, 30, "", 1, "\\cmd", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
+	{"#kbd_0", do_kbd, 80, 450, 40, 30, "", 1, "0", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
+	{"#kbd_ ", do_kbd, 120, 450, 120, 30, "", 1, " SPACE ", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
+	{"#kbd_.", do_kbd, 240, 450, 40, 30, "\"", 1, ".", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
+	{"#kbd_?", do_kbd, 280, 450, 40, 30, "?", 1, "?", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
+	{"#kbd_macro", do_kbd, 320, 450, 80, 30, "", 1, "Macro", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
 
 
 	//macros keyboard
 
 	//row 1
-	{"#mf1", do_macro, 0, 1360, 65, 40, "F1", 1, "CQ", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
+	{"#mf1", do_macro, 0, 1360, 65, 40, "F1", 1, "CQ", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
 
-	{"#mf2", do_macro, 65, 1360, 65, 40, "F2", 1, "Call", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
+	{"#mf2", do_macro, 65, 1360, 65, 40, "F2", 1, "Call", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
 
-	{"#mf3", do_macro, 130, 1360, 65, 40, "F3", 1, "Reply", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
+	{"#mf3", do_macro, 130, 1360, 65, 40, "F3", 1, "Reply", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
 
-	{"#mf4", do_macro, 195, 1360, 65, 40, "F4", 1, "RRR", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
+	{"#mf4", do_macro, 195, 1360, 65, 40, "F4", 1, "RRR", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
 
-	{"#mf5", do_macro, 260, 1360, 70, 40, "F5", 1, "73", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
+	{"#mf5", do_macro, 260, 1360, 70, 40, "F5", 1, "73", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
 
-	{"#mf6", do_macro, 330, 1360, 70, 40, "F6", 1, "Call", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
+	{"#mf6", do_macro, 330, 1360, 70, 40, "F6", 1, "Call", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
 
 	//row 2
 
-	{"#mf7", do_macro, 0, 1400, 65, 40, "F7", 1, "Exch", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
+	{"#mf7", do_macro, 0, 1400, 65, 40, "F7", 1, "Exch", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
 
-	{"#mf8", do_macro, 65, 1400, 65, 40, "F8", 1, "Tu", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
+	{"#mf8", do_macro, 65, 1400, 65, 40, "F8", 1, "Tu", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
 
-	{"#mf9", do_macro, 130, 1400, 65, 40, "F9", 1, "Rpt", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
+	{"#mf9", do_macro, 130, 1400, 65, 40, "F9", 1, "Rpt", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
 
-	{"#mf10", do_macro, 195, 1400, 65, 40, "F10", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
+	{"#mf10", do_macro, 195, 1400, 65, 40, "F10", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
 
-	{"#mf11", do_macro, 260, 1400, 70, 40, "F11", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
+	{"#mf11", do_macro, 260, 1400, 70, 40, "F11", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
 
-	{"#mf12", do_macro, 330, 1400, 70, 40, "F12", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
+	{"#mf12", do_macro, 330, 1400, 70, 40, "F12", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
 
 	//row 3
 
-	{"#mfqrz", do_macro, 0, 1440, 65, 40, "QRZ", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
+	{"#mfqrz", do_macro, 0, 1440, 65, 40, "QRZ", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
 
-	{"#mfwipe", do_macro, 65, 1440, 65, 40, "Wipe", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
+	{"#mfwipe", do_macro, 65, 1440, 65, 40, "Wipe", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
 
-	{"#mflog", do_macro, 130, 1440, 65, 40, "Log it", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
+	{"#mflog", do_macro, 130, 1440, 65, 40, "Log it", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
 
-	{"#mfedit", do_macro, 195, 1440, 65, 40, "Edit", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
+	{"#mfedit", do_macro, 195, 1440, 65, 40, "Edit", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
 
-	{"#mfspot"	, do_macro, 260, 1440, 70, 40, "Spot", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
+	{"#mfspot"	, do_macro, 260, 1440, 70, 40, "Spot", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
 
-	{"#mfkbd", do_macro, 330, 1440, 70, 40, "Kbd", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0}, 
+	{"#mfkbd", do_macro, 330, 1440, 70, 40, "Kbd", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE,"", 0,0,0, ENABLED, 0,0,0,0,0}, 
 
 	//the last control has empty cmd field 
-	{"", NULL, 0, 0 ,0, 0, "#", 1, "Q", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE, "", 0,0,0},
+	{"", NULL, 0, 0 ,0, 0, "#", 1, "Q", FIELD_BUTTON, FONT_FIELD_VALUE,FONT_SMALL_FIELD_VALUE, "", 0,0,0, ENABLED, 0,0,0,0,0},
 };
 
 
@@ -1211,15 +1230,17 @@ GdkPixbuf *waterfall_pixbuf;
 guint8 *waterfall_map;
 
 void init_waterfall(){
+
 	struct field *f = get_field("waterfall");
 
 	//this will store the db values of waterfall
-	wf = malloc((MAX_BINS/2) * f->height * sizeof(int));
+	int wf_number_of_bytes = (MAX_BINS/2) * f->height * sizeof(int);
+	wf = malloc(wf_number_of_bytes);
 	if (!wf){
-		puts("*Error: malloc failed on waterfall buffer");
+		fprintf(stderr, "init_waterfall: Error: malloc failed on waterfall buffer\n");
 		exit(0);
 	}
-	memset(wf, 0, (MAX_BINS/2) * f->height * sizeof(int));
+	memset(wf, 0, wf_number_of_bytes);
 
 	//this will store the bitmap pixles, 3 bytes per pixel
 	waterfall_map = malloc(f->width * f->height * 3);
@@ -1228,21 +1249,25 @@ void init_waterfall(){
 			int row = j * f->width * 3;
 			int	index = row + i * 3;
 			waterfall_map[index++] = 0;
-			waterfall_map[index++] = i % 256;
-			waterfall_map[index++] = j % 256; 
+			waterfall_map[index++] = 0;
+			waterfall_map[index++] = 0;
+			// not sure why this was done - k3ng 2022-10-02
+			// waterfall_map[index++] = i % 256;
+			// waterfall_map[index++] = j % 256; 
 	}
 	waterfall_pixbuf = gdk_pixbuf_new_from_data(waterfall_map,
 		GDK_COLORSPACE_RGB, FALSE, 8, f->width, f->height, f->width*3, NULL,NULL);
 		// format,         alpha?, bit,  widht,    height, rowstride, destryfn, data
 
-//	printf("%ld return from pixbuff", (int)waterfall_pixbuf);	
+  //	printf("%ld return from pixbuff", (int)waterfall_pixbuf);	
 }
 
 
 void draw_waterfall(struct field *f, cairo_t *gfx){
 
-
-//return;	
+  if ((!f->enabled) || (f->size_or_position_change_flag)){
+    return;
+  }
 
 	memmove(waterfall_map + f->width * 3, waterfall_map, 
 		f->width * (f->height - 1) * 3);
@@ -1250,34 +1275,34 @@ void draw_waterfall(struct field *f, cairo_t *gfx){
 	int index = 0;
 	
 	for (int i = 0; i < f->width; i++){
-			int v = wf[i] * 2;
-			if (v > 100)		//we limit ourselves to 100 db range
-				v = 100;
+		int v = wf[i] * 2;
+		if (v > 100)		//we limit ourselves to 100 db range
+			v = 100;
 
-			if (v < 20){									// r = 0, g= 0, increase blue
-				waterfall_map[index++] = 0;
-				waterfall_map[index++] = 0;
-				waterfall_map[index++] = v * 12; 
-			}
-			else if (v < 40){							// r = 0, increase g, blue is max
-				waterfall_map[index++] = 0;
-				waterfall_map[index++] = (v - 20) * 12;
-				waterfall_map[index++] = 255; 
-			}
-			else if (v < 60){							// r = 0, g= max, decrease b
-				waterfall_map[index++] = 0;
-				waterfall_map[index++] = 255; 
-				waterfall_map[index++] = (60-v)*12; 
-			}
-			else if (v < 80){						 	// increase r, g = max, b = 0
-				waterfall_map[index++] = (v-60) * 12;
-				waterfall_map[index++] = 255;
-				waterfall_map[index++] = 0; 
-			}else {												// r = max, decrease g, b = 0
-				waterfall_map[index++] = 255;
-				waterfall_map[index++] = (100-v) * 12;
-				waterfall_map[index++] = 0; 
-			}
+		if (v < 20){									// r = 0, g= 0, increase blue
+			waterfall_map[index++] = 0;
+			waterfall_map[index++] = 0;
+			waterfall_map[index++] = v * 12; 
+		}
+		else if (v < 40){							// r = 0, increase g, blue is max
+			waterfall_map[index++] = 0;
+			waterfall_map[index++] = (v - 20) * 12;
+			waterfall_map[index++] = 255; 
+		}
+		else if (v < 60){							// r = 0, g= max, decrease b
+			waterfall_map[index++] = 0;
+			waterfall_map[index++] = 255; 
+			waterfall_map[index++] = (60-v)*12; 
+		}
+		else if (v < 80){						 	// increase r, g = max, b = 0
+			waterfall_map[index++] = (v-60) * 12;
+			waterfall_map[index++] = 255;
+			waterfall_map[index++] = 0; 
+		}else {												// r = max, decrease g, b = 0
+			waterfall_map[index++] = 255;
+			waterfall_map[index++] = (100-v) * 12;
+			waterfall_map[index++] = 0; 
+		}
 	}
 
 	gdk_cairo_set_source_pixbuf(gfx, waterfall_pixbuf, f->x, f->y);		
@@ -1285,24 +1310,50 @@ void draw_waterfall(struct field *f, cairo_t *gfx){
 	cairo_fill(gfx);
 }
 
+
+void submit_field_size_and_position_adjust(struct field *f, int action, int x , int y, int width, int height){
+
+
+  if (action == ABSOLUTE){
+    f->new_x = x;
+    f->new_y = y;
+    f->new_width = width;
+    f->new_height = height;
+	} else if (action == RELATIVE){
+    f->new_x = f->x + x;
+    f->new_y = f->y + y;
+    f->new_width = f->width + width;
+    f->new_height = f->height + height;
+    if (f->new_width < 0){
+      f->new_width = 0;
+    }
+    if (f->new_height < 0){
+      f->new_height = 0;
+    }
+	}
+	// individual field functions handle a size or position change
+	f->size_or_position_change_flag++;
+
+}
+
+void implement_field_size_and_position_adjust(struct field *f){
+
+  f->x = f->new_x;
+  f->y = f->new_y;
+  f->width = f->new_width;
+  f->height = f->new_height;
+  f->new_x = 0;
+  f->new_y = 0;
+  f->new_width = 0;
+  f->new_height = 0;
+  f->size_or_position_change_flag = 0;
+
+}
+
 void draw_spectrum_grid(struct field *f_spectrum, cairo_t *gfx){
 	int sub_division, grid_height;
 	struct field *f = f_spectrum;
-	struct field *f_waterfall = get_field("waterfall");
 
-//zzzzzz k3ng
-
-	if (spectrum_size_adjust_y){
-    f->height += spectrum_size_adjust_y;
-    f_waterfall->y += spectrum_size_adjust_y;
-    f_waterfall->height -= spectrum_size_adjust_y;
-		spectrum_size_adjust_y = 0;
-		update_field(f);
-		update_field(f_waterfall);
-		init_waterfall();
-		redraw_flag++;
-		return;
-	}
 
 	sub_division = f->width / 10;
 	grid_height = f->height - 10;
@@ -1331,15 +1382,47 @@ void draw_spectrum_grid(struct field *f_spectrum, cairo_t *gfx){
 	cairo_stroke(gfx);
 }
 
+void set_spectrum_display_height(int height_percentage){
+
+  struct field *f_spectrum = get_field("spectrum");
+  struct field *f_waterfall = get_field("waterfall");
+  float value = map(height_percentage, 0, 100, 10, 99)/100.0;
+  submit_field_size_and_position_adjust(f_spectrum, ABSOLUTE, f_spectrum->x , f_spectrum->y, f_spectrum->width, value * 248);
+  submit_field_size_and_position_adjust(f_waterfall, ABSOLUTE, f_waterfall->x , f_spectrum->y + (value * 248) + 1, f_waterfall->width, 248 - (value * 248));
+}
+
 void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
 	int y, sub_division, i, grid_height, bw_high, bw_low, pitch;
 	float span;
 	struct field *f;
 	long	freq, freq_div;
 	char	freq_text[20];
+  struct field *f_waterfall = get_field("waterfall");
 
   static float last_span;
   static char last_mode[16];
+
+  if (!f_spectrum->enabled){
+    return;
+  }
+
+  // k3ng 2022-10-02 zzzzzz
+
+  //handle a size or position change
+  if ((f_spectrum->size_or_position_change_flag) && (f_waterfall->size_or_position_change_flag)){
+    implement_field_size_and_position_adjust(f_spectrum);
+    implement_field_size_and_position_adjust(f_waterfall);
+    if (f_waterfall->height < 6){
+      f_waterfall->enabled = 0;
+    } else {
+      f_waterfall->enabled = 1;
+    }
+    update_field(f_spectrum);
+    update_field(f_waterfall);
+    init_waterfall();
+    redraw_flag++;
+    return;
+  }
 
 	if (in_tx){
 		draw_modulation(f_spectrum, gfx);
@@ -1710,9 +1793,9 @@ static void edit_field(struct field *f, int action){
 	
 	if (f->value_type == FIELD_NUMBER){
 		int	v = atoi(f->value);
-		if (action == MIN_KEY_UP && v + f->step <= f->max)
+		if ((action == MIN_KEY_UP) && (v + f->step <= f->max))
 			v += f->step;
-		else if (action == MIN_KEY_DOWN && v - f->step >= f->min)
+		else if ((action == MIN_KEY_DOWN) && (v - f->step >= f->min))
 			v -= f->step;
 		sprintf(f->value, "%d",  v);
 	}
@@ -1940,7 +2023,14 @@ int do_spectrum(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 		  //a has the x position of the mouse and b has the y position
       // move the spectrum display if we're in the frequency below the grid
       if (b > (f->y + f->height - 10)){
+        // horizontal mouse movement - change center freq
         spectrum_display_start_freq_adjustment -= ((a - last_mouse_x) * (span/f->width));
+        // vertical mouse movement - change spectrum window size
+          // this crashes horribly and I know of no good way to implement 
+          // mouse-based field resizing and movement without major rewriting elsewhere
+          // k3ng 2022-10-02
+            // submit_field_size_and_position_adjust(f, RELATIVE, 0, 0, 0, b - last_mouse_y);
+            // submit_field_size_and_position_adjust(get_field("waterfall"), RELATIVE, 0 , b - last_mouse_y, 0, -b);
       // are we in the pitch dragging area?
       } else if ((spectrum_display_pitch_position > 0) && (a > (spectrum_display_pitch_position - 10)) &&
         (a < (spectrum_display_pitch_position + 10)) && (b > (f->y + f->height - 10 - (f->height/5))) &&
@@ -2209,10 +2299,36 @@ int do_pitch(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 	return 0;
 }
 
+// k3ng - zzzzzz
+int do_spectrum_display_height(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
+
+  // set_spectrum_display_height(atoi(f->value));
+  // settings_updated++;
+
+  int v = atoi(f->value);
+
+  if (event == FIELD_EDIT){
+    if (a == MIN_KEY_UP && v + f->step <= f->max){
+      v += f->step;
+    }
+    else if (a == MIN_KEY_DOWN && v - f->step >= f->min){
+      v -= f->step;
+    }
+    sprintf(f->value, "%d", v);
+    update_field(f);
+    redraw_flag++;
+    set_spectrum_display_height(atoi(f->value));
+    settings_updated++;
+    return 1;
+  }
+  return 0;
+}
+
+
 //called for RIT as well as the main tuning
 int do_tuning(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 
-static struct timespec last_change_time, this_change_time;
+  static struct timespec last_change_time, this_change_time;
 
 	int	v = atoi(f->value);
 
@@ -2220,28 +2336,28 @@ static struct timespec last_change_time, this_change_time;
 
 	if (event == FIELD_EDIT){
 
-  if (!strcmp(get_field("tuning_acceleration")->value, "ON")){
-    clock_gettime(CLOCK_MONOTONIC_RAW, &this_change_time);
-    uint64_t delta_us = (this_change_time.tv_sec - last_change_time.tv_sec) * 1000000 + (this_change_time.tv_nsec - last_change_time.tv_nsec) / 1000;
-    char temp_char[100];
-    //sprintf(temp_char, "delta: %d", delta_us);
-    //strcat(temp_char,"\r\n");
-    //write_console(FONT_LOG, temp_char);
-    clock_gettime(CLOCK_MONOTONIC_RAW, &last_change_time);
-    if (delta_us < atof(get_field("tuning_accel_thresh2")->value)){
-      if (tuning_step < 10000){
-        tuning_step = tuning_step * 100;
-        //sprintf(temp_char, "x100 activated\r\n");
-        //write_console(FONT_LOG, temp_char);
-      }
-    } else if (delta_us < atof(get_field("tuning_accel_thresh1")->value)){
-      if (tuning_step < 1000){
-        tuning_step = tuning_step * 10;
-        //printf(temp_char, "x10 activated\r\n");
-        //write_console(FONT_LOG, temp_char);
+    if (!strcmp(get_field("tuning_acceleration")->value, "ON")){
+      clock_gettime(CLOCK_MONOTONIC_RAW, &this_change_time);
+      uint64_t delta_us = (this_change_time.tv_sec - last_change_time.tv_sec) * 1000000 + (this_change_time.tv_nsec - last_change_time.tv_nsec) / 1000;
+      char temp_char[100];
+      //sprintf(temp_char, "delta: %d", delta_us);
+      //strcat(temp_char,"\r\n");
+      //write_console(FONT_LOG, temp_char);
+      clock_gettime(CLOCK_MONOTONIC_RAW, &last_change_time);
+      if (delta_us < atof(get_field("tuning_accel_thresh2")->value)){
+        if (tuning_step < 10000){
+          tuning_step = tuning_step * 100;
+          //sprintf(temp_char, "x100 activated\r\n");
+          //write_console(FONT_LOG, temp_char);
+        }
+      } else if (delta_us < atof(get_field("tuning_accel_thresh1")->value)){
+        if (tuning_step < 1000){
+          tuning_step = tuning_step * 10;
+          //printf(temp_char, "x10 activated\r\n");
+          //write_console(FONT_LOG, temp_char);
+        }
       }
     }
-  }
 
 		if (a == MIN_KEY_UP && v + f->step <= f->max){
 			//this is tuning the radio
@@ -2788,7 +2904,7 @@ static gboolean on_key_press (GtkWidget *widget, GdkEventKey *event, gpointer us
 			if (f_focus == NULL && f_hover > active_layout){
 				hover_field(f_hover - 1);
 				//printf("Up, hover %s\n", f_hover->cmd);
-			}else if (f_focus){
+			} else if (f_focus){
 				edit_field(f_focus, MIN_KEY_UP);
 			}
 			break;
@@ -2796,8 +2912,7 @@ static gboolean on_key_press (GtkWidget *widget, GdkEventKey *event, gpointer us
 			if (f_focus == NULL && f_hover && strcmp(f_hover->cmd, "")){
 				hover_field(f_hover + 1);
 				//printf("Down, hover %d\n", f_hover);
-			}
-			else if (f_focus){
+			} else if (f_focus){
 				edit_field(f_focus, MIN_KEY_DOWN);
 			}
 			break;
@@ -3128,8 +3243,8 @@ void hw_init(){
 	wiringPiSetup();
 	init_gpio_pins();
 
-	enc_init(&enc_a, ENC_FAST, ENC1_B, ENC1_A);
-	enc_init(&enc_b, ENC_FAST, ENC2_A, ENC2_B);
+	enc_init(&enc_1, ENC_FAST, ENC1_B, ENC1_A);
+	enc_init(&enc_2, ENC_FAST, ENC2_A, ENC2_B);
 
 	int e = g_timeout_add(1, ui_tick, NULL);
 
@@ -3179,8 +3294,9 @@ int get_wpm(){
 }
 
 static int tuning_ticks = 0;
+
 void tuning_isr(void){
-	int tuning = enc_read(&enc_b);
+	int tuning = enc_read(&enc_2);
 	if (tuning < 0)
 		tuning_ticks++;
 	if (tuning > 0)
@@ -3215,8 +3331,9 @@ gboolean ui_tick(gpointer gook){
 	// check the tuning knob
 	struct field *f = get_field("r1:freq");
 
-	if (abs(tuning_ticks) > 5)
-		tuning_ticks *= 4;
+	// if (abs(tuning_ticks) > 5)
+	// 	tuning_ticks *= 4;
+
 	while (tuning_ticks > 0){
 		edit_field(f, MIN_KEY_DOWN);
 		tuning_ticks--;
@@ -3244,7 +3361,7 @@ gboolean ui_tick(gpointer gook){
 		update_field(get_field("#status"));
 
 		if (digitalRead(ENC1_SW) == 0)
-				focus_field(get_field("r1:volume"));
+			focus_field(get_field("r1:volume"));
 
 		if (record_start)
 			update_field(get_field("#record"));
@@ -3312,6 +3429,46 @@ gboolean ui_tick(gpointer gook){
       cmd_exec("exit");
     }
 
+    
+
+    // take care of some initialization right away, after GTK is running
+    int static run_once = 0;
+    if (!run_once){
+      char buff[100];
+      console_init();
+      write_console(FONT_LOG, VER_STR);  
+      write_console(FONT_LOG, "\r\nEnter \\help for help\r\n");
+      if (strcmp(mycallsign, "N0BDY")){
+        sprintf(buff, "\nWelcome %s your grid is %s\n", mycallsign, mygrid);
+        write_console(FONT_LOG, buff);
+      }
+      else {
+        write_console(FONT_LOG,
+        "Set your callsign with '\\callsign [yourcallsign]'\r\n"
+        "Set your 6 letter grid with '\\grid [yourgrid]'\r\n"
+        );
+      }
+      set_field("#text_in", "");
+      f = get_field("spectrum_display_height");
+      set_spectrum_display_height(atoi(f->value));   
+         
+      int not_synchronized = 0;
+      FILE *pf = popen("chronyc tracking", "r");
+      while(fgets(buff, sizeof(buff), pf)) 
+        if(strstr(buff, "Not synchronised"))
+          not_synchronized = 1; 
+      fclose(pf);
+
+      if (not_synchronized)
+        write_console(FONT_LOG,
+        "Enter the precise UTC time using \\utc command\n"
+        "ex: \\utc 2022/09/15 23:34:00\n"
+        "Hit enter for the command at the exact time\n");
+
+      run_once = 1;
+    }
+
+
   } // end of stuff executed every 100 mS
 
   // this stuff executed every 1 mS
@@ -3335,7 +3492,7 @@ gboolean ui_tick(gpointer gook){
 			tx_off();
 	}
 
-	int scroll = enc_read(&enc_a);
+	int scroll = enc_read(&enc_1);
 	if (scroll && f_focus){
 		if (scroll < 0)
 			edit_field(f_focus, MIN_KEY_DOWN);
@@ -3350,7 +3507,7 @@ void ui_init(int argc, char *argv[]){
   gtk_init( &argc, &argv );
 
   window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-  gtk_window_set_default_size(GTK_WINDOW(window), 800, 480);
+  gtk_window_set_default_size(GTK_WINDOW(window), WINDOW_X, WINDOW_Y);
   gtk_window_set_title( GTK_WINDOW(window), "sBITX" );
 	gtk_window_set_icon_from_file(GTK_WINDOW(window), "/home/pi/sbitx/sbitx_icon.png", NULL);
 
@@ -3380,6 +3537,8 @@ void ui_init(int argc, char *argv[]){
   gtk_widget_show_all( window );
 	gtk_window_fullscreen(GTK_WINDOW(window));
 	focus_field(get_field("r1:volume"));
+
+
 }
 
 /* handle modem callbacks for more data */
@@ -3592,6 +3751,13 @@ void utc_set(char *args){
 	write_console(FONT_LOG, "UTC time is set\n");
 	time_delta =(long)gm_now -(long)(millis()/1000l);
 	printf("time_delta = %ld\n", time_delta);
+}
+
+int map(long x, int in_min, int in_max, int out_min, int out_max) {
+
+  // yes, it's from Arduino
+
+  return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
 
 void do_cmd(char *cmd){	
@@ -3869,50 +4035,55 @@ void cmd_exec(char *cmd){
 
   else if ((!strcmp(exec, "help")) || (!strcmp(exec, "?"))){
   	console_init();
-    write_console(FONT_LOG, "Help\r\n\r\n");
-    write_console(FONT_LOG, "\\audio\r\n");
-    write_console(FONT_LOG, "\\callsign [your callsign]\r\n");
-    write_console(FONT_LOG, "\\clear - clear the console display\r\n");
-    write_console(FONT_LOG, "\\cwinput [key|keyer|kbd]\r\n");
-    write_console(FONT_LOG, "\\cwdelay\r\n");
-    write_console(FONT_LOG, "\\cw_tx_pitch\r\n");
-    write_console(FONT_LOG, "\\exchange\r\n");
-    write_console(FONT_LOG, "\\freq [frequency]    \\f [frequency]\r\n");
-    write_console(FONT_LOG, "\\ft8mode [auto|semiauto|manual]\r\n");
-    write_console(FONT_LOG, "\\grid [your grid]\r\n");
-    write_console(FONT_LOG, "\\l [callsign] [rst]\r\n");
-    write_console(FONT_LOG, "\\logbook\r\n");
-    write_console(FONT_LOG, "\\macro [macro name]\r\n");
-    write_console(FONT_LOG, "\\mode [CW|CWR|USB|LSB|RTTY|FT8|DIGITAL|2TONE]\r\n");
-    write_console(FONT_LOG, "\\qrz [callsign]\r\n");
-    write_console(FONT_LOG, "\\r - receive\r\n");
-    write_console(FONT_LOG, "\\sidetone\r\n");
-    write_console(FONT_LOG, "\\t - transmit\r\n");
-    write_console(FONT_LOG, "\\telnet [server]:[port]\r\n");
-    write_console(FONT_LOG, "\\tclose - close telnet session\r\n");
-    write_console(FONT_LOG, "\\txpitch [100-3000]\r\n");
-    write_console(FONT_LOG, "\\wpm [cw words per minute]\r\n");
-    write_console(FONT_LOG, "Do \\h2 command for help page 2...\r\n");
+    write_console(FONT_LOG, 
+      "Help\r\n\r\n"
+      "\\audio\r\n"
+      "\\callsign [your callsign]\r\n"
+      "\\clear - clear the console display\r\n"
+      "\\cwinput [key|keyer|kbd]\r\n"
+      "\\cwdelay\r\n"
+      "\\cw_tx_pitch\r\n"
+      "\\exchange\r\n"
+      "\\freq [frequency]    \\f [frequency]\r\n"
+      "\\ft8mode [auto|semiauto|manual]\r\n"
+      "\\grid [your grid]\r\n"
+      "\\l [callsign] [rst]\r\n"
+      "\\logbook\r\n"
+      "\\macro [macro name]\r\n"
+      "\\mode [CW|CWR|USB|LSB|RTTY|FT8|DIGITAL|2TONE]\r\n"
+      "\\qrz [callsign]\r\n"
+      "\\r - receive\r\n"
+      "\\sidetone\r\n"
+      "\\t - transmit\r\n"
+      "\\telnet [server]:[port]\r\n"
+      "\\tclose - close telnet session\r\n"
+      "\\txpitch [100-3000]\r\n"
+      "\\wpm [cw words per minute]\r\n"
+      "Do \\h2 command for help page 2...\r\n"
+      );
     redraw_flag++;
   }
 
   else if (!strcmp(exec, "h2")){ 
     console_init();
-    write_console(FONT_LOG, "Help - Page 2\r\n\r\n");
-    write_console(FONT_LOG, "\\exit\r\n");
-    #if defined(INCLUDE_REBOOT_AND_SHUTDOWN_COMMANDS)
-	    write_console(FONT_LOG, "\\reboot\r\n");
-	    write_console(FONT_LOG, "\\shutdown\r\n");
-    #endif
-    write_console(FONT_LOG, "\\s - view settings\r\n");
-    write_console(FONT_LOG, "\\fc [hertz] - freq calibration\r\n");
-    write_console(FONT_LOG, "\\addcwpitch [ON|OFF]\r\n");
-    write_console(FONT_LOG, "\\mp [BLANK|LEFT|RIGHT|CROSSHAIR] - mouse pointer style\r\n");
-    write_console(FONT_LOG, "\\rs [ON|OFF] - reverse scrolling\r\n");
-    write_console(FONT_LOG, "\\ta [ON|OFF] - Turns tuning acceleration on and off\r\n");
-    write_console(FONT_LOG, "\\tat1 [100-99999] - 1st threshold at which acceleration occurs (default: 10,000)\r\n");
-    write_console(FONT_LOG, "\\tat2 [100-99999] - 2nd threshold at which acceleration occurs (default: 500)\r\n\r\n");
-    write_console(FONT_LOG, "\\cw \\cwr \\usb \\lsb \\rtty \\ft8 \\digital \\dig \\2tone\r\n");
+    write_console(FONT_LOG,
+      "Help - Page 2\r\n\r\n"
+      "\\exit\r\n"
+      #if defined(INCLUDE_REBOOT_AND_SHUTDOWN_COMMANDS)
+      "\\reboot\r\n"
+      "\\shutdown\r\n"
+      #endif
+      "\\s - view settings (under construction)\r\n"
+      "\\fc [hertz] - freq calibration\r\n"
+      "\\addcwpitch [ON|OFF]\r\n"
+      "\\mp [BLANK|LEFT|RIGHT|CROSSHAIR] - mouse pointer style\r\n"
+      "\\rs [ON|OFF] - reverse scrolling\r\n"
+      "\\ta [ON|OFF] - Turns tuning acceleration on and off\r\n"
+      "\\tat1 [100-99999] - 1st threshold at which acceleration occurs (default: 10,000)\r\n"
+      "\\tat2 [100-99999] - 2nd threshold at which acceleration occurs (default: 500)\r\n\r\n"
+      "\\sdh [0-100] - spectrum display height\r\n"
+      "\\cw \\cwr \\usb \\lsb \\rtty \\ft8 \\digital \\dig \\2tone\r\n"
+    );
     redraw_flag++;
   }
 
@@ -4045,10 +4216,39 @@ void cmd_exec(char *cmd){
 		}	
 	#endif //if defined(INCLUDE_REBOOT_AND_SHUTDOWN_COMMANDS)
 
-  //k3ng - playing around - 2022-09-25 zzzzzz
+//zzzzzz
+  else if (!strcmp(exec, "sdh")){
+    if (((atoi(args)) >= 0) && ((atoi(args)) <= 100)){
+      set_spectrum_display_height(atoi(args));
+      set_field("spectrum_display_height", args);
+      settings_updated++;
+    } else {
+      write_console(FONT_LOG, "Invalid value.  Usage: \\sdh [0-100]\r\n");
+    }
+  }
+
+
+  //k3ng - playing around area - 2022-09-25 zzzzzz
 	else if (!strcmp(exec, "test")){
-    spectrum_size_adjust_y = atoi(args);
+    //spectrum_size_adjust_y = atoi(args);
+    struct field *f_spectrum = get_field("spectrum");
+    struct field *f_waterfall = get_field("waterfall");
+    submit_field_size_and_position_adjust(f_spectrum, RELATIVE, 0 , 0, 0, atoi(args));
+    submit_field_size_and_position_adjust(f_waterfall, RELATIVE, 0 , atoi(args), 0, -atoi(args));
 	}
+  else if (!strcmp(exec, "u")){
+    tuning_ticks = tuning_ticks - atoi(args);
+    // struct field *f = get_field("r1:freq");
+    // edit_field(f, MIN_KEY_UP);
+  }
+  else if (!strcmp(exec, "d")){
+    tuning_ticks = tuning_ticks + atoi(args);
+    // struct field *f = get_field("r1:freq");
+    // edit_field(f, MIN_KEY_DOWN);
+  }
+  // end k3ng - playing around area - 2022-09-25 zzzzzz
+
+
 
   else if (!strcmp(exec, "fc")){
   	struct field *f = get_field("freq_calibration");
@@ -4158,7 +4358,7 @@ void rtc_read(){
 
 	int e =  i2cbb_read_i2c_block_data(DS1307_I2C_ADD, 0, 7, rtc_time);
 	if (e <= 0){
-		printf("RTC not detected\n");
+		fprintf(stderr, "rtc_read: RTC not detected\n");
 		return;
 	}
 	printf("RTC time is :");
@@ -4172,7 +4372,7 @@ void rtc_write(){
 
 	int e =  i2cbb_read_i2c_block_data(DS1307_I2C_ADD, 0, 7, rtc_time);
 	if (e <= 0){
-		printf("RTC not detected\n");
+		fprintf(stderr, "rtc_write:RTC not detected\n");
 		return;
 	}
 	printf("RTC time is :");
@@ -4189,7 +4389,7 @@ int main( int argc, char* argv[] ) {
 
 	if (!sbitx_process_lock(OPEN_LOCK)){
 	  fprintf(stderr,"There is another sBitx running.  Exiting.\r\n");
-	  exit(0);
+	  exit(1);
 	}
 
 	active_layout = main_controls;
@@ -4255,37 +4455,10 @@ int main( int argc, char* argv[] ) {
   sprintf(buff, "%d", vfo_a_freq);
   set_field("r1:freq", buff);
 
-	console_init();
-	write_console(FONT_LOG, VER_STR);
-  write_console(FONT_LOG, "\r\nEnter \\help for help\r\n");
-
-	if (strcmp(mycallsign, "N0BDY")){
-		sprintf(buff, "\nWelcome %s your grid is %s\n", mycallsign, mygrid);
-		write_console(FONT_LOG, buff);
-	}
-	else {
-		write_console(FONT_LOG, "Set your callsign with '\\callsign [yourcallsign]'\n"
-		"Set your 6 letter grid with '\\grid [yourgrid]'\n");
-  }
-
-	set_field("#text_in", "");
-
 	// you don't want to save the recently loaded settings
 	settings_updated = 0;
   hamlib_start();
 	remote_start();
-
-	int not_synchronized = 0;
-	FILE *pf = popen("chronyc tracking", "r");
-	while(fgets(buff, sizeof(buff), pf)) 
-		if(strstr(buff, "Not synchronised"))
-			not_synchronized = 1; 
-	fclose(pf);
-
-	if (not_synchronized)
-		write_console(FONT_LOG, "Enter the precise UTC time using \\utc command\n"
-		"ex: \\utc 2022/09/15 23:34:00\n"
-		"Hit enter for the command at the exact time\n");
 
 	//read_rtc();
 
