@@ -1,6 +1,37 @@
+#!/bin/bash
+
 F=$@
 echo ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
-date
-cd /home/pi/sbitx
+
+GIT_FETCH=`git fetch -v --dry-run 2>&1|grep -c "up to date"`
+
+if [ $GIT_FETCH -gt 0 ]; then
+  echo -e "Your sBitx version is up to date!"
+  exit 1
+fi
+
+rm ./sbitx
+
+echo -e "Do you want to preserve your user_settings.ini file [Y,N] ?"
+
+read USERINPUT1
+
+USERINPUT1_CAPS=`echo "$USERINPUT1" | tr '[:lower:]' '[:upper:]'`
+
+if [[ $USERINPUT1_CAPS = "N" ]]; then
+  echo -e "\r\nOverwriting user_settings.ini, but creating a backup: ./data/user_settings.ini.backup\r\n"
+  mv -f ./data/user_settings.ini ./data/user_settings.ini.backup
+else
+  echo -e "\r\nPreserving user_settings.ini\r\n"
+  mv -f ./data/user_settings.ini ./data/user_settings.ini.temp
+fi
+
 git pull
+
+if [[ $USERINPUT1_CAPS = "Y" ]]; then
+  mv -f ./data/user_settings.ini.temp ./data/user_settings.ini
+fi
+
+./build sbitx
+
 echo "<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<"

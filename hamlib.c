@@ -175,7 +175,7 @@ void interpret_command(char *cmd){
     data_socket = -1;
   }
 	else 
-		printf("Hamlib: Unrecognized command [%s] '%c'\n", cmd, cmd[0]);
+		fprintf(stderr,"Hamlib: Unrecognized command [%s] '%c'\n", cmd, cmd[0]);
 }
 
 void hamlib_handler(char *data, int len){
@@ -212,7 +212,7 @@ void hamlib_start(){
 
   /*---- Listen on the socket, with 5 max connection requests queued ----*/
   if(listen(welcome_socket,5)!=0)
-    printf("hamlib listen() Error\n");
+    fprintf(stderr,"hamlib_start: hamlib listen() Error\n");
   incoming_ptr = 0;
 }
 
@@ -227,7 +227,7 @@ void hamlib_slice(){
     e = accept(welcome_socket, (struct sockaddr *) &server_storage, &addr_size);
     if (e == -1)
       return;
-    puts("Accepted connection\n");
+    fprintf(stderr,"hamlib_slice: Accepted connection\n");
     incoming_ptr = 0;
     data_socket = e;
     fcntl(data_socket, F_SETFL, fcntl(data_socket, F_GETFL) | O_NONBLOCK);
@@ -243,7 +243,7 @@ void hamlib_slice(){
       if (errno == EAGAIN || errno == EWOULDBLOCK)
         return;
       //for other errors, just close the socket
-			puts("Hamlib connection dropped. Restarting to listen ..."); 
+			fprintf(stderr,"hamlib_slice: Hamlib connection dropped. Restarting to listen ..."); 
       close(data_socket);
       data_socket = -1;      
     }
