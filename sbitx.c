@@ -77,6 +77,7 @@ int32_t modulation_buff[MAX_BINS];
 #define MDS_LEVEL (-135)
 int fserial = 0;
 
+int tr_relay = 1;
 
 void radio_tune_to(u_int32_t f){
   si5351bx_setfreq(2, f + bfo_freq - 24000 + TUNING_SHIFT);
@@ -171,12 +172,11 @@ void set_lpf_40mhz(int frequency){
 	else if (frequency < 10500000)		
 		lpf = LPF_C;
 	else if (frequency < 18500000)		
-//	else if (frequency < 21500000)		
 		lpf = LPF_B;
 	else if (frequency < 30000000)
 		lpf = LPF_A; 
 
-	if (lpf == prev_lpf){
+	if (lpf == prev_lpf && tr_relay == 0){
 		//puts("LPF not changed");
 		return;
 	}
@@ -197,7 +197,8 @@ void set_lpf_40mhz(int frequency){
 void set_rx1(int frequency){
 	radio_tune_to(frequency);
 	freq_hdr = frequency;
-	set_lpf_40mhz(frequency);
+	if (tr_relay == 0)
+		set_lpf_40mhz(frequency);
 }
 
 void set_volume(double v){
@@ -752,20 +753,19 @@ struct power_settings {
 	int f_start;
 	int f_stop;
 	int	max_watts;
-	int tx_scale;
 	double scale;
 };
 
 
 struct power_settings band_power[] ={
-	{ 3500000,  4000000, 40, 80, 0.005},
-	{ 7000000,  7300000, 40,82, 0.006},
-	{10000000, 10200000, 30, 81, 0.008},
-	{14000000, 14300000, 30, 91, 0.022},
-	{18000000, 18200000, 25, 93, 0.03},
-	{21000000, 21450000, 20, 93, 0.05},
-	{24800000, 25000000, 10, 94, 0.1},
-	{28000000, 29700000,  10, 95, 0.1}  
+	{ 3500000,  4000000, 40,  0.0034},
+	{ 7000000,  7300000, 40,  0.0035},
+	{10000000, 10200000, 30,  0.007 },
+	{14000000, 14300000, 30,  0.015 },
+	{18000000, 18200000, 25,  0.03 },
+	{21000000, 21450000, 20, 0.04 },
+	{24800000, 25000000, 10,  0.1 },
+	{28000000, 29700000,  10, 0.1 }  
 };
 
 
@@ -794,26 +794,62 @@ void set_tx_power_levels(){
 	sound_mixer(audio_card, "Capture", tx_gain);
 }
 
+void tr_switch(int tx_on){
+		if (tx_on){
+			in_tx = 1;
+			//mute it all and hang on for a millisecond
+			sound_mixer(audio_card, "Master", 0);
+			sound_mixer(audio_card, "Capture", 0);
+			delay(1);
 
-void set_tx_power_levels_old(){
-//  printf("Setting tx_power to %d, gain to %d\n", tx_power_watts, tx_gain);
-	int tx_power_gain = 0;
+			//now switch of the signal back
+			//now ramp up after 5 msecs
+			digitalWrite(TX_LINE, HIGH);
+			mute_count = 20;
+      fft_reset_m_bins();
+			//give time for the reed relay to switch
+      delay(2);
+			set_tx_power_levels();
+			//finally ramp up the power 
+			if (tr_relay){
+				set_lpf_40mhz(freq_hdr);
+				delay(10); //debounce the lpf relays
+			}
+			digitalWrite(TX_POWER, HIGH);
+			//strcpy(response, "ok");
+			spectrum_reset();
+		//	rx_tx_ramp = 1;
+		}
+		else {
+			in_tx = 0;
+			//mute it all and hang on
+			sound_mixer(audio_card, "Master", 0);
+			sound_mixer(audio_card, "Capture", 0);
+			delay(1);
+      fft_reset_m_bins();
+			mute_count = MUTE_MAX;
 
-	//search for power in the approved bands
-	for (int i = 0; i < sizeof(band_power)/sizeof(struct power_settings); i++){
-		if (band_power[i].f_start <= freq_hdr && freq_hdr <= band_power[i].f_stop){
-			if (tx_power_watts > band_power[i].max_watts)
-				tx_power_watts = band_power[i].max_watts;
-		
-			//next we do a decimal coversion of the power reduction needed
-			int attenuation = 
-			(20*log10((1.0*tx_power_watts)/(1.0*band_power[i].max_watts))); 
-			tx_power_gain = band_power[i].tx_scale + attenuation; 
-		}	
-	}
-	printf("tx_power_gain set to %d for %d watts\n", tx_power_gain, tx_power_watts);
-	sound_mixer(audio_card, "Master", tx_power_gain);
-	sound_mixer(audio_card, "Capture", tx_gain);
+			//power down the PA chain to null any gain
+			digitalWrite(TX_POWER, LOW);
+			delay(2);
+
+			if (tr_relay){
+  			digitalWrite(LPF_A, LOW);
+  			digitalWrite(LPF_B, LOW);
+ 	 			digitalWrite(LPF_C, LOW);
+  			digitalWrite(LPF_D, LOW);
+			}
+			delay(10);
+
+			//drive the tx line low, switching the signal path 
+			digitalWrite(TX_LINE, LOW);
+			delay(5); 
+			//audio codec is back on
+			sound_mixer(audio_card, "Master", rx_vol);
+			sound_mixer(audio_card, "Capture", rx_gain);
+			spectrum_reset();
+			//rx_tx_ramp = 10;
+		}
 }
 
 /* 
@@ -973,7 +1009,15 @@ void sdr_request(char *request, char *response){
 			pf_record = wav_start_writing(value);
 	}
 	else if (!strcmp(cmd, "tx")){
+		if (!strcmp(value, "on"))
+			tr_switch(1);
+		else
+			tr_switch(0);
+		strcpy(response, "ok");
+		/*
 		if (!strcmp(value, "on")){
+			tr_switch(i)
+		
 			in_tx = 1;
 			//mute it all and hang on for a millisecond
 			sound_mixer(audio_card, "Master", 0);
@@ -1016,7 +1060,7 @@ void sdr_request(char *request, char *response){
 			sound_mixer(audio_card, "Capture", rx_gain);
 			spectrum_reset();
 			//rx_tx_ramp = 10;
-		}
+		}*/
 	}
 	else if (!strcmp(cmd, "tx_gain")){
 		tx_gain = atoi(value);
@@ -1068,7 +1112,11 @@ void sdr_request(char *request, char *response){
       tx_use_line = 1;
   }
 	else if (!strcmp(cmd, "tx_compress"))
-		tx_compress = atoi(value); 
+			tx_compress = atoi(value); 
+	else if (!strcmp(cmd, "tr")){
+		if (strcmp(value, "relay"))
+		 	tr_relay = 0;
+	}
   /* else
 		printf("*Error request[%s] not accepted\n", request); */
 }
