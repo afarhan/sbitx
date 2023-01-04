@@ -645,7 +645,7 @@ int sound_loop(){
 		if((pcmreturn < 0) && (pcmreturn != -11))	// also ignore "temporarily unavailable" errors
 		{
 			// Handle an error condition from the snd_pcm_writei function
-			printf("Play PCM Write Error: %s  count = %d\n",snd_strerror(pcmreturn), play_write_error++);
+//			printf("Play PCM Write Error: %s  count = %d\n",snd_strerror(pcmreturn), play_write_error++);
 			snd_pcm_prepare(pcm_play_handle);		
 		}
 		
@@ -693,7 +693,7 @@ int sound_loop(){
 		pcmreturn = snd_pcm_writei(loopback_play_handle, line_out + offset, framesize);
 		if(pcmreturn < 0)
 		{
-			printf("Loopback PCM Write Error: %s  count = %d\n",snd_strerror(pcmreturn), loopback_write_error++);
+//			printf("Loopback PCM Write Error: %s  count = %d\n",snd_strerror(pcmreturn), loopback_write_error++);
 			// Handle an error condition from the snd_pcm_writei function
 			snd_pcm_prepare(loopback_play_handle);
 		}

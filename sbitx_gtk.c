@@ -58,7 +58,7 @@ char pins[15] = {0, 2, 3, 6, 7,
 #define ENC_FAST 1
 #define ENC_SLOW 5
 
-#define DS1307_I2C_ADD 0x68
+#define DS3231_I2C_ADD 0x68
 //time sync, when the NTP time is not synced, this tracks the number of seconds 
 //between the system cloc and the actual time set by \utc command
 static long time_delta = 0;
@@ -114,6 +114,8 @@ float palette[][3] = {
 
 char *ui_font = "Sans";
 int field_font_size = 12;
+int screen_width=800, screen_height=480;
+
 // we just use a look-up table to define the fonts used
 // the struct field indexes into this table
 struct font_style {
@@ -255,7 +257,6 @@ static void draw_text(cairo_t *gfx, int x, int y, char *text, int font_entry){
 	cairo_set_font_size(gfx, s->height);
 	cairo_move_to(gfx, x, y + s->height);
 	cairo_show_text(gfx, text);
-	//printf("drawing '%s' with font %s / %d\n", text, s->name, s->height);
 }
 
 static void fill_rect(cairo_t *gfx, int x, int y, int w, int h, int color){
@@ -304,8 +305,8 @@ struct band {
 	char name[10];
 	int	start;
 	int	stop;
-	int	power;
-	int	max;
+	//int	power;
+	//int	max;
 	int index;
 	int	freq[STACK_DEPTH];
 	int mode[STACK_DEPTH];
@@ -350,21 +351,21 @@ static int tx_mode = MODE_USB;
 #define BAND10M 7 
 
 struct band band_stack[] = {
-	{"80m", 3500000, 4000000, 40, 40, 0, 
+	{"80m", 3500000, 4000000, 0, 
 		{3500000,3574000,3600000,3700000},{MODE_CW, MODE_USB, MODE_CW,MODE_LSB}},
-	{"40m", 7000000,7300000, 40, 40, 0,
+	{"40m", 7000000,7300000, 0,
 		{7000000,7040000,7074000,7150000},{MODE_CW, MODE_CW, MODE_USB, MODE_LSB}},
-	{"30m", 10100000, 10150000, 30, 30, 0,
+	{"30m", 10100000, 10150000, 0,
 		{10100000, 10100000, 10136000, 10150000}, {MODE_CW, MODE_CW, MODE_USB, MODE_USB}},
-	{"20m", 14000000, 14400000, 30,30, 0,
+	{"20m", 14000000, 14400000, 0,
 		{14010000, 14040000, 14074000, 14200000}, {MODE_CW, MODE_CW, MODE_USB, MODE_USB}},
-	{"17m", 18068000, 18168000, 25,25, 0,
+	{"17m", 18068000, 18168000, 0,
 		{18068000, 18100000, 18110000, 18160000}, {MODE_CW, MODE_CW, MODE_USB, MODE_USB}},
-	{"15m", 21000000, 21500000, 20,20, 0,
+	{"15m", 21000000, 21500000, 0,
 		{21010000, 21040000, 21074000, 21250000}, {MODE_CW, MODE_CW, MODE_USB, MODE_USB}},
-	{"12m", 24890000, 24990000, 10, 10, 0,
+	{"12m", 24890000, 24990000, 0,
 		{24890000, 24910000, 24950000, 24990000}, {MODE_CW, MODE_CW, MODE_USB, MODE_USB}},
-	{"10m", 28000000, 29700000, 6, 40, 0,
+	{"10m", 28000000, 29700000, 0,
 		{28000000, 28040000, 28074000, 28250000}, {MODE_CW, MODE_CW, MODE_USB, MODE_USB}},
 };
 
@@ -403,7 +404,6 @@ int sidetone = 25;
 int	rit_delta = 0;
 
 static int redraw_flag = 1; 
-int screen_width, screen_height;
 int spectrum_span = 48000;
 
 
@@ -450,7 +450,7 @@ struct field main_controls[] = {
 		"", 0, 100, 1},
 
 	//tx 
-	{ "tx_power", NULL, 550, 430, 50, 50, "WATTS", 40, "40", FIELD_NUMBER, FONT_FIELD_VALUE, 
+	{ "tx_power", NULL, 550, 430, 50, 50, "DRIVE", 40, "40", FIELD_NUMBER, FONT_FIELD_VALUE, 
 		"", 1, 100, 1},
 	{ "tx_gain", NULL, 550, 380, 50, 50, "MIC", 40, "50", FIELD_NUMBER, FONT_FIELD_VALUE, 
 		"", 0, 100, 1},
@@ -824,6 +824,9 @@ void draw_field(GtkWidget *widget, cairo_t *gfx, struct field *f){
 			return;
 	}
 
+	if (!strcmp(f->label, "REC"))
+		puts("REC!");
+
 	fill_rect(gfx, f->x, f->y, f->width,f->height, COLOR_BACKGROUND);
 	if (f_focus == f)
 		rect(gfx, f->x, f->y, f->width-1,f->height, COLOR_SELECTED_BOX, 2);
@@ -832,9 +835,13 @@ void draw_field(GtkWidget *widget, cairo_t *gfx, struct field *f){
 	else if (f->value_type != FIELD_STATIC)
 		rect(gfx, f->x, f->y, f->width,f->height, COLOR_CONTROL_BOX, 1);
 
-	int width, offset, text_length, line_start, y;	
+	int width, offset_x, text_length, line_start, y, label_height, 
+		value_height, value_font;	
 	char this_line[MAX_FIELD_LENGTH];
 	int text_line_width = 0;
+
+	int label_y;
+	int use_reduced_font = 0;
 
 	switch(f->value_type){
 		case FIELD_TEXT:
@@ -863,47 +870,28 @@ void draw_field(GtkWidget *widget, cairo_t *gfx, struct field *f){
 		case FIELD_SELECTION:
 		case FIELD_NUMBER:
 		case FIELD_TOGGLE:
-			width = measure_text(gfx, f->label, FONT_FIELD_LABEL);
-			offset = f->width/2 - width/2;
-			draw_text(gfx, f->x + offset, f->y+5 ,  f->label, FONT_FIELD_LABEL);
-			width = measure_text(gfx, f->value, f->font_index);
-      if (width >= f->width){ // automatic button font downsizing
-        width = measure_text(gfx, f->value, FONT_SMALL_FIELD_VALUE);
-        offset = f->width/2 - width/2;
-        if (!strlen(f->label))
-          draw_text(gfx, f->x + offset , f->y+6, f->value, FONT_SMALL_FIELD_VALUE);
-        else
-          draw_text(gfx, f->x+offset , f->y+25 , f->value , FONT_SMALL_FIELD_VALUE);
-      } else {
-        offset = f->width/2 - width/2;
-        if (!strlen(f->label))
-          draw_text(gfx, f->x + offset , f->y+6, f->value, f->font_index);
-        else
-          draw_text(gfx, f->x+offset , f->y+25 , f->value , f->font_index);
-      }
-      break;
 		case FIELD_BUTTON:
+			label_height = font_table[FONT_FIELD_LABEL].height;
 			width = measure_text(gfx, f->label, FONT_FIELD_LABEL);
-			offset = f->width/2 - width/2;
-			if (strlen(f->value) == 0)
-				draw_text(gfx, f->x + offset, f->y+13 , f->label , FONT_FIELD_LABEL);
-			else if (f->height <= 30){
-				if (strlen(f->label)){
-					draw_text(gfx, f->x+5, f->y ,  f->label, FONT_FIELD_LABEL);
-					draw_text(gfx, f->x+18 , f->y+8 , f->value , f->font_index);
-				}
-				else 
-					draw_text(gfx, f->x+10 , f->y+5 , f->value , f->font_index);
-			}
+			offset_x = f->x + f->width/2 - width/2;
+			//is it a two line display or a single line?
+			if (f->value_type == FIELD_BUTTON && !f->value[0]){
+				label_y = f->y + (f->height - label_height)/2;
+				draw_text(gfx, offset_x,label_y, f->label, FONT_FIELD_LABEL);
+			} 
 			else {
-				if (strlen(f->label)){
-					draw_text(gfx, f->x + offset, f->y+5 ,  f->label, FONT_FIELD_LABEL);
-					draw_text(gfx, f->x+offset , f->y+f->height - 20 , f->value , f->font_index);
-				}
+				if(width >= f->width+2)
+					value_font = FONT_SMALL_FIELD_VALUE;
 				else
-					draw_text(gfx, f->x+offset , f->y+15 , f->value , f->font_index);
-			}	
-			break;
+					value_font = FONT_FIELD_VALUE;
+				value_height = font_table[value_font].height;
+				label_y = f->y + ((f->height  - label_height  - value_height)/2);
+				draw_text(gfx, offset_x, label_y, f->label, FONT_FIELD_LABEL);
+				width = measure_text(gfx, f->value, value_font);
+				label_y += font_table[FONT_FIELD_LABEL].height;
+				draw_text(gfx, f->x + f->width/2 - width/2, label_y, f->value, value_font);
+			}
+      break;
 		case FIELD_STATIC:
 			draw_text(gfx, f->x, f->y, f->label, FONT_FIELD_LABEL);
 			break;
@@ -913,6 +901,17 @@ void draw_field(GtkWidget *widget, cairo_t *gfx, struct field *f){
 	}
 }
 
+//scales the ui as per current screen width from
+//the nominal 800x480 size of the original layout
+static void scale_ui(){
+	for (int i = 0; active_layout[i].cmd[0] > 0; i++) {
+		struct field *f = active_layout + i;
+		f->x = (f->x * screen_width)/800;
+		f->y = (f->y * screen_height)/480;
+		f->width = (f->width * screen_width)/800;
+		f->height = (f->height * screen_height)/480;
+	}
+}
 
 static int mode_id(char *mode_str){
 	if (!strcmp(mode_str, "CW"))
@@ -984,7 +983,7 @@ static void save_user_settings(int forced){
 	//now save the band stack
 	for (int i = 0; i < sizeof(band_stack)/sizeof(struct band); i++){
 		fprintf(f, "\n[%s]\n", band_stack[i].name);
-		fprintf(f, "power=%d\n", band_stack[i].power);
+		//fprintf(f, "power=%d\n", band_stack[i].power);
 		for (int j = 0; j < STACK_DEPTH; j++)
 			fprintf(f, "freq%d=%d\nmode%d=%d\n", j, band_stack[i].freq[j], j, band_stack[i].mode[j]);
 	}
@@ -1073,9 +1072,7 @@ static int user_settings_handler(void* user, const char* section,
 		else if (!strcmp(section, "10m"))
 			band = 7;	
 
-		if (band >= 0 && !strcmp(name, "power"))
-			band_stack[band].power = atoi(value);
-		else if (band >= 0  && !strcmp(name, "freq0"))
+		if (band >= 0  && !strcmp(name, "freq0"))
 			band_stack[band].freq[0] = atoi(value);
 		else if (band >= 0  && !strcmp(name, "freq1"))
 			band_stack[band].freq[1] = atoi(value);
@@ -1252,7 +1249,7 @@ void draw_spectrum_grid(struct field *f_spectrum, cairo_t *gfx){
 	struct field *f = f_spectrum;
 
 	sub_division = f->width / 10;
-	grid_height = f->height - 10;
+	grid_height = f->height - (font_table[FONT_SMALL].height * 4 / 3); 
 
 	cairo_set_line_width(gfx, 1);
 	cairo_set_source_rgb(gfx, palette[SPECTRUM_GRID][0], 
@@ -1301,7 +1298,7 @@ void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
 	span = atof(get_field("#span")->value);
 	bw_high = atoi(get_field("r1:high")->value);
 	bw_low = atoi(get_field("r1:low")->value);
-	grid_height = f_spectrum->height - 10;
+	grid_height = f_spectrum->height - ((font_table[FONT_SMALL].height * 4) /3);
 	sub_division = f_spectrum->width / 10;
 
 	// the step is in khz, we multiply by 1000 and div 10(divisions) = 100 
@@ -1565,11 +1562,18 @@ void redraw_main_screen(GtkWidget *widget, cairo_t *gfx){
 	double dx1, dy1, dx2, dy2;
 	int x1, y1, x2, y2;
 
+/*
+	int width, height;
+	gtk_window_get_size(GTK_WINDOW(window), &width, &height);
+	printf("Screen size is %d, %d\n", width, height);
+*/
 	cairo_clip_extents(gfx, &dx1, &dy1, &dx2, &dy2);
 	x1 = (int)dx1;
 	y1 = (int)dy1;
 	x2 = (int)dx2;
 	y2 = (int)dy2;
+//	printf("extents: %d %d %d %d\n", x1, y1, x2, y2);
+
 
 	fill_rect(gfx, x1, y1, x2-x1, y2-y1, COLOR_BACKGROUND);
 	for (int i = 0; active_layout[i].cmd[0] > 0; i++){
@@ -1592,7 +1596,7 @@ static gboolean on_draw_event( GtkWidget* widget, cairo_t *cr, gpointer user_dat
 }
 
 static gboolean on_resize(GtkWidget *widget, GdkEventConfigure *event, gpointer user_data) {
-	//printf("size changed to %d x %d\n", event->width, event->height);
+//	printf("size changed to %d x %d\n", event->width, event->height);
 	screen_width = event->width;
 	screen_height = event->height;
 }
@@ -1769,45 +1773,12 @@ void set_operating_freq(int dial_freq, char *response){
 	else
 			sprintf(freq_request, "r1:freq=%d", dial_freq);
 
-	//set the power levels
-	long operating_freq = atoi(freq_request + strlen("r1:freq="));
-	//find the best match for this frequency in the bands table
-	int max_power = 0;
-	int power = 0;
-	for (int i = 0; i < sizeof(band_stack)/sizeof(struct band); i++){
-		if (band_stack[i].start <= operating_freq && 
-				operating_freq <= band_stack[i].stop){
-			max_power = band_stack[i].max;
-			power = band_stack[i].power;
-		}
-	} 
-	// now, we set this up in the gui
-	struct field *f_power = get_field("tx_power");
-	f_power->max = max_power;
-	sprintf(f_power->value, "%d", power);
-	edit_field(f_power, 0);
-
 	//get back to setting the frequency
 	sdr_request(freq_request, response);
 }
 
 void clear_tx_text_buffer(){
 	set_field("#text_in", "");
-}
-
-void band_stack_update_power(int power){
-	struct field *f = get_field("r1:freq");
-	long freq = atol(f->value);
-
-	for (int i = 0; i < sizeof(band_stack)/sizeof(struct band); i++){
-		if (band_stack[i].start <= freq && 
-				freq <= band_stack[i].stop){
-				if (power < band_stack[i].max)
-					band_stack[i].power = power;
-				else
-					band_stack[i].power = band_stack[i].max;
-		}
-	} 
 }
 
 int do_spectrum(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
@@ -2416,7 +2387,14 @@ int do_record(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 
 		int width = measure_text(gfx, f->label, FONT_FIELD_LABEL);
 		int offset = f->width/2 - width/2;
-		draw_text(gfx, f->x + offset, f->y+5 , f->label, FONT_FIELD_LABEL);
+		int	label_y = f->y + ((f->height 
+			- font_table[FONT_FIELD_LABEL].height - 5  
+			- font_table[FONT_FIELD_VALUE].height)/2);
+		draw_text(gfx, f->x + offset, label_y, f->label, FONT_FIELD_LABEL);
+
+
+		char duration[12];
+		label_y += font_table[FONT_FIELD_LABEL].height;
 
 		if (record_start){
 			width = measure_text(gfx, f->value, f->font_index);
@@ -2424,12 +2402,12 @@ int do_record(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 			time_t duration_seconds = time(NULL) - record_start;
 			int minutes = duration_seconds/60;
 			int seconds = duration_seconds % 60;
-			char duration[12];
 			sprintf(duration, "%d:%02d", minutes, seconds); 	
-			draw_text(gfx, f->x+10 , f->y+25 , duration , f->font_index);
 		}
 		else
-			draw_text(gfx, f->x+offset , f->y+25 , "OFF" , f->font_index);
+			strcpy(duration, "OFF");
+		width = measure_text(gfx, duration, FONT_FIELD_VALUE);
+		draw_text(gfx, f->x + f->width/2 - width/2, label_y, duration, f->font_index);
 		return 1;
 	}
 	return 0;
@@ -2811,6 +2789,86 @@ int read_switch(int i){
 	return digitalRead(i) == HIGH ? 0 : 1;
 }
 
+uint8_t dec2bcd(uint8_t val){
+	return ((val/10 * 16) + (val %10));
+}
+
+uint8_t bcd2dec(uint8_t val){
+	return ((val/16 * 10) + (val %16));
+}
+
+void rtc_read(){
+	uint8_t rtc_time[10];
+
+	i2cbb_write_i2c_block_data(DS3231_I2C_ADD, 0, 0, NULL);
+
+	int e =  i2cbb_read_i2c_block_data(DS3231_I2C_ADD, 0, 8, rtc_time);
+	if (e <= 0){
+		printf("RTC not detected\n");
+		return;
+	}
+	for (int i = 0; i < 7; i++)
+		rtc_time[i] = bcd2dec(rtc_time[i]);
+
+	char buff[100];
+	printf("RTC time is : year:%d month:%d day:%d hour:%d min:%d sec:%d\n", 
+		rtc_time[6] + 2000, 
+		rtc_time[5], rtc_time[4], rtc_time[2] & 0x3f, rtc_time[1],
+		rtc_time[0] & 0x7f);
+
+	
+	//convert to julian
+	struct tm t;
+	time_t gm_now;
+
+	t.tm_year 	= rtc_time[6] + 2000 - 1900;
+	t.tm_mon 	= rtc_time[5] - 1;
+	t.tm_mday 	= rtc_time[4];
+	t.tm_hour 	= rtc_time[2];
+	t.tm_min		= rtc_time[1];
+	t.tm_sec		= rtc_time[0];		
+
+	time_t tjulian = mktime(&t);
+	
+	tzname[0] = tzname[1] = "GMT";
+	timezone = 0;
+	daylight = 0;
+	setenv("TZ", "UTC", 1);	
+	gm_now = mktime(&t);
+
+	write_console(FONT_LOG, "RTC detected\n");
+	time_delta =(long)gm_now -(long)(millis()/1000l);
+	printf("time_delta = %ld\n", time_delta);
+	printf("rtc julian: %ul %d\n", tjulian, time(NULL) - tjulian);
+
+}
+
+
+void rtc_write(int year, int month, int day, int hours, int minutes, int seconds){
+	uint8_t rtc_time[10];
+
+	rtc_time[0] = dec2bcd(seconds);
+	rtc_time[1] = dec2bcd(minutes);
+	rtc_time[2] = dec2bcd(hours);
+	rtc_time[3] = 0;
+	rtc_time[4] = dec2bcd(day);
+	rtc_time[5] = dec2bcd(month);
+	rtc_time[6] = dec2bcd(year - 2000);
+
+	for (uint8_t i = 0; i < 7; i++){
+  	int e = i2cbb_write_byte_data(DS3231_I2C_ADD, i, rtc_time[i]);
+		if (e)
+			printf("rtc_write: error writing ds1307 register at %d index\n", i);
+	}
+
+/*	int e =  i2cbb_write_i2c_block_data(DS1307_I2C_ADD, 0, 7, rtc_time);
+	if (e < 0){
+		printf("RTC not written: %d\n", e);
+		return;
+	}
+*/
+}
+
 int key_poll(){
 	int key = 0;
 	
@@ -2933,6 +2991,25 @@ void tuning_isr(void){
 		tuning_ticks--;	
 }
 
+int16_t vfwd, vref;
+void query_swr(){
+	uint8_t response[4];
+	vfwd = vref = 0;
+	if(i2cbb_read_i2c_block_data(0x8, 0, 4, response) == -1)
+		return;
+	
+	memcpy(&vfwd, response, 2);
+	memcpy(&vref, response+2, 2);
+//	printf("swr : %u / %u\n", vfwd, vref); 
+}
+
+void bin_dump(int length, uint8_t *data){
+	printf("i2c: ");
+	for (int i = 0; i < length; i++)
+		printf("%x ", data[i]);
+	printf("\n");
+}
+
 gboolean ui_tick(gpointer gook){
 	int static ticks = 0;
 
@@ -2966,7 +3043,15 @@ gboolean ui_tick(gpointer gook){
     //write_console(FONT_LOG, message);
 	}
 
+
 	if (ticks == 100){
+
+		char response[6], cmd[10];
+		cmd[0] = 1;
+//		int e = query_pico(cmd, 1, response, 6);
+//		bin_dump(e, response);
+
+		query_swr();
 
 		struct field *f = get_field("spectrum");
 		update_field(f);	//move this each time the spectrum watefall index is moved
@@ -3057,8 +3142,18 @@ void ui_init(int argc, char *argv[]){
  
   gtk_init( &argc, &argv );
 
+	//we are using two deprecated functions here
+	//if anyone has a hack around them, do submit it
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+	screen_width = gdk_screen_width();
+	screen_height = gdk_screen_height();
+#pragma pop
+
   window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-  gtk_window_set_default_size(GTK_WINDOW(window), 800, 480);
+  //gtk_window_set_default_size(GTK_WINDOW(window), 800, 480);
+  gtk_window_set_default_size(GTK_WINDOW(window), screen_width, screen_height);
   gtk_window_set_title( GTK_WINDOW(window), "sBITX" );
 	gtk_window_set_icon_from_file(GTK_WINDOW(window), "/home/pi/sbitx/sbitx_icon.png", NULL);
 
@@ -3085,8 +3180,13 @@ void ui_init(int argc, char *argv[]){
 																			| GDK_SCROLL_MASK
                                      | GDK_POINTER_MOTION_MASK);
 
-  gtk_widget_show_all( window );
+	//scale the fonts as needed, these need to be done just once
+	for (int i = 0; i < sizeof(font_table)/sizeof(struct font_style); i++)
+		font_table[i].height = (font_table[i].height * screen_height)/480;
+	scale_ui();	
+  gtk_widget_show_all(window);
 	gtk_window_fullscreen(GTK_WINDOW(window));
+
 	focus_field(get_field("r1:volume"));
 }
 
@@ -3230,30 +3330,7 @@ void change_band(char *request){
 	clear_tx_text_buffer();
 }
 
-uint8_t dec2bcd(uint8_t val){
-	return ((val/10 * 16) + (val %10));
-}
-
-/*
-void rtc_write(int year, int month, int day, int hours, int minutes, int seconds){
-	uint8_t rtc_time[10];
-
-	rtc_time[0] = dec2bcd(seconds);
-	rtc_time[1] = dec2bcd(minutes);
-	rtc_time[2] = dec2bcd(hours);
-	rtc_time[3] = 0;
-	rtc_time[4] = dec2bcd(day);
-	rtc_time[5] = dec2bcd(month);
-	rtc_time[6] = dec2bcd(year - 2000);
-	int e =  i2cbb_write_i2c_block_data(DS1307_I2C_ADD, 0, 7, rtc_time);
-	if (e <= 0){
-		printf("RTC not written\n");
-		return;
-	}
-}
-*/
-
-void utc_set(char *args){
+void utc_set(char *args, int update_rtc){
 	int n[7], i;
 	char *p, *q;
 	struct tm t;
@@ -3284,7 +3361,7 @@ void utc_set(char *args){
 			return;
 	}
 
-	//rtc_write(n[0], n[1], n[2], n[3], n[4], n[5], n[6]);
+	rtc_write(n[0], n[1], n[2], n[3], n[4], n[5]);
 
 	if (n[0] < 2000)
 		n[0] += 2000;
@@ -3419,9 +3496,6 @@ void do_cmd(char *cmd){
 			set_operating_freq(atoi(request+8), response);
 		else
 			sdr_request(request, response);
-		if (!strncmp(request, "tx_power=", strlen("tx_power="))){
-			band_stack_update_power(atoi(request+strlen("tx_power=")));
-		}
 	}
 }
 
@@ -3458,13 +3532,15 @@ void cmd_exec(char *cmd){
 		sprintf(response, "\n[Your callsign is set to %s]\n", mycallsign);
 		write_console(FONT_LOG, response);
 	}
+	else if (!strcmp(exec, "rtc"))
+		rtc_read();
 	else if (!strcmp(exec, "grid")){
 		strcpy(mygrid, args);
 		sprintf(response, "\n[Your grid is set to %s]\n", mygrid);
 		write_console(FONT_LOG, response);
 	}
 	else if (!strcmp(exec, "utc")){
-		utc_set(args);
+		utc_set(args, 1);
 	}
 	else if (!strcmp(exec, "l")){
 		interpret_log(args);
@@ -3749,36 +3825,6 @@ void cmd_exec(char *cmd){
 	save_user_settings(0);
 }
 
-static uint8_t bcd2dec(uint8_t val){return ((val/16 * 10) + (val % 16));}
-
-void rtc_read(){
-	uint8_t rtc_time[10];
-
-	int e =  i2cbb_read_i2c_block_data(DS1307_I2C_ADD, 0, 7, rtc_time);
-	if (e <= 0){
-		printf("RTC not detected\n");
-		return;
-	}
-	printf("RTC time is :");
-	for (int i = 0; i < 7; i++) 
-		printf("%d ", bcd2dec(rtc_time[i]));
-	printf("\n");
-}
-
-void rtc_write(){
-	uint8_t rtc_time[10];
-
-	int e =  i2cbb_read_i2c_block_data(DS1307_I2C_ADD, 0, 7, rtc_time);
-	if (e <= 0){
-		printf("RTC not detected\n");
-		return;
-	}
-	printf("RTC time is :");
-	for (int i = 0; i < 7; i++) 
-		printf("%d ", bcd2dec(rtc_time[i]));
-	printf("\n");
-}
-
 int main( int argc, char* argv[] ) {
 
 	puts(VER_STR);
@@ -3876,7 +3922,9 @@ int main( int argc, char* argv[] ) {
 		"ex: \\utc 2022/07/15 23:034:00\n"
 		"Hit enter for the command at the exact time\n");
 
-	//read_rtc();
+	printf("Reading rtc...");
+	//rtc_read();
+	printf("done!\n");
 
   gtk_main();
   

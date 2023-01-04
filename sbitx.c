@@ -9,12 +9,14 @@
 #include <wiringPi.h>
 #include <wiringSerial.h>
 #include <linux/types.h>
+#include <linux/limits.h>
 #include <stdint.h>
 #include <time.h>
 #include "sdr.h"
 #include "sdr_ui.h"
 #include "sound.h"
 #include "si5351.h"
+#include "ini.h"
 
 char audio_card[32];
 static int tx_shift = 512;
@@ -46,7 +48,7 @@ int bfo_freq = 40035000;
 int freq_hdr = 7000000;
 
 static double volume 	= 100.0;
-static int tx_power_watts = 40;
+static int tx_drive = 40;
 static int rx_gain = 100;
 static int rx_vol = 100;
 static int tx_gain = 100;
@@ -61,6 +63,7 @@ struct rx *rx_list = NULL;
 struct rx *tx_list = NULL;
 struct filter *tx_filter;	//convolution filter
 static double tx_amp = 0.0;
+static int tr_relay = 0;
 
 #define MUTE_MAX 6 
 static int mute_count = 50;
@@ -171,7 +174,6 @@ void set_lpf_40mhz(int frequency){
 	else if (frequency < 10500000)		
 		lpf = LPF_C;
 	else if (frequency < 18500000)		
-//	else if (frequency < 21500000)		
 		lpf = LPF_B;
 	else if (frequency < 30000000)
 		lpf = LPF_A; 
@@ -190,6 +192,7 @@ void set_lpf_40mhz(int frequency){
 
   //printf("################ setting %d high\n", lpf);
   digitalWrite(lpf, HIGH); 
+  //digitalWrite(LPF_B, HIGH); 
 	prev_lpf = lpf;
 }
 
@@ -752,23 +755,64 @@ struct power_settings {
 	int f_start;
 	int f_stop;
 	int	max_watts;
-	int tx_scale;
 	double scale;
 };
 
 
 struct power_settings band_power[] ={
-	{ 3500000,  4000000, 40, 80, 0.005},
-	{ 7000000,  7300000, 40,82, 0.006},
-	{10000000, 10200000, 30, 81, 0.008},
-	{14000000, 14300000, 30, 91, 0.022},
-	{18000000, 18200000, 25, 93, 0.03},
-	{21000000, 21450000, 20, 93, 0.05},
-	{24800000, 25000000, 10, 94, 0.1},
-	{28000000, 29700000,  10, 95, 0.1}  
+	{ 3500000,  4000000, 40, 0.0025},
+//	{ 7000000,  7300000, 40, 0.006},
+	{ 7000000,  7300000, 40, 0.02},
+	{10000000, 10200000, 30, 0.008},
+	{14000000, 14300000, 30, 0.022},
+	{18000000, 18200000, 25, 0.03},
+	{21000000, 21450000, 20, 0.05},
+	{24800000, 25000000, 10, 0.1},
+	{28000000, 29700000,  10, 0.1}  
 };
 
+/*
+struct power_settings band_power[] ={
+	{ 3500000,  4000000, 40, 0.0025},
+	{ 7000000,  7300000, 40, 0.0025},
+	{10000000, 10200000, 30, 0.004},
+	{14000000, 14300000, 30, 0.01},
+	{18000000, 18200000, 25, 0.01},
+	{21000000, 21450000, 20, 0.01},
+	{24800000, 25000000, 10, 0.02},
+	{28000000, 29700000,  10, 0.03}  
+};
+*/
 
+static int hw_init_index = 0;
+static int hw_settings_handler(void* user, const char* section, 
+            const char* name, const char* value)
+{
+  char cmd[1000];
+  char new_value[200];
+		
+
+	if (!strcmp(name, "f_start"))
+		band_power[hw_init_index].f_start = atoi(value);
+	if (!strcmp(name, "f_stop"))
+		band_power[hw_init_index].f_stop = atoi(value);
+	if (!strcmp(name, "scale"))
+		band_power[hw_init_index++].scale = atof(value);
+
+	if (!strcmp(name, "bfo_freq"))
+		bfo_freq = atoi(value);
+}
+
+static void read_hw_ini(){
+	hw_init_index = 0;
+	char directory[PATH_MAX];
+	char *path = getenv("HOME");
+	strcpy(directory, path);
+	strcat(directory, "/sbitx/data/hw_settings.ini");
+  if (ini_parse(directory, hw_settings_handler, NULL)<0){
+    printf("Unable to load ~/sbitx/data/hw_settings.ini\n");
+  }
+}
 
 /*
 	 the PA gain varies across the band from 3.5 MHz to 30 MHz
@@ -781,45 +825,84 @@ void set_tx_power_levels(){
 	//search for power in the approved bands
 	for (int i = 0; i < sizeof(band_power)/sizeof(struct power_settings); i++){
 		if (band_power[i].f_start <= freq_hdr && freq_hdr <= band_power[i].f_stop){
-			if (tx_power_watts > band_power[i].max_watts)
-				tx_power_watts = band_power[i].max_watts;
+//			if (tx_power_watts > band_power[i].max_watts)
+//				tx_power_watts = band_power[i].max_watts;
 		
 			//next we do a decimal coversion of the power reduction needed
-			tx_amp = (1.0 * tx_power_watts * band_power[i].scale);  
+			tx_amp = (1.0 * tx_drive * band_power[i].scale);  
 		}	
 	}
-//	printf("tx_gain_compensation is set to %g for %d watts\n", tx_amp, tx_power_watts);
+	//printf("tx_gain_compensation is set to %g for %d watts\n", tx_amp, tx_drive);
 	//we keep the audio card output 'volume' constant'
 	sound_mixer(audio_card, "Master", 95);
 	sound_mixer(audio_card, "Capture", tx_gain);
 }
 
+void tr_switch(int tx_on){
+		if (tx_on){
+			in_tx = 1;
+			//mute it all and hang on for a millisecond
+			sound_mixer(audio_card, "Master", 0);
+			sound_mixer(audio_card, "Capture", 0);
+			delay(1);
 
-void set_tx_power_levels_old(){
-//  printf("Setting tx_power to %d, gain to %d\n", tx_power_watts, tx_gain);
-	int tx_power_gain = 0;
+			//now switch of the signal back
+			//now ramp up after 5 msecs
+			digitalWrite(TX_LINE, HIGH);
+			mute_count = 20;
+      fft_reset_m_bins();
+			//give time for the reed relay to switch
+      delay(2);
+			set_tx_power_levels();
+			//finally ramp up the power 
+			if (tr_relay){
+				set_lpf_40mhz(freq_hdr);
+				delay(10); //debounce the lpf relays
+			}
+			digitalWrite(TX_POWER, HIGH);
+			//strcpy(response, "ok");
+			spectrum_reset();
+		//	rx_tx_ramp = 1;
+		}
+		else {
+			in_tx = 0;
+			//mute it all and hang on
+			sound_mixer(audio_card, "Master", 0);
+			sound_mixer(audio_card, "Capture", 0);
+			delay(1);
+      fft_reset_m_bins();
+			mute_count = MUTE_MAX;
 
-	//search for power in the approved bands
-	for (int i = 0; i < sizeof(band_power)/sizeof(struct power_settings); i++){
-		if (band_power[i].f_start <= freq_hdr && freq_hdr <= band_power[i].f_stop){
-			if (tx_power_watts > band_power[i].max_watts)
-				tx_power_watts = band_power[i].max_watts;
-		
-			//next we do a decimal coversion of the power reduction needed
-			int attenuation = 
-			(20*log10((1.0*tx_power_watts)/(1.0*band_power[i].max_watts))); 
-			tx_power_gain = band_power[i].tx_scale + attenuation; 
-		}	
-	}
-	printf("tx_power_gain set to %d for %d watts\n", tx_power_gain, tx_power_watts);
-	sound_mixer(audio_card, "Master", tx_power_gain);
-	sound_mixer(audio_card, "Capture", tx_gain);
+			//power down the PA chain to null any gain
+			digitalWrite(TX_POWER, LOW);
+			delay(2);
+
+			if (tr_relay){
+  			digitalWrite(LPF_A, LOW);
+  			digitalWrite(LPF_B, LOW);
+ 	 			digitalWrite(LPF_C, LOW);
+  			digitalWrite(LPF_D, LOW);
+			}
+			delay(10);
+
+			//drive the tx line low, switching the signal path 
+			digitalWrite(TX_LINE, LOW);
+			delay(5); 
+			//audio codec is back on
+			sound_mixer(audio_card, "Master", rx_vol);
+			sound_mixer(audio_card, "Capture", rx_gain);
+			spectrum_reset();
+			//rx_tx_ramp = 10;
+		}
 }
+
 
 /* 
 This is the one-time initialization code 
 */
 void setup(){
+
+	read_hw_ini();
 
 	//setup the LPF and the gpio pins
 	pinMode(TX_LINE, OUTPUT);
@@ -973,6 +1056,12 @@ void sdr_request(char *request, char *response){
 			pf_record = wav_start_writing(value);
 	}
 	else if (!strcmp(cmd, "tx")){
+		if (!strcmp(value, "on"))
+			tr_switch(1);
+		else
+			tr_switch(0);
+		strcpy(response, "ok");
+		/*
 		if (!strcmp(value, "on")){
 			in_tx = 1;
 			//mute it all and hang on for a millisecond
@@ -1017,6 +1106,7 @@ void sdr_request(char *request, char *response){
 			spectrum_reset();
 			//rx_tx_ramp = 10;
 		}
+		*/
 	}
 	else if (!strcmp(cmd, "tx_gain")){
 		tx_gain = atoi(value);
@@ -1024,7 +1114,7 @@ void sdr_request(char *request, char *response){
 			set_tx_power_levels();
 	}
 	else if (!strcmp(cmd, "tx_power")){
-    tx_power_watts = atoi(value);
+    tx_drive = atoi(value);
 		if(in_tx)
 			set_tx_power_levels();	
 	}
