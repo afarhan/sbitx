@@ -437,6 +437,12 @@ double agc2(struct rx *r){
   return 100000000000 / r->agc_gain;  
 }
 
+void my_fftw_execute(fftw_plan f){
+	fftw_execute(f);
+}
+
+
+//TODO : optimize the memory copy and moves to use the memcpy
 void rx_process(int32_t *input_rx,  int32_t *input_mic, 
 	int32_t *output_speaker, int32_t *output_tx, int n_samples)
 {
@@ -474,7 +480,7 @@ void rx_process(int32_t *input_rx,  int32_t *input_mic,
 	}
 
 	// STEP 3: convert the time domain samples to  frequency domain
-	fftw_execute(plan_fwd);
+	my_fftw_execute(plan_fwd);
 
 	//STEP 3B: this is a side line, we use these frequency domain
 	// values to paint the spectrum in the user interface
@@ -486,7 +492,7 @@ void rx_process(int32_t *input_rx,  int32_t *input_mic,
 	// waterfall, you can skip these steps
 	for (i = 0; i < MAX_BINS; i++)
 			__real__ fft_in[i] *= spectrum_window[i];
-	fftw_execute(plan_spectrum);
+	my_fftw_execute(plan_spectrum);
 
 	// the spectrum display is updated
 	spectrum_update();
@@ -528,7 +534,7 @@ void rx_process(int32_t *input_rx,  int32_t *input_mic,
 		r->fft_freq[i] *= r->filter->fir_coeff[i];
 
 	//STEP 7: convert back to time domain	
-	fftw_execute(r->plan_rev);
+	my_fftw_execute(r->plan_rev);
 
 	//STEP 8 : AGC
 	agc2(r);
@@ -545,13 +551,6 @@ void rx_process(int32_t *input_rx,  int32_t *input_mic,
 			output_tx[i] = 0;
 		}
 
-/*
-	if (rx_tx_ramp){
-		memset(output_speaker, 0, sizeof(int32_t) * MAX_BINS/2);
-		printf("Rx muted %d\n", rx_tx_ramp);
-		rx_tx_ramp--;
-	}
-*/
 	//push the data to any potential modem 
 	modem_rx(rx_list->mode, output_speaker, MAX_BINS/2);
 }

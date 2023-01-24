@@ -625,7 +625,7 @@ struct field main_controls[] = {
 };
 
 
-struct field *get_field(char *cmd);
+struct field *get_field(const char *cmd);
 void update_field(struct field *f);
 void tx_on();
 void tx_off();
@@ -634,7 +634,7 @@ void tx_off();
 //char *console_lines[MAX_CONSOLE_LINES];
 int last_log = 0;
 
-struct field *get_field(char *cmd){
+struct field *get_field(const char *cmd){
 	for (int i = 0; active_layout[i].cmd[0] > 0; i++)
 		if (!strcmp(active_layout[i].cmd, cmd))
 			return active_layout + i;
@@ -999,6 +999,7 @@ static void save_user_settings(int forced){
 	fclose(f);
 	settings_updated = 0;
 }
+
 
 static int user_settings_handler(void* user, const char* section, 
             const char* name, const char* value)
@@ -1642,6 +1643,7 @@ static void edit_field(struct field *f, int action){
 		focus_since = millis();
 
 	if (f->fn){
+		f->is_dirty = 1;
 		if (f->fn(f, NULL, FIELD_EDIT, action, 0, 0))
 			return;
 	}
@@ -2474,6 +2476,45 @@ void tx_off(){
 }
 
 
+static int layout_handler(void* user, const char* section, 
+            const char* name, const char* value)
+{
+	//the section is the field's name
+
+	printf("setting %s:%s to %d\n", section, name, atoi(value));
+	struct field *f = get_field(section);
+	if (!strcmp(name, "x"))
+		f->x = atoi(value);
+	else if (!strcmp(name, "y"))
+		f->y = atoi(value);
+	else if (!strcmp(name, "width"))
+		f->width = atoi(value);
+	else if (!strcmp(name, "height"))
+		f->height = atoi(value);	
+}
+
+void load_ui(char *name){
+	
+	//move everything of sight
+	for (int i = 0; active_layout[i].cmd[0] > 0; i++)
+		active_layout[i].x = -1000;
+
+	char directory[200];	//dangerous, find the MAX_PATH and replace 200 with it
+	char *path = getenv("HOME");
+
+	strcpy(directory, path);
+	strcat(directory, "/sbitx/data/");
+	strcat(directory, name);
+	strcat(directory, ".ini");
+	
+  if (ini_parse(directory, layout_handler, NULL)<0){
+    printf("Unable to load layout file %s\n", directory);
+  }
+
+	for (int i = 0; active_layout[i].cmd[0] > 0; i++)
+		active_layout[i].is_dirty = 1;
+}
+
 void set_ui(int id){
 	struct field *f = get_field("#kbd_q");
 
@@ -2980,6 +3021,7 @@ int16_t vfwd, vref;
 void query_swr(){
 	uint8_t response[4];
 	vfwd = vref = 0;
+
 	if(i2cbb_read_i2c_block_data(0x8, 0, 4, response) == -1)
 		return;
 	
@@ -3597,7 +3639,9 @@ void cmd_exec(char *cmd){
 		sprintf(buff, "cwdelay: %d msec\n", cw_delay);
 		write_console(FONT_LOG, buff);
 	}
-
+	else if (!strcmp(exec, "ui")){
+		load_ui(args);
+	}
   else if (!strcmp(exec, "exit")){
     tx_off();
     set_field("#record", "OFF");
@@ -3863,6 +3907,7 @@ int main( int argc, char* argv[] ) {
     printf("Unable to load ~/sbitx/data/user_settings.ini\n");
   }
 
+
 	if (strlen(current_macro))
 		macro_load(current_macro);
 	char buff[1000];
@@ -3890,21 +3935,16 @@ int main( int argc, char* argv[] ) {
   hamlib_start();
 	remote_start();
 
-	int not_synchronized = 0;
-	FILE *pf = popen("chronyc tracking", "r");
-	while(fgets(buff, sizeof(buff), pf)) 
-		if(strstr(buff, "Not synchronised"))
-			not_synchronized = 1; 
-	fclose(pf);
-
-	if (not_synchronized)
-		write_console(FONT_LOG, "Enter the precise UTC time using \\utc command\n"
-		"ex: \\utc 2022/07/15 23:034:00\n"
-		"Hit enter for the command at the exact time\n");
-
 	printf("Reading rtc...");
 	//rtc_read();
 	printf("done!\n");
+
+	FILE *pf = fopen("default_layout.ini", "w");
+	for (int i = 0; active_layout[i].cmd[0] > 0; i++){
+		struct field *f = active_layout + i;
+		fprintf(pf, "[%s]\nx=%d\ny=%d\nwidth=%d\nheight=%d\n\n", f->cmd, f->x, f->y, f->width, f->height); 
+	}	
+	fclose(pf);
 
   gtk_main();
   
