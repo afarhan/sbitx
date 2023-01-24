@@ -37,6 +37,7 @@ The initial sync between the gui values, the core radio values, settings, et al 
 #include "remote.h"
 #include "wsjtx.h"
 #include "i2cbb.h"
+#include "webserver.h"
 
 /* Front Panel controls */
 char pins[15] = {0, 2, 3, 6, 7, 
@@ -297,6 +298,7 @@ struct field {
 	char  selection[1000];
 	long int	 	min, max;
   int step;
+	char is_dirty;
 };
 
 #define STACK_DEPTH 4
@@ -403,8 +405,8 @@ int sidetone = 25;
 //how much to shift on rit
 int	rit_delta = 0;
 
-static int redraw_flag = 1; 
 int spectrum_span = 48000;
+int spectrum_plot[MAX_BINS];
 
 
 void do_cmd(char *cmd);
@@ -487,7 +489,7 @@ struct field main_controls[] = {
 		"", 0,0,0},  
 	{"#status", do_status, 400, 51, 400, 29, "00:00:00", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, 
 		"status", 0,0,0},  
-	{"waterfall", do_waterfall, 400, 180 , 400, 150, "Waterfall ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, 
+	{"waterfall", do_waterfall, 400, 180 , 400, 149, "Waterfall ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, 
 		"", 0,0,0},
 	{"#console", do_console, 0, 0 , 400, 320, "console", 70, "console box", FIELD_CONSOLE, FONT_LOG, 
 		"nothing valuable", 0,0,0},
@@ -504,15 +506,15 @@ struct field main_controls[] = {
 		"", 0,0,0},
   
   // other settings - currently off screen
-  { "reverse_scrolling", NULL, 1000, 1000, 50, 50, "RS", 40, "ON", FIELD_TOGGLE, FONT_FIELD_VALUE,
+  { "reverse_scrolling", NULL, 1000, -1000, 50, 50, "RS", 40, "ON", FIELD_TOGGLE, FONT_FIELD_VALUE,
     "ON/OFF", 0,0,0},
-  { "tuning_acceleration", NULL, 1000, 1000, 50, 50, "TA", 40, "ON", FIELD_TOGGLE, FONT_FIELD_VALUE,
+  { "tuning_acceleration", NULL, 1000, -1000, 50, 50, "TA", 40, "ON", FIELD_TOGGLE, FONT_FIELD_VALUE,
     "ON/OFF", 0,0,0},
-  { "tuning_accel_thresh1", NULL, 1000, 1000, 50, 50, "TAT1", 40, "10000", FIELD_NUMBER, FONT_FIELD_VALUE,
+  { "tuning_accel_thresh1", NULL, 1000, -1000, 50, 50, "TAT1", 40, "10000", FIELD_NUMBER, FONT_FIELD_VALUE,
     "", 100,99999,100},
-  { "tuning_accel_thresh2", NULL, 1000, 1000, 50, 50, "TAT2", 40, "500", FIELD_NUMBER, FONT_FIELD_VALUE,
+  { "tuning_accel_thresh2", NULL, 1000, -1000, 50, 50, "TAT2", 40, "500", FIELD_NUMBER, FONT_FIELD_VALUE,
     "", 100,99999,100},
-  { "mouse_pointer", NULL, 1000, 1000, 50, 50, "MP", 40, "LEFT", FIELD_SELECTION, FONT_FIELD_VALUE,
+  { "mouse_pointer", NULL, 1000, -1000, 50, 50, "MP", 40, "LEFT", FIELD_SELECTION, FONT_FIELD_VALUE,
     "BLANK/LEFT/RIGHT/CROSSHAIR", 0,0,0},
 
 	/* band stack registers */
@@ -706,7 +708,6 @@ int set_field(char *id, char *value){
 	sprintf(buff, "%s=%s", f->cmd, f->value);
 	do_cmd(buff);
 	update_field(f);
-	redraw_flag++;
 	return 0;
 }
 
@@ -718,6 +719,8 @@ void console_init(){
 		console_stream[i].text[0] = 0;
 		console_stream[i].style = console_style;
 	}
+	struct field *f = get_field("#console");
+	f->is_dirty = 1;
 }
 
 int console_init_next_line(){
@@ -784,7 +787,10 @@ void write_console(int style, char *text){
 		}
 		text++;	
 	}
-	redraw_flag++;
+
+	struct field *f = get_field("#console");
+	if (f)
+		f->is_dirty = 1;
 }
 
 void draw_log(cairo_t *gfx, struct field *f){
@@ -817,15 +823,16 @@ void draw_log(cairo_t *gfx, struct field *f){
 void draw_field(GtkWidget *widget, cairo_t *gfx, struct field *f){
 	struct font_style *s = font_table + 0;
 
+	f->is_dirty = 0;
+
 	//if there is a handling function, use that else
 	//skip down to the default behaviour of the controls
 	if (f->fn){
-		if(f->fn(f, gfx, FIELD_DRAW, -1, -1, 0))
+		if(f->fn(f, gfx, FIELD_DRAW, -1, -1, 0)){
+			f->is_dirty = 0;
 			return;
+		}
 	}
-
-	if (!strcmp(f->label, "REC"))
-		puts("REC!");
 
 	fill_rect(gfx, f->x, f->y, f->width,f->height, COLOR_BACKGROUND);
 	if (f_focus == f)
@@ -1390,6 +1397,7 @@ void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
 			y = 0;
 		if (y > f->height)
 			y = f->height - 1;
+		spectrum_plot[i] = y;
 		//the plot should be increase upwards
 		cairo_line_to(gfx, f->x + f->width - (int)x, f->y + grid_height - y);
 
@@ -1572,8 +1580,6 @@ void redraw_main_screen(GtkWidget *widget, cairo_t *gfx){
 	y1 = (int)dy1;
 	x2 = (int)dx2;
 	y2 = (int)dy2;
-//	printf("extents: %d %d %d %d\n", x1, y1, x2, y2);
-
 
 	fill_rect(gfx, x1, y1, x2-x1, y2-y1, COLOR_BACKGROUND);
 	for (int i = 0; active_layout[i].cmd[0] > 0; i++){
@@ -1604,13 +1610,16 @@ static gboolean on_resize(GtkWidget *widget, GdkEventConfigure *event, gpointer 
 
 void update_field(struct field *f){
 	GdkRectangle r;
-	r.x = f->x - 1;
-	r.y = f->y - 1;
-	r.width = f->width+2;
-	r.height = f->height+2;
+	r.x = f->x;
+	r.y = f->y;
+	r.width = f->width;
+	r.height = f->height;
 	//the update_field could be triggered from the sdr's waterfall update
 	//which starts before the display_area is called 
-	invalidate_rect(r.x, r.y, r.width, r.height);
+	if (f->y >= 0){
+		invalidate_rect(r.x, r.y, r.width, r.height);
+		f->is_dirty = 1;
+	}
 } 
 
 static void hover_field(struct field *f){
@@ -1857,7 +1866,6 @@ void call_wipe(){
 	sent_rst[0] = 0;
 	set_field("#log_ed", "");
 	update_log_ed();
-	redraw_flag++;
 }
 
 void update_log_ed(){
@@ -1868,7 +1876,7 @@ void update_log_ed(){
 	if (strlen(contact_callsign))
 		strcat(log_info, contact_callsign);
 	else {
-		redraw_flag++;
+		f->is_dirty = 1;
 		return;
 	}
 
@@ -1900,7 +1908,7 @@ void update_log_ed(){
 	else
 		strcat(log_info, "-");
 
-	redraw_flag++;
+	f->is_dirty = 1;
 }
 
 
@@ -1930,7 +1938,7 @@ int do_console(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 				}
 			}
 //			printf("chosen line is %d[%s]\n", l, console_stream[l].text);
-			redraw_flag++;
+			f->is_dirty = 1;
 			return 1;
 		break;
 	}
@@ -1975,7 +1983,6 @@ int do_text(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 			cmd_exec(f->value + 1);
 			f->value[0] = 0;
 			update_field(f);
-			redraw_flag++;
 		}
 		else if ((a =='\n' || a == MIN_KEY_ENTER) && !strcmp(get_field("r1:mode")->value, "FT8") 
 			&& f->value[0] != COMMAND_ESCAPE){
@@ -2038,7 +2045,6 @@ int do_pitch(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 		}
 		sprintf(f->value, "%d", v);
 		update_field(f);
-		redraw_flag++;
 		modem_set_pitch(v);
 		return 1;
 	}
@@ -2197,7 +2203,6 @@ void write_call_log(){
 	}
 	//wipe it clean, deffered for the time being
 	//call_wipe();
-	redraw_flag++;
 }
 
 
@@ -2468,30 +2473,6 @@ void tx_off(){
 	sound_input(0); //it is a low overhead call, might as well be sure
 }
 
-/*
-void swap_ui(int id){
-	struct field *f = get_field("#kbd_q");
-
-	if (f->y > 1000){
-		// the "#kbd" is out of screen, get it up and "#mf" down
-		for (int i = 0; active_layout[i].cmd[0] > 0; i++){
-			if (!strncmp(active_layout[i].cmd, "#kbd", 4))
-				active_layout[i].y -= 1000;
-			else if (!strncmp(active_layout[i].cmd, "#mf", 3))
-				active_layout[i].y += 1000;
-		}
-	}
-	else {
-		// the "#mf" is out of screen, get it up and "#kbd" down
-		for (int i = 0; active_layout[i].cmd[0] > 0; i++)
-			if (!strncmp(active_layout[i].cmd, "#kbd", 4))
-				active_layout[i].y += 1000;
-			else if (!strncmp(active_layout[i].cmd, "#mf", 3))
-				active_layout[i].y -= 1000;
-	}
-	redraw_flag++;
-}
-*/
 
 void set_ui(int id){
 	struct field *f = get_field("#kbd_q");
@@ -2503,19 +2484,20 @@ void set_ui(int id){
 				active_layout[i].y -= 1000;
 			else if (!strncmp(active_layout[i].cmd, "#mf", 3) && active_layout[i].y < 1000)
 				active_layout[i].y += 1000;
-			
+			active_layout[i].is_dirty = 1;	
 		}
 	}
 	if (id == LAYOUT_MACROS) {
 		// the "#mf" is out of screen, get it up and "#kbd" down
-		for (int i = 0; active_layout[i].cmd[0] > 0; i++)
+		for (int i = 0; active_layout[i].cmd[0] > 0; i++){
 			if (!strncmp(active_layout[i].cmd, "#kbd", 4) && active_layout[i].y < 1000)
 				active_layout[i].y += 1000;
 			else if (!strncmp(active_layout[i].cmd, "#mf", 3) && active_layout[i].y > 1000)
 				active_layout[i].y -= 1000;
+			active_layout[i].is_dirty = 1;	
+		}
 	}
 	current_layout = id;
-	redraw_flag++;
 }
 
 int static cw_keydown = 0;
@@ -2622,7 +2604,6 @@ static gboolean on_key_press (GtkWidget *widget, GdkEventKey *event, gpointer us
 			tx_off();
 			call_wipe();
 			update_log_ed();
-			redraw_flag++;
 			break;
 		case MIN_KEY_UP:
 			if (f_focus == NULL && f_hover > active_layout){
@@ -2768,7 +2749,11 @@ is posted a redraw signal that in turn triggers the redraw_all routine.
 Don't ask me, I only work around here.
 */
 void redraw(){
-	redraw_flag++;
+	struct field *f;
+	f = get_field("#console");
+	f->is_dirty = 1;
+	f = get_field("#text_in");
+	f->is_dirty = 1;
 }
 
 /* hardware specific routines */
@@ -3016,12 +3001,10 @@ gboolean ui_tick(gpointer gook){
 	ticks++;
 
 	//update all the fields, we should instead mark fields dirty and update only those
-	if (redraw_flag){
-		for (struct field *f = active_layout; f->cmd[0] > 0; f++)
+	for (struct field *f = active_layout; f->cmd[0] > 0; f++){
+		if (f->is_dirty)
 			update_field(f);
-		redraw_flag = 0;
 	}
-
   //char message[100];
 	
 	// check the tuning knob
@@ -3048,8 +3031,6 @@ gboolean ui_tick(gpointer gook){
 
 		char response[6], cmd[10];
 		cmd[0] = 1;
-//		int e = query_pico(cmd, 1, response, 6);
-//		bin_dump(e, response);
 
 		query_swr();
 
@@ -3057,11 +3038,14 @@ gboolean ui_tick(gpointer gook){
 		update_field(f);	//move this each time the spectrum watefall index is moved
 		f = get_field("waterfall");
 		update_field(f);
-		f = get_field("#console");
+		f = get_field("#status");
 		update_field(f);
+
+//		f = get_field("#console");
+//		update_field(f);
 		ticks = 0;
-		update_field(get_field("#console"));
-		update_field(get_field("#status"));
+//		update_field(get_field("#console"));
+//		update_field(get_field("#status"));
 
 		if (digitalRead(ENC1_SW) == 0)
 				focus_field(get_field("r1:volume"));
@@ -3110,11 +3094,10 @@ gboolean ui_tick(gpointer gook){
 
   }
   modem_poll(mode_id(get_field("r1:mode")->value));
-	update_field(get_field("#text_in")); //modem might have extracted some text
+	//update_field(get_field("#text_in")); //modem might have extracted some text
 
   hamlib_slice();
 	remote_slice();
-	//wsjtx_slice();
 	save_user_settings(0);
 
  
@@ -3188,6 +3171,7 @@ void ui_init(int argc, char *argv[]){
 	gtk_window_fullscreen(GTK_WINDOW(window));
 
 	focus_field(get_field("r1:volume"));
+	webserver_start();
 }
 
 /* handle modem callbacks for more data */
@@ -3217,7 +3201,6 @@ void set_mode(char *mode){
 	if (strstr(f->selection, umode)){
 		strcpy(f->value, umode);
 		update_field(f);
-		redraw_flag++;
 	}
 	else
 		write_console(FONT_LOG, "%s is not a mode\n");
@@ -3554,7 +3537,6 @@ void cmd_exec(char *cmd){
 	}
 	else if (!strcmp(exec, "clear")){
 		console_init();
-		redraw_flag++;
 	}
 	else if(!strcmp(exec, "macro")){
 		if (!strcmp(args, "list"))
@@ -3563,7 +3545,6 @@ void cmd_exec(char *cmd){
 			set_ui(LAYOUT_MACROS);
 			strcpy(current_macro, args);
 			settings_updated++;
-			redraw_flag++;
 		}
 		else if (strlen(current_macro)){
 			write_console(FONT_LOG, "current macro is ");
@@ -3801,7 +3782,6 @@ void cmd_exec(char *cmd){
 		char buff[100];
 		sprintf(buff, "cw txpitch is set to %d Hz\n", cw_tx_pitch);
 		write_console(FONT_LOG, buff);
-		redraw_flag++;
 	}
 	else {
 		//see if it matches any of the fields of the UI that have FIELD_NUMBER 

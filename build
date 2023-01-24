@@ -15,7 +15,7 @@ fi
 gcc -g -o $F \
 	 vfo.c si570.c sbitx_sound.c fft_filter.c  sbitx_gtk.c sbitx_utils.c \
     i2cbb.c si5351v2.c ini.c hamlib.c queue.c modems.c \
-		telnet.c macros.c modem_ft8.c remote.c $F.c  \
+		telnet.c macros.c modem_ft8.c remote.c mongoose.c webserver.c $F.c  \
 		ft8_lib/libft8.a \
 	-lwiringPi -lasound -lm -lfftw3 -lfftw3f -pthread -lncurses \
 	`pkg-config --cflags gtk+-3.0` `pkg-config --libs gtk+-3.0`
