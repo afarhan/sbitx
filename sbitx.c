@@ -689,6 +689,8 @@ void tx_process(
 	int j = 0;
 	double max = -100.0;
 	double min = 100.0;
+
+
 	//gather the samples into a time domain array 
 	for (i= MAX_BINS/2; i < MAX_BINS; i++){
 
@@ -717,6 +719,10 @@ void tx_process(
 	  __imag__ fft_in[i]  = q_sample;
 	  m++;
 	}
+
+	//push the samples to the remote audio queue, decimated to 16000 samples/sec
+	for (i = 0; i < MAX_BINS/2; i += 6)
+		q_write(&qremote, output_speaker[i]);
 
 	//convert to frequency
 	fftw_execute(plan_fwd);

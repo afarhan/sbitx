@@ -507,6 +507,7 @@ select, select option, input {
 
 #keybd-container{ 
  	opacity: 1;
+	text-align: center;
 }
 
 .keybd td {

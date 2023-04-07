@@ -3652,7 +3652,7 @@ void do_cmd(char *cmd){
 		tx_on(TX_SOFT);
 	}
 	else if (!strcmp(request, "#web")){
-		execute_app("chromium-browser --enable-features=OverlayScrollbar http://127.0.0.1:8000 &");
+		execute_app("chromium-browser --enable-features=OverlayScrollbar http://127.0.0.1:8080 &");
 	}
 	else if (!strcmp(request, "#rx")){
 		tx_off();
