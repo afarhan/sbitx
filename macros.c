@@ -40,7 +40,7 @@ void macro_list(char *output){
 
 	char *home_path = getenv("HOME");
 	strcpy(full_path, home_path);
-	strcat(full_path, "/sbitx/data/");
+	strcat(full_path, "/sbitx/web/");
 	DIR *d = opendir(full_path);
   struct dirent *dir;
 
