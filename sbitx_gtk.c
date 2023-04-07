@@ -2640,33 +2640,6 @@ static int layout_handler(void* user, const char* section,
 		f->height = atoi(value);	
 }
 
-void load_ui(char *name){
-	
-	//move everything of sight
-	for (int i = 0; active_layout[i].cmd[0] > 0; i++)
-		active_layout[i].x = -1000;
-
-	char directory[200];	//dangerous, find the MAX_PATH and replace 200 with it
-	char *path = getenv("HOME");
-
-	strcpy(directory, path);
-	strcat(directory, "/sbitx/data/");
-	strcat(directory, name);
-	strcat(directory, "_layout.ini");
-	
-  if (ini_parse(directory, layout_handler, NULL)<0){
-    printf("Unable to load layout file %s\n", directory);
-		return;
-  }
-
-	//waterfall might have changed, so rebuild the gdkpixbuff of the waterfall
-	init_waterfall();
-
-	for (int i = 0; active_layout[i].cmd[0] > 0; i++)
-		active_layout[i].is_dirty = 1;
-	invalidate_rect(0,0,screen_width, screen_height);
-}
-
 void set_ui(int id){
 	struct field *f = get_field("#kbd_q");
 
@@ -3207,7 +3180,6 @@ void query_swr(){
 		return;
 
 	vfwd = vref = 0;
-
 
 	memcpy(&vfwd, response, 2);
 	memcpy(&vref, response+2, 2);
@@ -3923,9 +3895,6 @@ void cmd_exec(char *cmd){
 			set_field("r1:freq", freq_s);
 		}
 	}
-	else if (!strcmp(exec, "ui")){
-		load_ui(args);
-	}
   else if (!strcmp(exec, "exit")){
     tx_off();
     set_field("#record", "OFF");
@@ -4172,8 +4141,10 @@ int main( int argc, char* argv[] ) {
 	strcat(directory, "/sbitx/data/user_settings.ini");
   if (ini_parse(directory, user_settings_handler, NULL)<0){
     printf("Unable to load ~/sbitx/data/user_settings.ini\n");
+		strcpy(directory, path);
+		strcat(directory, "/sbitx/data/default_settings.ini");
+  	ini_parse(directory, user_settings_handler, NULL);
   }
-
 
 	if (strlen(get_field("#current_macro")->value))
 		macro_load(get_field("#current_macro")->value, NULL);
@@ -4187,7 +4158,7 @@ int main( int argc, char* argv[] ) {
 	write_console(FONT_LOG, VER_STR);
   write_console(FONT_LOG, "\r\nEnter \\help for help\r\n");
 
-	if (strcmp(get_field("#mycallsign")->value, "NOBDY")){
+	if (strcmp(get_field("#mycallsign")->value, "NOBODY")){
 		sprintf(buff, "\nWelcome %s your grid is %s\n", 
 		get_field("#mycallsign")->value, get_field("#mygrid")->value);
 		write_console(FONT_LOG, buff);
