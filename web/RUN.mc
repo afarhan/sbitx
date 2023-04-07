@@ -2,7 +2,7 @@
 F1 Cq,cq test {MYCALL} {MYCALL} test
 F2 Exch, {SENTRSTCUT} {EXCH}
 F3 Tu,tu {MYCALL} test
-F4 {MYCALL},{MYCALL}
+F4 MYCALL,{MYCALL}
 F5 His Call,!
 F6 -,-
 F7 Repeat,{SENTRSTCUT} {EXCH} {EXCH}

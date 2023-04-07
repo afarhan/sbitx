@@ -4,7 +4,6 @@
 #include <dirent.h>
 #include "sdr_ui.h"
 
-int macro_load(char *filename);
 int macro_exec(int key, char *dest);
 void macro_get_var(char *var, char *s);
 
@@ -24,8 +23,19 @@ static int serial = 1;
 static char macro_v_str[10];
 static char is_running = 0; 
 
+void macro_get_keys(char *output){
+	output[0] = 0;
+	for (int i = 0; i < MACRO_MAX; i++){	
+		if (macro_table[i].label[0] == 0)
+				break;
+		char key_name[10];
+		sprintf(key_name, "|%d ", macro_table[i].fn_key);
+		strcat(output, key_name);
+		strcat(output, macro_table[i].label);	
+	}
+}
 
-void macro_list(){
+void macro_list(char *output){
 	char full_path[200];	//dangerous, find the MAX_PATH and replace 200 with it
 
 	char *home_path = getenv("HOME");
@@ -40,7 +50,9 @@ void macro_list(){
 	}
 
 	write_console(FONT_LOG, "\nAvailable macros:\n");
-	
+
+	if(output)
+		output[0] = 0;	
   while ((dir = readdir(d)) != NULL) {
 		char *p = dir->d_name;
 		int len = strlen(p);
@@ -49,6 +61,10 @@ void macro_list(){
 			write_console(FONT_LOG, p);
 			write_console(FONT_LOG, "\n");
      	printf("%s\n", dir->d_name);
+			if (output){
+				strcat(output, dir->d_name);
+				strcat(output, "|");
+			}
 		}
 	}
   closedir(d);
@@ -67,7 +83,7 @@ void macro_label(int fn_key, char *label){
 	}
 }
 
-int  macro_load(char *filename){
+int  macro_load(char *filename, char *output){
 	char macro_line[255];
 	char full_path[200];	//dangerous, find the MAX_PATH and replace 200 with it
 
@@ -82,7 +98,6 @@ int  macro_load(char *filename){
 		return -1;
 
 	memset(macro_table, 0, sizeof(macro_table));
-	
 	int i = 0; 
 	while (i < MACRO_MAX){
 		if (fgets(macro_line, sizeof(macro_line) - 1, pf) == NULL)
@@ -115,7 +130,7 @@ int  macro_load(char *filename){
 			//printf("Macro loading %s, Expected a comma before [%s]\n", full_path, p);
 			continue;
 		}
-
+		
 		strcpy(macro_table[i].text, ++p);
 		i++;
 	}

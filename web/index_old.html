@@ -1,0 +1,1251 @@
+<html>
+<!--
+	HOW IT WORKS
+	
+	1. A number of classes with names starting with sbitx- are defined these are
+	used to implment sbitx specific handlers for events, etc.
+
+	2. A single websocket is used for efficient communication with the sbitx process
+	The websocket is used to transmit text messages for UI interactions and a binary
+	format for raw audio samples. 
+	2.1 The audio samples are enabled only for remote login. We do this by detecting if
+	the sbitx url is localhost or not.
+	2.2 All commands are implemented as fields of UI in sbitx. Read the C source to 
+	understand those.
+
+	SEMANTIC STRUCTURE		
+
+	On the top level, there are two main divs : login and sdr_page. Upon successful 
+  login, the sdr_page is made visible and the login is hidden.
+  
+  The top bar has frequency, volume, mode and icons to restore the web ui,
+	enable/disable the on-screen keyboard, etc.  
+
+	Each mode like ssb, ft8, etc has its one div that is enabled and others are all disabled.
+	
+	MAKING YOUR OWN SKINS
+	we can use different skins by replacing/editing the index.html and the style.css
+	in /home/pi/sbitx/web directory on the sbitx. 	
+
+	CREDITS:
+	The wonderful knob is from https://github.com/aterrien/jQuery-Knob
+-->
+	<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>sBitx</title>
+    <script src="jquery.min.js"></script>
+    <script src="jquery.knob.min.js"></script>
+    <script src="pcm-player.js"></script> 
+		<link rel="stylesheet" href="style.css">
+  </head>
+  <body>
+  <div id="login_page">
+  	<form action="/login" method="post" id="login">
+  		<p>Enter passkey to access your sbitx. 
+  		The passkey is set with \passkey command on the radio.</p>
+			<div id="login_error"></div>
+  		<div class="mb-3">
+  			<label for="passkey" class="form-label">Passkey</label>
+  			<input type="text" class="sbitx-text-input" id="passkey" name="passkey">
+  		</div>
+  		<div class="mb-3">
+  			<button type="submit" id="start_login" >Start</button>
+			</div>  		
+  	</form>
+  </div><!-- end of login -->
+  <div id="sdr_page">
+		<input type="hidden" id="FREQ" value="7040000"/>
+		<input type="hidden" id="VFOA" value="7040000"/>
+		<input type="hidden" id="VFOB" value="7040000"/>
+		<input type="hidden" id="POWER" value="0"/>
+		<input type="hidden" id="REF" value="1"/>
+		<input type="hidden" id="MYCALLSIGN" value ="NOBODY"/>
+		<input type="hidden" id="SPLIT"  class="sbitx-update-toggle" value="OFF" /> 
+		<input type="hidden" id="RIT" class="sbitx-update-toggle" value="OFF" /> 
+		<input type="hidden" id="RIT_DELTA" name="RIT_DELTA" value="" /> 
+		<input type="hidden" id="VFO" value="A" />
+			<div id="topbar"> 
+				<span id="restore-btn" class="menu-item" onclick="toggle_fullscreen();">
+					 &#x2195;
+				</span><span class="menu-item">
+					Mode</br>
+					<select class="sbitx-selection" id="MODE">
+						<option value="USB">USB</option>
+						<option value="LSB">LSB</option>
+						<option value="CW">CW</option>
+						<option value="CWR">CWR</option>
+						<option value="FT8">FT8</option>
+						<option value="PSK31">PSK31</option>
+						<option value="RTTY">RTTY</option>
+						<option value="DIGITAL">Digital</option> 
+						<option value="2TONE">2TONE</option>
+					</select>
+				</span><span class="menu-item" id="dial">
+					<div class="greyed" id="other_freq">B: 14.074.000</div>
+    			<div id="current_freq">A: 7020000 KHz</div>
+				</span><span class="menu-item">
+					<span id="tx_rx"></span>
+					<span id="meters">
+						<input type="range" class="sbitx-slider" id="POWER_meter" max="1000" min="0" value="0" />
+						<input type="range" class="sbitx-slider" id="REF_meter" max="1000" min="0" value="0" />
+					</span>
+					<!-- <canvas id="meters" width="150" height ="50"></canvas> -->
+				</span><span class="menu-item">
+				<span class="slider-label">Vol <span class="sbitx-slider" id="AUDIO_reading"></span></span><br/> 
+				<input type="range" class="sbitx-slider" id="AUDIO" max="100" min="0" step="5" value="80" />
+				</span><span id="logbook" class="menu-item">
+				LOG	
+				</span><!-- make these wrap for portrait screens -->
+			</ul>
+		</div <!-- end of navbar -->	
+		<div id="main">
+		<div id="extra-controls">
+			<input type="hidden" id="TX_PITCH" value="600" />
+			Pitch: <input type="number" class="sbitx-selection" id="PITCH" max="4000" min="0" step="10" value="600" />
+			<button id="streamaudio" type="submit" onclick="audio_start();">Stream Audio</button> 
+		</div>
+<!--   panadapter, xxxx_open functions will resize this as needed -->
+		<div id="pan_adapter">
+			<div id="spectrum-wrap">
+				<div id="span-control">
+					SPAN
+					<select class="sbitx-selection" id="SPAN">
+						<option value="25K">25K</option>
+						<option value="10K">10K</option>
+						<option value="6K">6K</option>
+						<option value="2.5K">2.5K</option>
+					</select>
+				</div><!-- end of span-control -->
+				<div width="100%"><canvas id="spectrum" width="600" height ="100"></canvas></div>
+			</div><!-- end of spectrum-wrap -->
+			<div width="100%"><canvas id="waterfall" width="600" height="100"></canvas></div>
+		</div>
+<!-- tuning panel with dial, etc -->	
+		<div id = "tuning_panel" class="sbitx-panel">
+			<div class="sbitx-panel-title">
+				<button class="sbitx-btn-back" data-for="panel_bar">&#x2039;</button> Frequency 
+			</div>
+			<span id="tuning_knob">
+					<table>
+						<tr><td>
+						<div id="bandswitch">
+    					<button class="sbitx-btn" id="band 10m" type="submit">10</button>
+    					<button class="sbitx-btn" id="band 12m" type="submit">12</button>
+    					<button class="sbitx-btn" id="band 15m" type="submit">15</button>
+    					<button class="sbitx-btn" id="band 17m" type="submit">17</button><br/>
+    					<button class="sbitx-btn" id="band 20m" type="submit">20</button>
+    					<button class="sbitx-btn" id="band 30m" type="submit">30</button>
+    					<button class="sbitx-btn" id="band 40m" type="submit">40</button>
+    					<button class="sbitx-btn" id="band 80m" type="submit">80</button>
+						</div>
+						<button class="sbitx-toggle tuning-btn" id="toggle_RIT">RIT OFF</button>
+						<button class="sbitx-toggle tuning-btn" id="toggle_SPLIT" value="OFF"/> SPLIT OFF</button>
+    				<button class="sbitx-btn tuning-btn" id="VFO A" type="submit">VFO A</button>
+    				<button class="sbitx-btn tuning-btn" id="VFO B" type="submit">VFO B</button>
+    				<button class="sbitx-btn tuning-btn" id="A=B" type="submit">A=B</button>
+    				<button class="sbitx-btn tuning-btn" id="A<>B" type="submit">A<->B</button>
+						</td><td>
+							<div id="step_wrapper">	STEP
+								<select id="STEP" class="sbitx-selection">
+									<option value="10H">10 Hz</option>
+									<option value="100H">100 Hz</option>
+									<option value="1K">1 KHz</option>
+									<option value="10K">10 KHz</option>
+									<option value="100K">100 KHz</option>
+								</select>
+							</div>
+							<input class="knob" data-width="200" data-height="200" data-displayInput=false 
+								data-cursor=true data-fgColor="#222222" data-thickness=.3 
+							data-step=1 data-max=360 value="0">
+					</table>
+			</span><!-- end of tuning_knob -->
+			<span id="tuning_keypad">
+				<table class="sbitx-keypad"> 
+					<tr> <td id="keypad_editor" colspan="3"> </td> </tr>
+					<tr> <td>1</td><td>2</td><td>3</td></tr>	
+					<tr> <td>4</td><td>5</td><td>6</td> </tr>	
+					<tr> <td>7</td><td>8</td><td>9</td> </tr>	
+					<tr> <td>&#10003;</td><td>0</td><td>&#171;</td></tr>	
+				</table> <!-- end  of the keypad and buttons table -->	
+			</span><!-- end of tuning_keypad span -->
+			<span id="sbitx-rx-controls">
+				<div class="sbitx-control"><span class="slider-label">IF Gain <span class="sbitx-slider" id="IF_reading"></span></span> 
+				<input type="range" class="sbitx-slider" id="IF" max="100" min="0" step="5" value="80" /></div>
+		 		AGC
+				<select class="sbitx-selection" id="AGC">
+					<option value="FAST">FAST</option>
+					<option value="MED">MED</option>
+					<option value="SLOW">SLOW</option>
+					<option class="greyed" value="OFF">OFF</option>
+				</select>
+
+				<div class="sbitx-control">
+						<span class="slider-label">High <span id="HIGH_reading"></span>Hz</span>
+						<input type="range" class="sbitx-slider" id="HIGH" max="4000" min="0" step="50" value="2200" />
+				</div>
+				<div class="sbitx-control">
+						<span class="slider-label">Low <span id="LOW_reading"></span>Hz</span>
+						<input type="range" class="sbitx-slider" id="LOW" max="4000" min="0" step="50" value="200" />
+				</div>
+    		<button class="bw-btn" id="4000" type="submit">4KHz</button>
+    		<button class="bw-btn" id="3000" type="submit">3KHz</button>
+    		<button class="bw-btn" id="2400" type="submit">2.4KHz</button><br/>
+    		<button class="bw-btn" id="1800" type="submit">1.8KHz</button>
+    		<button class="bw-btn" id="1500" type="submit">1.5KHz</button>
+    		<button class="bw-btn" id="1000" type="submit">1KHz</button><br/>
+    		<button class="bw-btn" id="800" type="submit">800Hz</button>
+    		<button class="bw-btn" id="400" type="submit">400Hz</button>
+    		<button class="bw-btn" id="200" type="submit">200Hz</button><br/>
+    		<button class="bw-btn" id="100" type="submit">100Hz</button>
+				<div class="sbitx-control">
+		 			<span class="slider-label">Drive <span id="DRIVE_reading"></span></span> 
+					<input type="range" class="sbitx-slider" id="DRIVE" max="100" min="0" step="1" value="80" />
+				</div>
+			</span><!-- end of rx controls -->
+		</div> <!-- end of tuning_panel -->
+<!-- logger panel -->
+		<div id="log_panel"i class="sbitx-panel">
+			<div class="sbitx-panel-title">
+				<button class="sbitx-btn-back" data-for="panel_bar">&#x2039;</button> Logbook 
+			</div>
+		</div> <!-- end of logging panel -->
+		<input type="text" id="cmd" value="" name="cmd" class="sbitx-text-input" prompt="Enter command/text"/>
+<!-- receiver panel -->
+		<div id="receiver_panel" class="sbitx-panel">
+			<div class="sbitx-panel-title">
+				<button class="sbitx-btn-back" data-for="panel_bar">&#x2039;</button> Receiver 
+			</div>
+		</div><!-- end of receiver panel -->
+<!- wsjtx specific controls -->
+		<div id="FT8_ui" class="sbitx-panel mode-panel">
+			<div id="wsjtx-activity" class="sbitx-list-container" >
+				<ol size="10" class="sbitx-list-box">
+				</ol>
+			</div>
+		</div>
+<!- cw pane -->
+		<div id="CW_ui" class="mode-panel">
+			<div id="data_window">
+			</div>
+			<input type="text" id="text_tx" tabindex="0">
+			</div>
+		</div>
+	</div><!-- end of main used to limit overlapping of topbar -->   
+	</div> <!-- end of sdr_page (vs login page, etc)--> 
+	<div class="keybd">
+		<table id="keybd" class="sbitx-keystroke">
+			<tr>
+			<td>1</td><td>2</td><td>3</td><td>4</td><td>5</td><td>6</td><td>7</td><td>8</td><td>9</td><td>0</td><td>&#8676;</td>
+			</tr>
+			<tr>
+			<td>q</td><td>w</td><td>e</td><td>r</td><td>t</td><td>y</td><td>u</td><td>i</td><td>o</td><td>p</td><td>\</td>
+			</tr>
+			<tr>
+			<td>a</td><td>s</td><td>d</td><td>f</td><td>g</td><td>h</td><td>j</td><td>k</td><td>l</td><td>;</td><td>/</td>
+			</tr>
+			<tr>
+			<td></td><td>z</td><td>x</td><td>c</td><td>v</td><td>b</td><td>n</td><td>m</td><td>,</td><td>.</td><td>?</td>
+			</tr>
+			<tr>
+			<td>&boxminus;</td><td></td><td></td><td colspan="3">&#x23D8;</td><td>,</td><td>?<td>.</td><td colspan=2">&#8617;</td>
+			</tr>
+		</table>
+	</div>
+<!- tx panel -->
+</body>
+
+<script>
+
+var in_tx = false;
+var parser = null;
+var session_id = "nullsession";
+/* a few helper functions */
+function el(element_id){
+	return document.getElementById(element_id);
+}
+
+function log(str){
+	console.log(str);
+}
+/* socket handlers */
+var socket = null;
+
+function on_open(event){
+	log("socket is connected");
+	websocket_send("login="+el("passkey").value);
+}
+
+function on_close(event){
+	log("socket was closed by the radio");
+	end_login("Connection lost");
+}
+
+function on_message(event){
+	response_handler(event.data);
+}
+
+function websocket_send(str){
+	//adds the session id 
+	var request = session_id + "\n" + str;
+	log("ws tx:" + request);
+	socket.send(request);
+}
+
+function on_error(event){
+  log("socket communication error, resetting now");
+  socket.close();
+  socket = null;
+	session_id = "nullsession";
+  show_login();
+}
+
+/* login handler */
+
+function end_login(reason){
+	socket = null;
+	session_id = "nullsession";
+	$("#login_error").innerHTML = reason;
+	show_login();
+}
+
+el("login").onsubmit = function(event) {
+	if (socket != null)
+		socket.close();
+	socket = new WebSocket("ws://" + location.host + "/websocket");
+	socket.onopen = on_open;
+	socket.onmessage = on_message;
+	socket.onclose = on_close;
+	socket.onerror = on_error;
+	return false;
+}
+
+// ui panel switchers
+function show_login(){
+	el("sdr_page").hidden = true;
+	el("login_page").hidden = false;
+}
+
+function show_main(){
+	el("sdr_page").hidden = false;
+	el("login_page").hidden = true;
+	document.documentElement.requestFullscreen();
+}
+
+function toggle_fullscreen(){
+	if (document.fullscreenElement != null){
+		if (document.exitFullscreen)
+			document.exitFullscreen();
+		else
+			document.documentElement.exitFullscreen();
+	}
+	else 
+		document.documentElement.requestFullscreen();
+}
+
+function freq2str(freq){
+	return freq.substring(0,freq.length - 6) + '.' 
+			+ freq.substring(freq.length-6, freq.length - 3) 
+			+ '.' + freq.substring(freq.length-3);		
+}
+
+
+function draw_meters(event){
+//	var w = el("meters");
+//	var ctx = w.getContext("2d");
+	
+//	ctx.fillStyle = "#880";
+//	ctx.fillRect(0,0, w.width, w.height);
+	el("POWER_meter").value = el("POWER").value;
+	el("REF_meter").value = el("REF").value;
+}
+
+
+function update_freq(freq){
+	websocket_send("freq "+freq);
+}
+
+/* All tuning related functions including the soft-kob, drawing the dial etc. */
+
+// this is called when the dial is clicked
+function show_tuning_panel(){
+	open_panel("tuning_panel");
+}
+
+//draw_dial is called after setting FREQ to the current freq
+function draw_dial(){
+	var freq = el("FREQ").value;
+	var split = el("SPLIT").value;
+	var rit   = el("RIT").value;
+	var vfo_a = el("VFOA").value;
+	var vfo_b = el("VFOB").value;
+	var vfo   = el("VFO").value; //which one is used?
+	var rit_delta = el("RIT_DELTA").value;
+
+	if (rit == "ON"){
+		if (in_tx == 1){
+			el("current_freq").innerHTML = "TX&nbsp;" + freq2str(freq);
+			el("other_freq").innerHTML = 
+				"RX&nbsp;" + freq2str((parseInt(freq)+ parseInt(rit_delta)).toString()); 
+		}
+		else {
+			el("current_freq").innerHTML = 
+				"RX&nbsp;" + freq2str((parseInt(freq) + parseInt(rit_delta)).toString());
+			el("other_freq").innerHTML = "TX&nbsp;" + freq2str(freq); 
+		}
+	}
+	else if (split == "ON") {
+		if (in_tx == 0){
+			el("current_freq").innerHTML =  "RX&nbsp;" + freq2str(freq);
+			el("other_freq").innerHTML =  "TX&nbsp;" + freq2str(vfo_b);
+		}
+		else {
+			el("current_freq").innerHTML = "TX&nbsp;" + freq2str(vfo_b);
+			el("other_freq").innerHTML = "RX&nbsp;" + freq2str(freq);
+			
+		}
+	}
+	else if (vfo == 'A'){
+			if (!in_tx){
+				el("current_freq").innerHTML = "A&nbsp;" + freq2str(freq);
+				el("other_freq").innerHTML =  "B&nbsp;" + freq2str(vfo_b);
+			} else {
+				el("current_freq").innerHTML = "TX&nbsp;" + freq2str(vfo_a);
+				el("other_freq").innerHTML = "B&nbsp;" + freq2str(freq);
+			}
+	}
+	else if (vfo == 'B'){
+			if (!in_tx){
+				el("current_freq").innerHTML = "B&nbsp;" + freq2str(freq);
+				el("other_freq").innerHTML = "A&nbsp;" + freq2str(vfo_a);
+			} else {
+				el("current_freq").innerHTML =  "TX&nbsp;" + freq2str(freq);
+				el("other_freq").innerHTML = "A&nbsp;" + freq2str(vfo_a);
+			}
+	}	
+}
+
+function sbitx_keypad_clicked(event){
+	var f = el("keypad_editor").innerHTML;
+	var key = event.currentTarget.innerHTML;
+	if (key == "\u00AB" && f.length > 0)
+		f = f.substr(0, f.length-1);
+	else if (key == "\u2713"){
+		var f_int = parseInt(f);
+		if (f_int < 50000)
+			f_int *= 1000;
+		if (30000000 > f_int && f_int > 500000){
+			update_freq(f_int);
+			el("keypad_editor").innerHTML = "";
+			open_panel("");	
+
+			return;
+		}
+		log("setting the freq keypad");
+	}
+	else{
+		f = f + key;
+	}
+	el("keypad_editor").innerHTML = f;
+}
+
+
+/*
+	TUNING PANEL
+	This handles all frequency changing related functionality
+	like RIT, SPLIT, etc.
+*/
+
+let tuning_position_last = 0;
+var knob_resolution = 6;
+
+function tuning_panel_open(){
+	log("intializing the tuning panel");
+	//resize the waterfall and the spectrum, both need to be visible when tuning
+	var waterfall = el("waterfall");
+	var spectrum = el("spectrum");
+	spectrum.height = 50;
+	waterfall.height = 50;
+		
+}
+
+function tuning_panel_close(){
+}
+
+function tuning_knob_handler(position_now){
+	//avoid small movements
+	if (Math.abs(position_now - tuning_position_last) < knob_resolution)
+		return;
+
+	//calculate the relative movement of the dial knob
+	var delta = 0;
+	//we reduce the granulity of the step 
+	if (position_now < 90 && tuning_position_last > 270)
+		delta = position_now + 360.0 - tuning_position_last;
+	else if (position_now > 270 && tuning_position_last < 90)
+		delta =  tuning_position_last + 360 - position_now;
+	else
+		delta = position_now - tuning_position_last;
+
+	tuning_position_last = position_now;
+	
+	//reduce the precision of delta
+	delta = Math.round(delta / knob_resolution);
+	//tuning up or down by the step value		
+	var step_text = el("STEP").value;
+	var step_size = 1000;
+	switch(step_text){
+		case "10H": step_size = 10; break;
+		case "100H": step_size = 100; break;
+		case "1K": step_size = 1000; break;
+		case "10K": step_size = 10000; break;
+		case "100K": step_size = 100000; break;
+	}
+	f = el('FREQ');
+	var freq = parseInt(f.value);
+	freq = Math.round(freq/step_size) * step_size;
+	if (delta > 0)
+		delta = step_size;
+	else
+		delta = -step_size;
+	f.value = freq + delta;
+	update_freq(f.value);	
+}
+
+//initialization code
+
+//link the knob to the jquery code
+$(function($) {
+	$(".knob").knob({
+  	change : function (value) {
+		tuning_knob_handler(value);
+	},
+	release : function (value) {
+  	//console.log(this.$.attr('value'));
+    //console.log("release : " + value);
+ 	},
+	cancel : function () {
+		//console.log("cancel : ", this);
+	},
+  draw : function () {
+  }
+  });
+});
+
+
+
+/* waterfall and spectrum */
+
+
+function resize_ui(){
+	var b = $("body");
+	el("waterfall").width = b.width();
+	el("spectrum").width = b.width();
+}
+
+var waterfall_image = null;
+
+function waterfall_init(){
+	var w = el("waterfall");
+	var ctx = w.getContext("2d");
+	var waterfall_image = ctx.createImageData(w.width,w.height);
+	i = 0;
+	for (var y = 0; y < w.height; y++){
+		for (var x = 0; x < w.width; x++){
+			waterfall_image.data[i++] = (256 * y)/ w.height;
+			waterfall_image.data[i++] = (256 * x)/ w.width;
+			waterfall_image.data[i++] = 0;
+			waterfall_image.data[i++] = 255;
+		}
+	}
+	ctx.putImageData(waterfall_image, 0, 0);
+}
+
+var nbins = 0;
+
+function spectrum_update(update){
+	var w = el("spectrum");
+	var ctx = w.getContext("2d");
+	nbins = update.length - 3; //the first three characters are the  status
+ 	var scale = w.width/nbins;
+	var height = w.height - 15;
+
+	ctx.fillStyle = "black";
+	ctx.fillRect(0,0,w.width, w.height);
+
+	//draw the filter block
+	var low = el("LOW").value;
+	var high = el("HIGH").value;
+	var mode = el("MODE").value
+	var calculated_span = nbins * 46.875; //this comes from the sampling rate of the sdr
+	var hz_per_pixel = w.width / calculated_span;
+	
+	ctx.fillStyle="#666";
+	if (mode == 'LSB' || mode == 'CWR'){
+		ctx.fillRect(w.width/2 - (hz_per_pixel * high), 0, 
+			(high-low) * hz_per_pixel, height);
+	}
+	else { 
+		ctx.fillRect(w.width/2 + (hz_per_pixel * low), 0, 
+			(high-low) * hz_per_pixel, height);
+	}
+
+	//draw the grid
+	ctx.beginPath();
+	for (var x = 0; x < 10; x++){
+		ctx.moveTo(w.width*x/10, 0);
+		ctx.lineTo(w.width*x/10, height);
+	}
+	for (var x = 0; x < 8; x++){
+		ctx.moveTo(0, height*x/8);
+		ctx.lineTo(w.width, x* height/8);
+	}
+	ctx.closePath();
+	ctx.strokeStyle = "#333";
+	ctx.stroke();
+
+	//plot the spectrum
+	ctx.beginPath();
+	ctx.moveTo(w.width, height - (update.charCodeAt(0) - 32));
+	//we index the charcodes at an ofset of 3 (the first three are status)
+	for (var x = 0; x < nbins; x++)
+		ctx.lineTo((nbins - x - 1) * scale, height - (update.charCodeAt(x+3) - 32));
+	ctx.strokeStyle = "#ffff00";
+	ctx.stroke();	
+	
+	//write the spectrum edges
+	ctx.fillStyle="cyan";
+	
+
+	//now, draw the tx and rx lines
+	var rx_pitch = el("PITCH").value;
+	var tx_pitch = el("TX_PITCH").value;
+
+	ctx.beginPath();
+	ctx.font = "12px Sans";
+	ctx.strokeStyle = "#00f";
+	ctx.fillStyle = "cyan";
+	if (mode == 'CWR' || mode == 'LSB'){
+		ctx.moveTo(w.width/2 - (rx_pitch * hz_per_pixel), 0);
+		ctx.lineTo(w.width/2 - (rx_pitch * hz_per_pixel), height);
+		ctx.fillText("RX", w.width/2 - (rx_pitch * hz_per_pixel)-10, height+12);
+	}
+	else{
+		ctx.moveTo(w.width/2 + (rx_pitch * hz_per_pixel), 0);
+		ctx.lineTo(w.width/2 + (rx_pitch * hz_per_pixel), height);
+		ctx.fillText("RX", w.width/2 + (rx_pitch * hz_per_pixel)-10, height+12);
+	}
+	ctx.stroke();
+
+	ctx.beginPath();
+	ctx.strokeStyle = "#f00";
+	ctx.fillStyle = "cyan";
+
+	if (mode == 'CWR' || mode == 'LSB'){
+		ctx.moveTo(w.width/2 - (tx_pitch * hz_per_pixel), 0);
+		ctx.lineTo(w.width/2 - (tx_pitch * hz_per_pixel), height);
+		ctx.fillText("TX", w.width/2 - (tx_pitch * hz_per_pixel)-10, height+12);
+	}
+	else{
+		ctx.moveTo(w.width/2 + (tx_pitch * hz_per_pixel), 0);
+		ctx.lineTo(w.width/2 + (tx_pitch * hz_per_pixel), height);
+		ctx.fillText("TX", w.width/2 + (tx_pitch * hz_per_pixel)-10, height+12);
+	}
+	ctx.stroke();
+}
+
+function waterfall_update(update){
+	var w = el("waterfall");
+	var ctx = w.getContext("2d", {willReadFrequently:true});
+
+	//first move the old image down by 1 pixels (bitblt it down)
+	var img = ctx.getImageData(0,0,w.width, w.height);
+	ctx.putImageData(img, 0, 3);
+	
+	var i = 0;
+	nbins = update.length - 3;
+	var scale = nbins/w.width;
+
+	//create a new strip of waterfall width, but 1 pixels high
+	img = ctx.getImageData(0,0,w.width, 1);
+	var i = 0;
+	for (var x = 0; x < w.width; x++){
+		var bin = (w.width - x) * scale;
+		
+		//the first three are status	
+		var v = (update.charCodeAt(bin+3) - 32) * 2;
+		if (v > 100)
+			v = 100;
+		var r, g, b;
+		if (v < 20){
+			r = 0;
+			g = 0;
+			b = v * 12;
+		}
+		else if (v < 40){
+			r = 0;
+			g = (v - 20) * 12;
+			b = 255;
+		}
+		else if (v < 60){
+			r =  0;
+			g = 255;
+			b = (60-v) * 12;
+		}
+		else if (v < 80){
+			r = (v-60) * 12;
+			g = 255;
+			b = 0;
+		} 
+		else {
+			r = 255;
+			g = (100-v) * 12;
+			b = 0;
+		}
+		img.data[i++] = r;
+		img.data[i++] = g;
+		img.data[i++] = b; 
+		img.data[i++] = 255;	
+	}
+	ctx.putImageData(img, 0,0);
+	ctx.putImageData(img, 0,1);
+	ctx.putImageData(img, 0,2);
+
+}
+
+/* Filter Panel */
+
+function receiver_panel_open(){
+	log("intializing the receiver panel");
+	//resize the waterfall and the spectrum, both need to be visible when tuning
+	var waterfall = el("waterfall");
+	var spectrum = el("spectrum");
+	spectrum.height = 50;
+	waterfall.height = 50;
+		
+}
+
+function show_receiver_panel(){
+	open_panel("receiver_panel");
+}
+
+function filter_set(event){
+	var id =parseInt(event.currentTarget.id);
+	var center = parseInt(el("PITCH").value);
+	var mode = el("MODE").value;
+	var low = 300;
+	var high = 3000;
+
+	if (mode == "FT8" || mode == "FT4" || mode == "DIGITAL"){
+		low = 0;
+		high = id;
+	}
+	else if (mode == "LSB" || mode =="USB"){
+		low = 300;
+		high = low + id; 
+	} else {
+		if (center - (id/2) < 0)
+			low = 0;
+		else
+			low = center -(id/2);
+		high = low + id;
+	}
+
+	log("setting filter from " + low + " to " + high);	
+	websocket_send("LOW " + low); 
+	websocket_send("HIGH " + high);
+}
+
+/* audio stuff (this needs to work with webrtc data packets rather than websockets */
+//setup the audio
+var player = null;
+
+function audio_start(){
+	player = new PCMPlayer({
+		encoding: '16bitInt',
+		channels: 1,
+		sampleRate: 48000,
+		flushingTime: 200
+   });
+}
+
+var phase = 0;
+function audio_beep_more(){
+	if (player == null)
+		return;
+
+	log("Adding more noise");
+	var noise = new Float32Array(1600);
+	for (var i = 0; i < noise.length; i++){
+		//noise[i] = Math.random() * 2 - 1;
+		noise[i] = Math.sin(phase);
+		phase += Math.PI / 6;
+	}
+	player.feed(noise);
+}
+
+function move_caret(elem, caretPos) {
+
+    if(elem != null) {
+        if(elem.createTextRange) {
+            var range = elem.createTextRange();
+            range.move('character', caretPos);
+            range.select();
+        }
+        else {
+            if(elem.selectionStart) {
+                elem.focus();
+                elem.setSelectionRange(caretPos, caretPos);
+            }
+            else
+                elem.focus();
+        }
+    }
+}
+
+//user interaction handlers
+
+function open_panel(panel){
+//	$(".sbitx-panel").hide();
+	var active_panel = $("#"+panel);
+	if (active_panel == undefined)
+		return;
+	$("#"+panel).show();
+	if (window[panel+"_open"] == undefined)
+		return;
+	window[panel + "_open"]();
+}
+
+function close_panel(event){
+	//extract the panel name from the parent
+	var panel = event.currentTarget.parentElement;
+	panel.style.display = "none";
+	if (window[panel.id +"_close"] == undefined)
+		return;
+	window[panel.id +  "_close"]();
+}
+
+function sbitx_button_clicked(event){
+	websocket_send(event.currentTarget.id);
+}
+
+var text_focus = null;
+
+function sbitx_text_focus(event){
+	text_focus = event.currentTarget;
+}
+
+function sbitx_onscreen_key(event){
+	event.stopImmediatePropagation();
+	var key = event.currentTarget.innerHTML;
+	
+	if (text_focus  == null)
+		return;
+
+	var caret = text_focus.selectionStart;
+	var string = text_focus.value;
+	if (key == '\u21E4'){
+		text_focus.value = string.substring(0,caret-1) + string.substring(caret);
+		move_caret(text_focus, caret-1);
+	}
+	else if (key == '\u23D8'){
+		text_focus.value = string.substring(0, caret) + ' ' + string.substring(caret);
+		move_caret(text_focus, caret+1);
+	}else {
+		if (key == '\u21A9')
+			key = '\n';
+		text_focus.value = string.substring(0, caret) + key + string.substring(caret);
+		move_caret(text_focus, caret+1);
+	}
+}
+
+function sbitx_selection_changed(event){
+	var e = event.currentTarget;
+	var id_reading = e.id + "_reading";
+	websocket_send(e.id + " " + e.value);
+}
+
+function sbitx_slider_update(e){
+
+	//the HIGH and LOW cannot cross each other
+
+	var id_reading = e.id + "_reading";
+	if (el(id_reading)){
+		if (el(id_reading).innerHTML != e.value)
+			el(id_reading).innerHTML= e.value; 
+	}
+}
+
+function sbitx_slider_changed(event){
+	var e = event.currentTarget;
+	log("slider " + e.id+ " changing to " + e.value);
+	if (e.id == "HIGH"){
+		var low = el("LOW");
+		if (parseInt(low.value) > parseInt(e.value)+200){
+			if (parseInt(e.value) > 400)
+				low.value = parseInt(e.value) - 200;
+			else
+				low.value = e.value;
+			websocket_send("LOW " + low.value);
+		}
+	}
+	if (e.id == "LOW"){
+		var high = el("HIGH");
+		if (parseInt(high.value) < parseInt(e.value)){
+			if (parseInt(e.value) < 3800)
+				high.value = parseInt(e.value) + 200;
+			else
+				high.value = e.value; 
+			websocket_send("HIGH" + high.value);
+		}
+	}
+			
+	websocket_send(e.id + " " + e.value);
+	sbitx_slider_update(e);
+}
+
+function sbitx_toggle_clicked(e){
+
+	var btn = event.currentTarget;
+	if (!btn.classList.contains('sbitx-toggle'))
+		return;
+	var cmd = btn.id.substring('toggle_'.length);
+	if (el(cmd).value == "OFF")
+		websocket_send(cmd +  " ON");
+	else
+		websocket_send(cmd +  " OFF");
+}
+
+function sbitx_toggle_update(e){
+
+	var button = el('toggle_' + e.id);
+	if (button){
+		if (e.value == 'ON'){
+			button.innerHTML = e.id + " ON";
+			button.style.backgroundColor = "yellow";
+		}
+		else{
+			button.innerHTML = e.id + " OFF";
+			button.style.backgroundColor = "black";
+		}
+	}
+	log("toggle updated");
+}
+
+function sbitx_list_select(event){
+	var message = event.currentTarget.innerHTML;	
+	
+	event.currentTarget.classList.add("wsjtx-selected-message");
+	log(message);
+}
+
+function list_append(list_id, text, class_name){
+
+	var item = document.createElement("li");
+	item.innerHTML = text;
+	item.className =  "sbitx-list-item";
+	if (class_name.length)
+		item.className = " " + class_name; 
+	item.onclick = sbitx_list_select;
+	el(list_id).children[0].appendChild(item);
+	item.scrollIntoView();
+}
+
+
+function switch_to_tx(){
+	el("tx_rx").innerHTML = "TX";
+	log("setting in_tx true");
+	$("#meters").show();
+	in_tx = true;
+}
+
+function switch_to_rx(){
+	el("tx_rx").innerHTML = "RX";
+	$("#meters").hide();
+	log("setting in_tx false");
+	in_tx = false;
+}
+
+/* wsjtx functionality */
+
+/ * setup the html for wsjtx */
+function FT8_open(){
+	el("FT8_ui").style.display = "block";
+	el("keybd").style.display = "none";
+	el("waterfall").style.display = "none";
+	el("spectrum").height = 50;
+}
+
+
+function FT8_update(text){
+	if (text.search(" CQ ") != -1)
+		list_append("wsjtx-activity", text, "wsjtx-cq-in-message");
+	else if (text.search(el("MYCALLSIGN").value) != -1)
+		list_append("wsjtx-activity", text, "wsjtx-mycallsign");
+	else 
+		list_append("wsjtx-activity", text, "");
+}
+
+/* cw functionality */
+
+function cw_open(){
+	if (document.location.hostname == "127.0.0.1")
+		el("keybd").style.display = "block";
+	el("waterfall").style.display = "block";
+	el("spectrum").style.display = "block";
+	el("spectrum").height =  100;
+	el("waterfall").height = 100;
+	text_focus = el("text_tx");
+}
+
+//the keystrokes, as they transfer to the sdr backend
+//are color coded into different colored spans
+
+function cw_keydown(event){
+	//translate backspace
+	var c = event.key;
+	if (c == "Shift" || c == "Alt")
+		return;
+	websocket_send("key " + event.key);
+}
+
+function cw_transmit(){
+	var text = $("#text_tx").val();
+	if (text.length == 0)
+		return;
+	for (var i = 0; i < text.length; i++)
+		websocket_send("key " + text.charAt(i));
+	$("#text_tx").val("");
+}
+
+function cw_update(text, kindof){
+	el("data_window").innerHTML = el("data_window").innerHTML
+		+ '<span class="' + kindof + '">' + text + "</span>";
+}
+
+/* switching the ui for different modes */
+
+// response from the sdr 
+
+function update_data(text){
+	//log("data in : " + text);
+	var xml = parser.parseFromString("<updates>" + text + "</updates>", "text/xml");
+	if (xml != null){
+		var wsjtx = xml.getElementsByTagName("WSJTX-RX");
+		if (wsjtx)
+			for (var i = 0; i < wsjtx.length; i++)
+				FT8_update(wsjtx[i].innerHTML);
+
+		var data = xml.getElementsByTagName("FLDIGI-RX");
+		if (data && in_tx == false)
+			for (var i = 0; i < data.length; i++)
+				cw_update(data[i].innerHTML, "data_rx");
+
+		var data = xml.getElementsByTagName("CW-TX");
+		if (data)
+			for (var i = 0; i < data.length; i++)
+				cw_update(data[i].innerHTML, "data_tx");
+	}
+	else
+		el("log").insertAdjacentHTML("beforeend", text);
+}
+
+function ui_tick(){
+	if (socket == null)
+		return;
+	if (socket.readyState != 1)
+		return;
+	if (session_id ==  'nullsesssion')
+		return;
+
+	var mode = $("#MODE").val();
+	switch(mode){
+		case "CW":
+		case "CWR":
+		case "PSK31":
+		case "RTTY":
+			cw_transmit();
+	}
+
+	if (player != null)
+		websocket_send("audio");
+	else
+		websocket_send("spectrum");
+}
+
+function mode_set(new_mode){
+	$(".mode-panel").hide();
+	switch(new_mode){
+		case 'CW':
+		case 'CWR':
+		case 'RTTY':
+		case 'PSK31':
+			cw_open();
+			$("#CW_ui").show();
+		break;
+		case 'FT8':
+			FT8_open();
+			$("#FT8_ui").show();
+			break;
+		default:
+			var panel_name = "#" + new_mode + "_ui";
+			var active_panel = $(panel_name);
+			if (active_panel.length > 0)
+				$(panel_name).show();
+					return;
+	}
+//	if (window[new_mode+"_open"] == undefined)
+//		return;
+//	window[new_mode + "_open"]();
+}
+
+function mode_changed(event){
+	mode_set(event.currentTarget.value);
+}
+
+//audio interpolation variables
+var prev_sample = 0;
+var intp_factor = 3;
+function response_handler(response){
+	var cmd = "";
+	var args = "";
+
+	if (response instanceof Blob){
+		f = new FileReader();
+		f.onload = () => {
+			if (player != null){
+				var samples = new Int16Array(f.result);
+				var upsample =  new Int16Array(samples.length * intp_factor);
+				var j = 0;	
+				//interpolate, generating higher sampling rate
+				for (var i = 0; i < samples.length; i++)
+					for (var x = 0; x < intp_factor; x++){
+						upsample[j++] = ((prev_sample * (intp_factor- x- 1)) 
+							+ (samples[i] * (x + 1)))/intp_factor; 
+						prev_sample = samples[i];
+					}
+				player.feed(upsample);
+			}
+		}
+		f.readAsArrayBuffer(response);
+		return;
+	}
+
+	if (response.substring(0,3) == "TX " || response.substring(0,3) == "RX "){
+
+		if (response.substring(0,2) == "TX" && in_tx == false)
+			switch_to_tx();
+		else if (response.substring(0,2) == "RX" && in_tx == true)
+			switch_to_rx();
+
+		spectrum_update(response);
+		waterfall_update(response);
+		return;
+	}
+
+	var i = response.indexOf(' ');	
+	if (i >= 0){
+		cmd = response.substring(0, i);
+		args = response.substring(i+1);
+	}
+	else
+		return;
+
+	switch(cmd){
+		case 'quit':
+			log("Received a quit message");
+			session_id = "nullsession";
+			socket.close();
+			end_login("Logged in from a another device");
+			break;
+		case 'login':
+			if (args !=  'error'){
+				session_id = args;
+				show_main();
+			}
+			break;
+		case 'text':
+			el("text_tx").innerHTML = args;
+			break;
+		case 'CONSOLE':
+			update_data(args);
+			break;
+		case 'Spectrum':
+		case 'Waterfall':
+		case '00:00:00':
+		case '#status':
+			break;
+		case 'FREQ':
+			e = el(cmd);
+			log("freq " + args);
+			if (e)
+				e.value = args;
+			//update the selected VFO
+			if (el("VFO").value  == 'A')
+				el("VFOA").value = args;
+			else
+				el("VFOB").value = args;
+			draw_dial();
+			break;
+		case 'MODE':
+			mode_set(args); // ... and let it fall to the default, break
+		default:
+			e = el(cmd);
+			if (e){
+//				log("starting to process " + cmd);
+				if (e.value != args){
+					e.value = args;
+//					log("changing from " + e.value + " to " + args);
+					if (e.classList.contains('sbitx-slider'))
+						sbitx_slider_update(e);
+					else if(e.classList.contains('sbitx-update-toggle'))
+						sbitx_toggle_update(e);
+				}
+//				log("setting " + cmd + " : " + args);
+			}
+			if (cmd == 'REF'){
+				draw_meters();
+//				log("meter : " + el("POWER").value + "," + el("REF").value);
+			}
+	}
+}
+
+parser = new DOMParser();
+show_login();
+waterfall_init();
+setInterval(ui_tick, 50);
+
+//el("waterfall").width = window.innerWidth-2;
+//el("spectrum").width = window.innerWidth-2;
+
+//init the event handlers
+window.addEventListener("resize", resize_ui);
+$(".sbitx-btn").on("click", sbitx_button_clicked);
+$(".sbitx-selection").on("change", sbitx_selection_changed);	
+$(".sbitx-slider").on("input", sbitx_slider_changed);
+$(".sbitx-toggle").on("click", sbitx_toggle_clicked);
+$(".sbitx-list-item").on("click", sbitx_list_select);
+$(".sbitx-keystroke td").on("click", sbitx_onscreen_key);
+$(".sbitx-keypad td").on("click", sbitx_keypad_clicked);
+$(".sbitx-panel-title").on("click", close_panel);
+$(".bw-btn").on("click", filter_set);
+
+
+//specific control handler
+$("#REF").on("change", draw_meters);
+$("#dial").on("click", show_tuning_panel);
+$("#receiver").on("click", show_receiver_panel);
+$("#MODE").on("change", mode_changed);
+
+//init the state of the ui
+$(".sbitx-text-input").on("focus", sbitx_text_focus);
+//if (document.location.hostname != "127.0.0.1")
+//	$("#keybd").hide();
+//$("#text_tx").on("keydown", cw_keydown); //we are handling it in the ui_tick poll
+$("#tx_rx").hide();
+$(".sbitx-panel").hide();
+$("#extra-controls").hide(); //do something about these
+//window.addEventListener("contextmenu", function(e) { e.preventDefault(); }); //uncomment in production
+
+</script>
+</html>

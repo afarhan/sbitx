@@ -1,0 +1,841 @@
+body {
+	overflow-x: hidden;
+}
+
+#sdr_page:after {
+	content:"";
+	display: table;
+	clear: both;
+}
+/* some generic classes */
+.slider-label {
+	display: inline-block;
+	width: 50px;
+	text-align: right:
+	font-weight: bold;
+}
+
+.sbitx-slider {
+	width: 100px;
+}
+
+.slider-reading {
+	display: inline-block;
+	text-align: right;
+	width: 50px;
+}
+
+.sbitx-selection {
+	border: none;
+	font-size: 12pt;
+}
+
+.sbitx-selection option {
+	font-size: 13pt;
+}
+
+select, select option, input {
+	background: black;
+	color: #fff;
+}
+
+.sbitx-text-input {
+	height: 30px;
+	font-size: 12pt;
+}
+
+/* topbar (actually to the left right now) */
+
+#topbar {
+	float: left;
+	width: 200px;
+	background-color: black;
+/*	height: 4000px; */
+}
+
+#restore-btn {
+	float: right;
+	display: inline-block;
+	background-color: #444;
+	font-size: 20pt;
+	position: fixed;
+	top: 0px;
+	right: 0px;
+	padding-left: 5px;
+	padding-right: 5px;
+	text-align: center;
+	color: white;
+	margin: 2px;
+	border-radius: 5px;	
+/*	line-height: 45px; */
+/*	border: 1px solid white; */
+	z-index: 99;
+}
+
+
+
+#vfo-btn {
+}
+
+.menu-item {
+	display: block;
+	width: 200px;
+	border-collapse: collapse;
+	padding: 0;
+	margin-top: 20px;
+	margin-bottom:10px;
+	margin-left: 5px;
+	vertical-align: top;
+	text-align: left;
+}
+
+#tx_meters {
+	padding-top: 4px;
+	padding-bottom: 4px;
+	background-color: black;
+}
+
+#tuning_knob {
+	display: inline-block;
+	width: 350px;
+	text-align: center;
+}
+
+#dial {
+	margin: 7px;
+	padding: 4px;
+	border-radius: 10px;
+	background-color: #3dacbf;
+	width: 180px;
+}
+
+#freq_status {
+	background-color: yellow;
+	color: black;
+}
+
+#current_freq{
+	font-size: 18pt;
+	font-weight: bold;
+	color: black;
+}
+
+#other_freq {
+	color: black;
+}
+
+.dial_details {
+	background-color: black;
+	color: white;
+	border-radius: 5px;
+	font-size: 9pt;
+	padding-left: 5px;
+	padding-right: 5px;
+	display: inline-block;
+	width: 72px;
+	text-algin: left;
+}
+
+#tx_drive_reading {
+	color: white;
+	background-color: red;
+}
+
+/* end of dial styling */
+
+#step-wrapper {
+	margin-top: 0px;
+	margin-bottom: 0;
+	width: 100%;
+	text-align: left;
+}
+
+.topbar-btn {
+	width: 130px;
+	height: 30px;
+	border: none;
+	background-color: #193366;
+	color: white;
+	margin: 5px;
+	border-radius: 10px;
+	display: block;
+	border: none;
+	font-size: 12pt;
+	text-align: left;
+}
+
+.topbar-btn:after{
+	content: '\00bb'; 
+	text-align: right;
+	float: right;	
+}
+
+#current_freq:after{
+	content: '\00bb'; 
+	text-align: right;
+	float: right;	
+}
+
+
+/* logger panel */ 
+
+#logger_panel {
+	border: none;
+	background-color: #222;
+	padding-top: 0px;
+	padding-bottom: 0px;
+//	padding-left: 10px;
+}
+
+.logger-input {
+	border-collapse: collapse;
+	border: 1px solid white;
+	height: 20pt;
+	text-transform:uppercase;
+}
+
+#logger-log {
+	background-color: green;
+	color: white;
+}
+
+.logger-button {
+	height: 30px;
+	border-collapse: collapse;
+	border: none;
+	background-color: #1a75ff;
+	color: white;
+	margin: 5px;
+	border-radius: 10px;
+}
+
+.macro-button {
+	height: 45px;
+	width: 100px;
+	border-collapse: collapse;
+	border: 1px solid #888;
+	background-color: black;
+	color: white;
+	margin: 2px;
+	border-radius: 10px;
+}
+
+#logger-callsign {
+	margin-left: 6px;
+}
+
+#macros:after {
+	content: '\2304'; 
+	text-align: right;
+	float: right;	
+}
+
+#logbook-open:after{
+	content: '\2304'; 
+	text-align: right;
+	float: right;	
+}
+
+/* CW panel: used for RTT/PSK31/CW/CWR */
+
+#CW_ui {
+	border: none;
+}
+
+#cw_settings {
+	padding: 5px;
+	background-color: #222;
+}
+
+#data_window {
+	width: 100%;
+	height: 40px;
+	color: yellow;
+	text-align: left;
+	font-size: 12pt;
+	overflow: auto;
+}
+
+.data_rx{
+	color: white;
+	font-weight: bold;
+}
+
+.data_tx {
+	color: orange;
+	font-weight: bold;
+}
+
+#WPM {
+	width: 100px;
+}
+
+#PITCH {
+	width: 100px;
+}
+
+#CW_DELAY {
+	width: 100px;
+}
+
+#data_chat_tx {
+	width: 150px;
+	height: 30px;
+	padding-right: 20px;
+	background-color: red;
+	color: white;
+}
+
+#data_chat_rx {
+	width: 150px;
+	height: 30px;
+	padding-left: 20px;
+	background-color: blue;
+	color: white;
+}
+
+/* Voice panel */
+#Voice_ui {
+	text-align: center;
+	padding-bottom: 10px;
+	border: none;
+	background-color: black;
+}
+
+#ptt_tx {
+	width: 150px;
+	height: 60px;
+	padding-right: 20px;
+	background-color: red;
+	color: white;
+}
+
+#ptt_rx {
+	width: 150px;
+	height: 60px;
+	padding-left: 20px;
+	background-color: blue;
+	color: white;
+}
+
+/* logbook */
+#logbook_panel {
+	border: 0;
+	background-color: black;
+}
+
+#logbook_panel table {
+	width: 100%;
+	border-collapse: collapse;
+	border: 1px solid white;
+}
+
+#logbook_table thead tr {
+	display: block;
+	font-size: 11pt;
+	color:white; 
+	text-align: right;
+}
+
+#logbook_table tbody {
+	display: block;
+	height: 300px;
+	width: 100%;
+	overflow: auto;
+}
+
+#logbook-toobar {
+	margin-top: 5px;
+	margin-bottom: 5px;
+}
+
+.logbook-id {
+	width: 50px;
+	font-size: 9pt;
+	color: #444;
+}
+
+.logbook-datestamp {
+	width: 100px;
+	font-size: 9pt;
+	color: #888; 
+}
+
+.logbook-field {
+	font-size: 10pt;
+	width: 80px;
+	color: white;
+	text-transform:uppercase;
+	text-align: right;
+}
+
+#logbook-search {
+	text-transform:uppercase;
+}
+
+/* recorder panel */
+#recorder_panel {
+}
+
+.recorder-btn {
+	height: 40px;
+	width: 75px;
+	border-collapse: collapse;
+	border: 1px solid #888;
+	background-color: black;
+	color: white;
+	margin: 2px;
+}
+
+#record_start {
+	color: white;
+	background-color: red;
+	width: 60px;
+	font-weight: bold;
+}
+
+#record_stop {
+	background-color: white;
+	color: black;	
+	width: 60px;
+	font-weight: bold;
+}
+
+/* console panel */
+
+#console_window{
+	width: 100%;
+	height: 200px;
+	white-space: pre-wrap;
+	overflow: auto;
+	font-family: monospace;
+	color: green; 
+	border: solid 1px green;
+	padding-bottom: 3px;
+	background-color: black;
+	text-align: left;
+	vertical-align: top;
+}	
+
+#command_bar {
+	width: 100%;
+}
+
+#text_in {
+	width: 95%;
+	border: solid 1px white;
+}
+
+/* telnet */
+
+#telnet_window{
+	width: 100%;
+	height: 200px;
+	white-space: pre-wrap;
+	overflow: auto;
+	font-family: monospace;
+	font-size: 8pt;
+	color: green; 
+	border: none;
+	padding-bottom: 3px;
+	background-color: black;
+	text-align: left;
+	vertical-align: top;
+}	
+
+#telnet_command_bar {
+	width: 95%;
+	border: solid 1px white;
+	margin:3px;
+}
+
+#telnet_in {
+	width: 100%;
+	border: white;
+}
+
+#telnet {
+}
+
+#tclose {
+}
+/* settings panel */
+
+#settings_panel {
+	padding-bottom: 10px;
+}
+
+.settings-element {
+	margin: 8px;
+}
+
+.settings-label {
+	display: inline-block;
+	width: 150px;
+	text-align: right;
+}
+
+.settings_input {
+	text-transform:uppercase;
+}
+
+
+/* style the  keyboard */
+
+#keybd {
+	z-index: 1;
+	opacity: 1;
+	background-color: black;
+}
+
+#keybd  td {
+	width: 45px;
+	width: 9%;
+	margin: 2px;
+	padding: 2px;
+	height: 40px;
+	text-align: center;
+	border-collapse: collapse;
+	border: 3px solid black;
+	border: none;
+	border-radius: 15px;
+	background-color: #444;
+	opacity: 1.0;
+	font-size: 18pt;
+	font-weight: bold;
+}
+
+#keybd-container{ 
+ 	opacity: 1;
+}
+
+.keybd td {
+}
+/* login pane */
+
+#login_error {
+	background-color: yellow;
+	color: black;
+}
+
+
+#rit_delta {
+	width: 50px;
+}
+
+
+
+#sbitx-keypad td {
+	width: 70px;
+	height: 50px;
+	border: 1px solid white;
+	text-align: center;
+	valign: cente;
+}
+
+
+
+
+/* https://coderwall.com/p/5m0srg/beware-of-inline-block */
+#main {
+	margin-left: 200px;
+	vertical-align: top;
+	zindex = -1; // this is to allow the restore button to show through
+}
+
+#filter_details {
+	color: #fff;
+	background: black;
+	font-size: 11pt;
+}
+
+#AUDIO {
+	width: 100px;
+}
+.keybd  table {
+	border-collapse: collapse;
+	width: 100%;
+}
+
+/* coloring for the values */
+.alert-color {
+	color: #f0f;
+}
+
+.greyed {
+	color: #888;
+}
+
+/* panel styling */
+.sbitx-panel {
+	float: left;
+	width: 590px;
+	padding: 0;
+/*	padding-left: 5px;*/
+	background: black;
+	border-collapse: collapse;
+	border: solid 1px green;
+}
+
+.sbitx-panel-title {
+	float: right;
+	display: inline-block;
+	background-color: black;
+	font-size; 14pt;
+}
+
+.sbitx-btn-back {
+	font-size: 12pt;
+	background-color: black;
+	color: white;
+	border: none;
+}
+
+.sbitx-control {
+	margin-top: 5px;
+	margin-bottom: 5px;
+}
+
+.sbitx-control-box {
+	width: 50px;
+}
+
+/* waterfall and spectrum */
+
+#spectrum-wrap{
+/*	position: relative; */
+}
+
+#spectrum canvas, #span-control {
+	position: absolute;
+}
+
+#span-control {
+	position: absolute;
+}
+
+#span-control select {
+	border: none;
+}
+
+/* receiver panel styling */
+#receiver_panel{
+	width: 350px;
+}
+
+		
+/* wsjt-x styling */
+
+#FT8_ui {
+	border: none;
+//	padding-left: 0;
+}
+
+#FT8-control-panel {
+	padding: 0;
+}
+
+.wsjtx-new-continent {color: #ab263a;}
+.wsjtx-new-continent-on-band {color: #9a5a64;}
+.wsjtx-cq-in-message {background-color: #5b9e5a; color:black;}
+.wsjtx-transmit-message {color: orange;}
+.wsjtx-message-for-me {color: orange;}
+.wsjtx-mycallsign{background-color: yellow; color:black;}
+.wsjtx-selected-message {background-color: #67b3db; color:black;} 
+
+.sbitx-list-container {
+	display: inline-block;
+	font-family: courier, monspace-ui, monospace;
+	font-size: 10pt;
+	height: 235px;
+	width: 290px;
+	overflow: auto;
+	border: none;
+}
+
+.ft8-label {
+	font-size: 7pt;
+	display: inline-block;
+	width: 120px;
+	color: #888;
+}
+
+.ft8-message {
+	font-size: 9pt;
+	font-weight: bold;
+}
+
+#ft8-call-cq {
+	height: 30px;
+	border-collapse: collapse;
+	border: none;
+	background-color: #1a75ff;
+	color: white;
+	margin: 5px;
+	border-radius: 10px;
+}
+
+#ft8-control-panel {
+	padding: 0px;
+	font-size:12pt;
+	color: white;
+	background-color: #222;
+}
+
+
+/* the window that accepts keystrokes to be transmitted on cw/rtty/ etc */
+#text_tx {
+	width: 100%;
+	height: 20px;
+}
+
+/* vfo panel */
+
+#AGC {
+	margin-top: 20px;
+	margin-bottom: 10px;
+}
+
+#vfo_panel {
+//	background-color: #3dacbf;
+	background: black;
+	padding-bottom: 10px;
+	z-index: 200;
+	position: fixed;
+}
+
+#bandswitch {
+	margin-bottom: 20px;
+}
+
+.band-btn {
+	margin-top: 5px;
+	margin-bottom: 5px;
+	padding-top: 10px;
+	padding-bottom: 10px;
+	background-color: #3dacbf;
+	color: black;
+	border: none;
+	border-collapse: collapse;
+	border-radius: 10px;
+	width: 50px;
+	font-weight: bold;
+	font-size: 12pt;
+}
+
+.vfo-btn {
+	background-color: #008;
+	margin-top: 5px;
+	margin-bottom: 5px;
+	margin-right: 10px;
+	padding-top: 10px;
+	padding-bottom: 10px;
+	padding-left: 0;
+	padding-right: 0;
+	color: white;
+	border-collapse: collapse;
+	border: none;
+	border-radius: 10px;
+	width: 75px;
+	font-weight: bold;
+}
+
+.vfo_panel_item {
+	display: inline-block;
+	width: 200px;
+	text-align: left;
+}
+.sbitx-rx-control {
+/*	display: inline-block; */
+	vertical-align: top;
+	margin-left: 10px;
+	margin-bottom: 20px;	
+}
+
+.bw-btn {
+	width: 50px;
+	height: 40px;
+	margin-top: 5px;
+	margin-bottom: 5px;
+	border-collapse: collapse;
+	border: none;
+	border-radius: 10px;
+	margin-right: 10px;
+	background-color:#bf783d;
+	font-weight: bold;
+	color: black;
+}
+
+/* tuning/navbar */
+
+
+.tuning-btn {
+	background-color: black;
+	margin-top: 5px;
+	margin-bottom: 5px;
+	margin-right: 20px;
+	color: cyan;
+	border-collapse: collapse;
+	border: 1px solid white;
+	width: 100px;
+}
+
+#tuning_keypad {
+	display: inline-block;
+	border-collapse: collapse;
+	vertical-align: top;
+	margin-left: 10px;
+}
+
+#tuning_keypad table {
+	border-collapse: collapse;
+}
+
+#tuning_keypad td {
+//	width: 50px;
+	height: 40px;
+	border: none;
+	border-radius: 10x;
+	font-size: 14pt;
+	text-align: center;
+	vertical-align: center;
+	background-colour: black;
+}
+
+
+
+/* generic styling of ui elements */
+
+.sbitx-list-box .ui-selected {background: grey; color: white;}
+.sbitx-list-box {
+	list-style-type:none; 
+	margin: 0; padding: 0; 
+	font-size: 9pt;
+}
+.sbitx-list-box li{
+	margin: 0; 
+	padding: 0; 
+	height: 9pt;
+}
+
+body {
+			background-color: #000;
+			color: cyan;
+			font-family: Helvetica, Verdana, Sans-serif;
+			margin: 0;
+			padding: 0;
+}
+
+#kbd {
+	padding: 10px;
+}
+
+#kbd_btn:hover .drop-content {
+	display: block;
+}
+
+.help_text{
+	font-size: 10pt;
+	color: white;
+	margin-left: 30px;
+}

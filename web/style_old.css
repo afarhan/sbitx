@@ -1,0 +1,337 @@
+body {
+	overflow-x: hidden;
+}
+
+/* login pane */
+
+#login_error {
+	background-color: yellow;
+	color: black;
+}
+
+#current_freq{
+	font-size: 18pt;
+	font-weight: bold;
+	color: white;
+}
+
+.keybd{ 
+    	height: 0px; 
+    	position: fixed; 
+    	bottom:235px;
+    	width:100%; 
+    	background-color: yellow; 
+    	opacity: 1;
+}
+
+#rit_delta {
+	width: 50px;
+}
+
+.slider-label {
+	display: inline-block;
+	width: 100px;
+	text-align: left:
+}
+
+.sbitx-slider {
+	width: 100px;
+}
+
+.sbitx-selection {
+	border: none;
+}
+
+select, select option, input {
+	background: black;
+	color: #fff;
+}
+
+#keybd {
+	z-index: 1;
+	opacity: 1;
+}
+
+.keybd  td {
+	width: 45px;
+	height: 45px;
+	text-align: center;
+	border: 1px solid white;
+	opacity: 1.0;
+	font-size: 18pt;
+	font-weight: bold;
+}
+
+#sbitx-keypad td {
+	width: 70px;
+	height: 50px;
+	border: 1px solid white;
+	text-align: center;
+	valign: cente;
+}
+
+#topbar {
+	/* for fixing the top icons/menu */
+//	overflow: hidden; 
+	position: fixed;
+	top: 0;
+	width: 100%;
+	width: 100vw;
+	/*  styling */
+	border-collapse: collapse;
+	border-color: white;
+	opacity: 1;
+}
+
+.menu-item {
+	display: inline-block;
+	height: 50px;
+	border: solid 1px white;
+	border-collapse: collapse;
+	padding-right: 3px;
+	padding-bottom: 0;
+	padding-top: 3px;
+	padding-left: 3px;	
+	margin: 0;
+	margin-top: 3px;
+	vertical-align: top;
+	text-align: left;
+}
+
+#restore-btn {
+	font-size: 18pt;
+	width: 50px;
+	text-align: center;
+	line-height: 45px;
+}
+
+/* https://coderwall.com/p/5m0srg/beware-of-inline-block */
+#main {
+	margin-top: 60px; 
+	vertical-align: top;
+}
+
+#filter_details {
+	color: #fff;
+	background: black;
+	font-size: 11pt;
+}
+
+#AUDIO {
+	width: 100px;
+}
+
+#topbar td {
+	border-collapse: collapse;
+	vertical-align: top;
+	border-color: white;
+	padding: 5px 5px 5px 5px;
+	border: solid 1px #888;
+	background-color: black;
+}
+
+.keybd  table {
+	table-layout: fixed;
+	border-collapse: collapse;
+	width: 100%;
+	position: absolute;
+}
+
+/* coloring for the values */
+.alert-color {
+	color: #f0f;
+}
+
+.greyed {
+	color: #888;
+}
+
+/* panel styling */
+.sbitx-panel {
+	float: left;
+	padding: 20px;
+	background: #222;
+	border-collapse: collapse;
+	border: solid 1px green;
+}
+
+.sbitx-panel-title {
+	background-color: black;
+	font-size; 14pt;
+	padding: 10px, 10px, 10px 10px;
+	margin-bottom: 10px;	
+}
+
+.sbitx-btn-back {
+	font-size: 14pt;
+	background-color: black;
+	color: white;
+	border: none;
+}
+
+.sbitx-control {
+	margin-top: 5px;
+	margin-bottom: 5px;
+}
+
+.sbitx-control-box {
+	width: 50px;
+}
+
+/* waterfall and spectrum */
+#spectrum-wrap{
+	position: relative;
+}
+
+#spectrum canvas, #span-control {
+	position: absolute;
+}
+
+#span-control {
+	position: absolute;
+}
+
+#span-control select {
+	border: none;
+}
+
+/* receiver panel styling */
+#receiver_panel{
+	width: 350px;
+}
+
+.bw-btn {
+	width: 60px;
+	height: 40px;
+	margin-top: 5px;
+	border-collapse: collapse;
+	border: 1px solid #888;
+	background-color: black;
+	color: white;
+}
+		
+/* wsjt-x styling */
+
+
+.wsjtx-new-continent {color: #ab263a;}
+.wsjtx-new-continent-on-band {color: #9a5a64;}
+.wsjtx-cq-in-message {background-color: #5b9e5a; color:black;}
+.wsjtx-transmit-message {color: red;}
+.wsjtx-my-message {background-color: yellow; color:black;}
+.wsjtx-selected-message {background-color: #67b3db; color:black;} 
+
+
+.sbitx-list-container {
+	font-family: courier, monspace-ui, monospace;
+	font-size: 10pt;
+	height: 400px;
+	width: 400px;
+	overflow: auto;
+	border: 1px solid green;
+}
+
+/* cw styling */
+
+#data_window {
+	border: 1px solid green;
+	width: 100%;
+	height: 100;
+	color: yellow;
+	text-align: left;
+	font-size: 12pt;
+	overflow: auto;
+}
+
+.data_rx{
+	color: white;
+}
+
+.data_tx {
+	color: red;
+}
+
+/* tuning block */
+
+#bandswitch {
+	margin-bottom: 20px;
+}
+
+#tuning_knob {
+	display: inline-block;
+	width: 350px;
+	text-align: center;
+}
+
+#step_wrapper {
+	margin-top: 0px;
+	margin-bottom: 15px;
+	width: 100%;
+	text-align: center;
+}
+
+.tuning-btn {
+	background-color: black;
+	margin-top: 5px;
+	margin-bottom: 5px;
+	margin-right: 20px;
+	color: cyan;
+	border-collapse: collapse;
+	border: 1px solid white;
+	width: 100px;
+}
+
+#tuning_keypad {
+	display: inline-block;
+	border-collapse: collapse;
+	vertical-align: top;
+	margin-left: 10px;
+}
+
+#tuning_keypad table {
+	border-collapse: collapse;
+}
+
+#tuning_keypad td {
+//	width: 50px;
+	height: 40px;
+	border-collapse: collapse;
+	border: 1px solid #333;
+	font-size: 14pt;
+	text-align: center;
+	vertical-align: center;
+}
+
+#sbitx-rx-controls {
+	display: inline-block;
+	vertical-align: top;
+	marging-left: 10px;
+}
+
+/* the window that accepts keystrokes to be transmitted on cw/rtty/ etc */
+#text_tx {
+	width: 100%;
+	height: 30px;
+	border: 1px solid green;
+}
+
+/* generic styling of ui elements */
+
+.sbitx-list-box .ui-selected {background: grey; color: white;}
+.sbitx-list-box {list-style-type:none; margin: 0; padding: 0; font-size: 10pt;}
+.sbitx-list-box li{margin: 0; padding: 0; height: 12pt;}
+
+body {
+			background-color: #000;
+			color: cyan;
+			font-family: Helvetica, Verdana, Sans-serif;
+			margin: 0;
+			padding: 0;
+}
+
+#kbd {
+	padding: 10px;
+}
+
+#kbd_btn:hover .drop-content {
+	display: block;
+}

@@ -98,6 +98,7 @@ for the transmission. The data required is the same!
 */
 
 extern float fft_bins[];
+extern int spectrum_plot[];
 extern struct filter *ssb;
 
 //vfo definitions
@@ -206,7 +207,10 @@ void ft8_interpret(char *received, char *transmit);
 
 int is_in_tx();
 
-void tx_on();
+#define TX_OFF 0
+#define TX_PTT 1
+#define TX_SOFT 2 
+void tx_on(int trigger);
 void tx_off();
 long get_freq();
 int get_pitch();

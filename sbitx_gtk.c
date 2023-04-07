@@ -34,10 +34,13 @@ The initial sync between the gui values, the core radio values, settings, et al 
 #include "ini.h"
 #include "hamlib.h"
 #include "remote.h"
-#include "remote.h"
 #include "wsjtx.h"
 #include "i2cbb.h"
 #include "webserver.h"
+#include "logbook.h"
+
+/* command  buffer for commands received from the remote */
+struct Queue q_remote_commands;
 
 /* Front Panel controls */
 char pins[15] = {0, 2, 3, 6, 7, 
@@ -126,6 +129,7 @@ struct font_style {
 	int height;
 	int weight;
 	int type;
+	
 };
 
 guint key_modifier = 0;
@@ -137,9 +141,14 @@ struct font_style font_table[] = {
 	{FONT_LARGE_VALUE, 1, 1, 1, "Arial", 24, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
 	{FONT_SMALL, 0, 1, 1, "Mono", 10, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
 	{FONT_LOG, 1, 1, 1, "Mono", 12, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
-	{FONT_LOG_RX, 0, 1, 0, "Mono", 12, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
-	{FONT_LOG_TX, 1, 0.6, 0, "Mono", 12, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
+	{FONT_FT8_RX, 0, 1, 0, "Mono", 12, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
+	{FONT_FT8_TX, 1, 0.6, 0, "Mono", 12, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
 	{FONT_SMALL_FIELD_VALUE, 1, 1, 1, "Mono", 11, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
+	{FONT_CW_RX, 0, 1, 0, "Mono", 12, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
+	{FONT_CW_TX, 1, 0.6, 0, "Mono", 12, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
+	{FONT_FLDIGI_RX, 0, 1, 0, "Mono", 12, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
+	{FONT_FLDIGI_TX, 1, 0.6, 0, "Mono", 12, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
+	{FONT_TELNET, 0, 1, 0, "Mono", 12, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
 };
 
 struct encoder enc_a, enc_b;
@@ -170,6 +179,7 @@ static int console_style = FONT_LOG;
 static struct console_line console_stream[MAX_CONSOLE_LINES];
 int console_current_line = 0;
 int	console_selected_line = -1;
+struct Queue q_web;
 
 
 // event ids, some of them are mapped from gtk itself
@@ -299,6 +309,7 @@ struct field {
 	long int	 	min, max;
   int step;
 	char is_dirty;
+	char update_remote;
 };
 
 #define STACK_DEPTH 4
@@ -324,7 +335,8 @@ static unsigned long focus_since = 0;
 static struct field *f_focus = NULL;
 static struct field *f_hover = NULL;
 //variables to power up and down the tx
-static int in_tx = 0;
+
+static int in_tx = TX_OFF;
 static int key_down = 0;
 static int tx_start_time = 0;
 
@@ -374,40 +386,28 @@ struct band band_stack[] = {
 
 #define VFO_A 0 
 #define VFO_B 1 
-int	vfo_a_freq = 7000000;
-int	vfo_b_freq = 14000000;
+//int	vfo_a_freq = 7000000;
+//int	vfo_b_freq = 14000000;
 char vfo_a_mode[10];
 char vfo_b_mode[10];
 
 //usefull data for macros, logging, etc
-char mycallsign[12];
-char mygrid[12];
-char current_macro[32];
 char contact_callsign[12];
 char contact_grid[10];
 char sent_rst[10];
 char received_rst[10];
-char sent_exchange[10];
 char received_exchange[10];
-int	contest_serial = 0;
 
 int	tx_id = 0;
 
 //recording duration in seconds
 time_t record_start = 0;
 int	data_delay = 700;
-int cw_input_method = CW_KBD;
-int	cw_delay = 1000;
-int	cw_tx_pitch = 700;
-int sidetone = 25;
 
 #define MAX_RIT 25000
-//how much to shift on rit
-int	rit_delta = 0;
 
 int spectrum_span = 48000;
-int spectrum_plot[MAX_BINS];
-
+extern int spectrum_plot[];
 
 void do_cmd(char *cmd);
 void cmd_exec(char *cmd);
@@ -433,7 +433,7 @@ int current_layout = LAYOUT_KBD;
 
 // the cmd fields that have '#' are not to be sent to the sdr
 struct field main_controls[] = {
-	{ "r1:freq", do_tuning, 600, 0, 150, 49, "", 5, "14000000", FIELD_NUMBER, FONT_LARGE_VALUE, 
+	{ "r1:freq", do_tuning, 600, 0, 150, 49, "FREQ", 5, "14000000", FIELD_NUMBER, FONT_LARGE_VALUE, 
 		"", 500000, 30000000, 100},
 
 	// Main RX
@@ -465,10 +465,13 @@ struct field main_controls[] = {
 		"ON/OFF", 0,0,0},
 	{ "#tx_wpm", NULL, 650, 380, 50, 50, "WPM", 40, "12", FIELD_NUMBER, FONT_FIELD_VALUE, 
 		"", 1, 50, 1},
-	{ "#rx_pitch", do_pitch, 700, 380, 50, 50, "PITCH", 40, "600", FIELD_NUMBER, FONT_FIELD_VALUE, 
+	{ "rx_pitch", do_pitch, 700, 380, 50, 50, "PITCH", 40, "600", FIELD_NUMBER, FONT_FIELD_VALUE, 
 		"", 100, 3000, 10},
 	
-	{ "#tx", NULL, 600, 430, 50, 50, "TX", 40, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+	{ "#web", NULL, 600, 430, 50, 50, "WEB", 40, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+		"", 0,0, 0},
+
+	{ "#tx", NULL, 1000, -1000, 50, 50, "TX", 40, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
 		"RX/TX", 0,0, 0},
 
 	{ "#rx", NULL, 650, 430, 50, 50, "RX", 40, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
@@ -479,30 +482,30 @@ struct field main_controls[] = {
 
 	// top row
 	{"#step", NULL, 400, 0 ,50, 50, "STEP", 1, "10Hz", FIELD_SELECTION, FONT_FIELD_VALUE, 
-		"1MHz/100KHz/10KHz/1KHz/100Hz/10Hz", 0,0,0},
+		"1M/100K/10K/1K/100H/10H", 0,0,0},
 	{"#vfo", NULL, 450, 0 ,50, 50, "VFO", 1, "A", FIELD_SELECTION, FONT_FIELD_VALUE, 
 		"A/B", 0,0,0},
-	{"#span", NULL, 500, 0 ,50, 50, "SPAN", 1, "25KHz", FIELD_SELECTION, FONT_FIELD_VALUE, 
-		"25KHz/10KHz/6KHz/2.5KHz", 0,0,0},
+	{"#span", NULL, 500, 0 ,50, 50, "SPAN", 1, "25K", FIELD_SELECTION, FONT_FIELD_VALUE, 
+		"25K/10K/6K/2.5K", 0,0,0},
 
 	{"spectrum", do_spectrum, 400, 80, 400, 100, "Spectrum ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, 
 		"", 0,0,0},  
-	{"#status", do_status, 400, 51, 400, 29, "00:00:00", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, 
+	{"#status", do_status, 400, 51, 400, 29, "STATUS", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, 
 		"status", 0,0,0},  
 	{"waterfall", do_waterfall, 400, 180 , 400, 149, "Waterfall ", 70, "7000 KHz", FIELD_STATIC, FONT_SMALL, 
 		"", 0,0,0},
-	{"#console", do_console, 0, 0 , 400, 320, "console", 70, "console box", FIELD_CONSOLE, FONT_LOG, 
+	{"#console", do_console, 0, 0 , 400, 320, "CONSOLE", 70, "console box", FIELD_CONSOLE, FONT_LOG, 
 		"nothing valuable", 0,0,0},
 	{"#log_ed", NULL, 0, 320, 400, 20, "", 70, "", FIELD_STATIC, FONT_LOG, 
 		"nothing valuable", 0,128,0},
-	{"#text_in", do_text, 0, 340, 398, 20, "text", 70, "text box", FIELD_TEXT, FONT_LOG, 
+	{"#text_in", do_text, 0, 340, 398, 20, "TEXT", 70, "text box", FIELD_TEXT, FONT_LOG, 
 		"nothing valuable", 0,128,0},
 
 
 
-	{"#close", NULL, 750, 430 ,50, 50, "CLOSE", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+	{"#close", NULL, 750, 430 ,50, 50, "_", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
 		"", 0,0,0},
-	{"#off", NULL, 750, 0 ,50, 50, "OFF", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+	{"#off", NULL, 750, 0 ,50, 50, "x", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
 		"", 0,0,0},
   
   // other settings - currently off screen
@@ -516,6 +519,52 @@ struct field main_controls[] = {
     "", 100,99999,100},
   { "mouse_pointer", NULL, 1000, -1000, 50, 50, "MP", 40, "LEFT", FIELD_SELECTION, FONT_FIELD_VALUE,
     "BLANK/LEFT/RIGHT/CROSSHAIR", 0,0,0},
+
+
+	//moving global variables into fields 	
+  { "#vfo_a_freq", NULL, 1000, -1000, 50, 50, "VFOA", 40, "14000000", FIELD_NUMBER, FONT_FIELD_VALUE,
+    "", 500000,30000000,1},
+  {"#vfo_b_freq", NULL, 1000, -1000, 50, 50, "VFOB", 40, "7000000", FIELD_NUMBER, FONT_FIELD_VALUE,
+    "", 500000,30000000,1},
+  {"#rit_delta", NULL, 1000, -1000, 50, 50, "RIT_DELTA", 40, "000000", FIELD_NUMBER, FONT_FIELD_VALUE,
+    "", -25000,25000,1},
+	{"#mycallsign", NULL, 1000, -1000, 400, 149, "MYCALLSIGN", 70, "NOBODY", FIELD_TEXT, FONT_SMALL, 
+		"", 3,10,1},
+	{"#mygrid", NULL, 1000, -1000, 400, 149, "MYGRID", 70, "NOWHERE", FIELD_TEXT, FONT_SMALL, 
+		"", 4,6,1},
+  { "#cwinput", NULL, 1000, -1000, 50, 50, "CW_INPUT", 40, "KEYBOARD", FIELD_SELECTION, FONT_FIELD_VALUE,
+		"KEYBOARD/IAMBIC/STRAIGHT", 0,0,0},
+  { "#cwdelay", NULL, 1000, -1000, 50, 50, "CW_DELAY", 40, "300", FIELD_NUMBER, FONT_FIELD_VALUE,
+    "", 50, 1000, 50},
+	{ "#tx_pitch", NULL, 1000, -1000, 50, 50, "TX_PITCH", 40, "600", FIELD_NUMBER, FONT_FIELD_VALUE, 
+    "", 300, 3000, 10},
+	{ "sidetone", NULL, 1000, -1000, 50, 50, "SIDETONE", 40, "25", FIELD_NUMBER, FONT_FIELD_VALUE, 
+    "", 0, 100, 5},
+	{"#contact_callsign", NULL, 1000, -1000, 400, 149, "", 70, "NOBODY", FIELD_TEXT, FONT_SMALL, 
+		"", 3,10,1},
+	{"#sent_exchange", NULL, 1000, -1000, 400, 149, "", 70, "", FIELD_TEXT, FONT_SMALL, 
+		"", 0,10,1},
+  { "#contest_serial", NULL, 1000, -1000, 50, 50, "CONTEST_SERIAL", 40, "0", FIELD_NUMBER, FONT_FIELD_VALUE,
+    "", 0,1000000,1},
+	{"#current_macro", NULL, 1000, -1000, 400, 149, "MACRO", 70, "", FIELD_TEXT, FONT_SMALL, 
+		"", 0,32,1},
+  { "#fwdpower", NULL, 1000, -1000, 50, 50, "POWER", 40, "300", FIELD_NUMBER, FONT_FIELD_VALUE,
+    "", 0,10000,1},
+  { "#vswr", NULL, 1000, -1000, 50, 50, "REF", 40, "300", FIELD_NUMBER, FONT_FIELD_VALUE,
+    "", 0,10000, 1},
+	{"#ft8_auto", NULL, 1000, -1000, 50, 50, "FT8_AUTO", 40, "ON", FIELD_TOGGLE, FONT_FIELD_VALUE, 
+		"ON/OFF/", 0,0,0},
+
+  {"#cw_bandwidth", NULL, 1000, -1000, 50, 50, "CW_BW", 40, "000000", FIELD_NUMBER, FONT_FIELD_VALUE,
+    "", 300, 3000, 50},
+  {"#cw_voice", NULL, 1000, -1000, 50, 50, "VOICE_BW", 40, "000000", FIELD_NUMBER, FONT_FIELD_VALUE,
+    "", 300, 3000, 50},
+	{"#passkey", NULL, 1000, -1000, 400, 149, "PASSKEY", 70, "123", FIELD_TEXT, FONT_SMALL, 
+		"", 0,32,1},
+	{"#telneturl", NULL, 1000, -1000, 400, 149, "TELNETURL", 70, "dxc.nc7j.com:7373", FIELD_TEXT, FONT_SMALL, 
+		"", 0,32,1},
+
+
 
 	/* band stack registers */
 	{"#10m", NULL, 400, 330, 50, 50, "10M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
@@ -648,16 +697,41 @@ struct field *get_field_by_label(char *label){
 	return NULL;
 }
 
+int get_field_value(char *cmd, char *value){
+	struct field *f = get_field(cmd);
+	if (!f)
+		return -1;
+	strcpy(value, f->value);
+	return 0;
+}
+
+int remote_update_field(int i, char *text){
+	struct field * f = active_layout + i;
+	if (f->cmd[0] == 0)
+		return -1;
+	strcpy(text, f->label);
+	strcat(text, " ");
+	strcat(text, f->value);
+	int update = f->update_remote;
+	f->update_remote = 0;
+	//debug on
+	if (!strcmp(f->cmd, "#text_in") && strlen(f->value))
+		printf("#text_in [%s] %d\n", f->value, update);
+	//debug off
+	return update;
+}
+
 //set the field directly to a particuarl value, programmatically
 int set_field(char *id, char *value){
 	struct field *f = get_field(id);
 	int v;
+	int debug = 0;
 
 	if (!f){
 		printf("*Error: field[%s] not found. Check for typo?\n", id);
 		return 1;
 	}
-
+	
 	if (f->value_type == FIELD_NUMBER){
 		int	v = atoi(value);
 		if (v < f->min)
@@ -671,14 +745,20 @@ int set_field(char *id, char *value){
 		char *p, *prev, *next, b[100];
 		//search the current text in the selection
 		prev = NULL;
+		if (debug)
+			printf("field selection [%s]\n");
 		strcpy(b, f->selection);
 		p = strtok(b, "/");
+		if (debug)
+			printf("first token [%s]\n", p);
 		while(p){
 			if (!strcmp(value, p))
 				break;
 			else
 				prev = p;
 			p = strtok(NULL, "/");
+			if (debug)
+				printf("second token [%s]\n", p);
 		}	
 		//set to the first option
 		if (p == NULL){
@@ -687,8 +767,11 @@ int set_field(char *id, char *value){
 			printf("*Error: setting field[%s] to [%s] not permitted\n", f->cmd, value);
 			return 1;
 		}
-		else
+		else{
+			if (debug)
+				printf("Setting field to %s\n", value);
 			strcpy(f->value, value);
+		}
 	}
 	else if (f->value_type == FIELD_BUTTON){
 		strcpy(f->value, value);	
@@ -703,7 +786,10 @@ int set_field(char *id, char *value){
 			strcpy(f->value, value);
 	}
 
-	//send a command to the receiver
+	if (!strcmp(id, "#rit") || !strcmp(id, "#ft8_auto"))
+		debug = 1; 
+
+	//send a command to the radio 
 	char buff[200];
 	sprintf(buff, "%s=%s", f->cmd, f->value);
 	do_cmd(buff);
@@ -723,6 +809,91 @@ void console_init(){
 	f->is_dirty = 1;
 }
 
+void web_add_string(char *string){
+	while (*string){
+		q_write(&q_web, *string++);
+	}
+}
+
+void  web_write(int style, char *data){
+	char tag[20];
+
+	switch(style){
+		case FONT_FT8_RX:
+			strcpy(tag, "WSJTX-RX");
+			break;
+		case FONT_FLDIGI_RX:
+			strcpy(tag, "FLDIGI-RX");
+			break;
+		case FONT_CW_RX:
+			strcpy(tag, "CW-RX");
+			break;
+		case FONT_FT8_TX:
+			strcpy(tag, "WSJTX-TX");
+			break;
+		case FONT_FLDIGI_TX:
+			strcpy(tag, "FLDIGI-TX");
+			break;
+		case FONT_CW_TX:
+			strcpy(tag, "CW-TX");
+			break;
+		case FONT_TELNET:
+			strcpy(tag, "TELNET");
+			break;
+		default:
+			strcpy(tag, "LOG");
+	}
+
+	web_add_string("<");
+	web_add_string(tag);		
+	web_add_string(">");
+	while (*data){
+				switch(*data){
+				case '<':
+					q_write(&q_web, '&');
+					q_write(&q_web, 'l');
+					q_write(&q_web, 't');
+					q_write(&q_web, ';');
+					break;
+				case '>':
+					q_write(&q_web, '&');
+					q_write(&q_web, 'g');
+					q_write(&q_web, 't');
+					q_write(&q_web, ';');
+					break;
+			 	case '"':
+					q_write(&q_web, '&');
+					q_write(&q_web, 'q');
+					q_write(&q_web, 'u');
+					q_write(&q_web, 't');
+					q_write(&q_web, 'e');
+					q_write(&q_web, ';');
+					break;
+				case '\'':
+					q_write(&q_web, '&');
+					q_write(&q_web, 'a');
+					q_write(&q_web, 'p');
+					q_write(&q_web, 'o');
+					q_write(&q_web, 's');
+					q_write(&q_web, ';');
+					break;
+				case '\n':
+					q_write(&q_web, '&');
+					q_write(&q_web, '#');
+					q_write(&q_web, 'x');
+					q_write(&q_web, 'A');
+					q_write(&q_web, ';');
+					break;	
+				default:
+					q_write(&q_web, *data);
+			}
+			data++;
+	}			
+	web_add_string("</");
+	web_add_string(tag);
+	web_add_string(">");
+}
+
 int console_init_next_line(){
 	console_current_line++;
 	if (console_current_line == MAX_CONSOLE_LINES)
@@ -739,17 +910,24 @@ void write_console(int style, char *text){
 	strcat(directory, "/sbitx/data/display_log.txt");
 	FILE *pf = fopen(directory, "a");
 
+	web_write(style, text);
 	//move to a new line if the style has changed
 	if (style != console_style){
+		q_write(&q_web, '{');
+		q_write(&q_web, style + 'A');
 		console_style = style;
 		if (strlen(console_stream[console_current_line].text)> 0)
 			console_init_next_line();	
 		console_stream[console_current_line].style = style;
 		switch(style){
-			case_FONT_LOG_RX:
+			case FONT_FT8_RX:
+			case FONT_FLDIGI_RX:
+			case FONT_CW_RX:
 				fputs("#RX ################################\n", pf);
 				break;
-			case FONT_LOG_TX:
+			case FONT_FT8_TX:
+			case FONT_FLDIGI_TX:
+			case FONT_CW_TX:
 				fputs("#TX ################################\n", pf);
 				break;
 			default:
@@ -823,7 +1001,11 @@ void draw_log(cairo_t *gfx, struct field *f){
 void draw_field(GtkWidget *widget, cairo_t *gfx, struct field *f){
 	struct font_style *s = font_table + 0;
 
+	//push this to the web as well
+	
 	f->is_dirty = 0;
+	if (f->x <= -1000)
+		return;
 
 	//if there is a handling function, use that else
 	//skip down to the default behaviour of the controls
@@ -970,22 +1152,11 @@ static void save_user_settings(int forced){
 		return;
 	}
 
-	//save other stuff
-	fprintf(f, "vfo_a_freq=%d\n", vfo_a_freq);
-	fprintf(f, "vfo_b_freq=%d\n", vfo_b_freq);
-	fprintf(f, "callsign=%s\n", mycallsign);
-	fprintf(f, "grid=%s\n", mygrid);
-	fprintf(f, "cw_delay=%d\n", cw_delay);
-	fprintf(f, "data_delay=%d\n", data_delay);
-	fprintf(f, "cw_input_method=%d\n", cw_input_method);
-	fprintf(f, "current_macro=%s\n", current_macro);
-	fprintf(f, "sidetone=%d\n", sidetone);
-	fprintf(f, "contest_serial=%d\n", contest_serial);
-	fprintf(f, "sent_exchange=%s\n", sent_exchange);
-
   // save the field values
-	for (int i= 0; i < active_layout[i].cmd[0] > 0; i++)
+	int i;
+	for (i= 0; active_layout[i].cmd[0] > 0; i++){
 		fprintf(f, "%s=%s\n", active_layout[i].cmd, active_layout[i].value);
+	}
 
 	//now save the band stack
 	for (int i = 0; i < sizeof(band_stack)/sizeof(struct band); i++){
@@ -1017,44 +1188,6 @@ static int user_settings_handler(void* user, const char* section,
       strcpy(cmd, name);
       set_field(cmd, new_value);
     }
-		else if (!strcmp(name, "vfo_a_freq"))
-			vfo_a_freq = atoi(value);
-		else if (!strcmp(name, "vfo_b_freq"))
-			vfo_b_freq = atoi(value);
-		else if (!strcmp(name, "vfo_a_mode"))
-			strcpy(vfo_a_mode, value);
-		else if (!strcmp(name, "vfo_b_mode"))
-			strcpy(vfo_b_mode, value);
-		else if (!strcmp(name, "callsign"))
-			strcpy(mycallsign, value);
-		else if (!strcmp(name, "grid"))
-			strcpy(mygrid, value);
-		//cw 
-		else if (!strcmp(name, "cw_delay"))
-			cw_delay = atoi(value);
-		else if (!strcmp(name, "cw_input_method"))
-			cw_input_method = atoi(value);
-		else if(!strcmp(name, "cw_tx_pitch"))
-			cw_tx_pitch = atoi(value);
-		else if (!strcmp(name, "sidetone")){
-			sidetone = atoi(value);
-			strcpy(cmd, name);
-			char request[100], response[100];
-			sprintf(request, "sidetone=%d",sidetone);  
-			sdr_request(request, response);
-			sprintf(request, "sidetone is set to %d Hz\n", sidetone);
-			write_console(FONT_LOG, request);
-		}
-		//contesting
-		else if (!strcmp(name, "sent_exchange"))
-			strcpy(sent_exchange, value);
-		else if (!strcmp(name, "contest_serial"))
-			contest_serial = atoi(value);
-		//data
-		else if (!strcmp(name, "data_delay"))
-			data_delay = atoi(value);
-		else if (!strcmp(name, "current_macro"))
-			strcpy(current_macro, value);
     // if it is an empty section
     else if (strlen(section) == 0){
       sprintf(cmd, "%s", name);
@@ -1177,7 +1310,7 @@ void draw_modulation(struct field *f, cairo_t *gfx){
 
 static int waterfall_offset = 30;
 static int  *wf;
-GdkPixbuf *waterfall_pixbuf;
+GdkPixbuf *waterfall_pixbuf = NULL;
 guint8 *waterfall_map;
 
 void init_waterfall(){
@@ -1201,6 +1334,8 @@ void init_waterfall(){
 			waterfall_map[index++] = i % 256;
 			waterfall_map[index++] = j % 256; 
 	}
+	if (waterfall_pixbuf)
+		g_object_ref(waterfall_pixbuf);
 	waterfall_pixbuf = gdk_pixbuf_new_from_data(waterfall_map,
 		GDK_COLORSPACE_RGB, FALSE, 8, f->width, f->height, f->width*3, NULL,NULL);
 		// format,         alpha?, bit,  widht,    height, rowstride, destryfn, data
@@ -1295,14 +1430,10 @@ void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
 		return;
 	}
 
-	pitch = atoi(get_field("#rx_pitch")->value);
+	pitch = atoi(get_field("rx_pitch")->value);
 	struct field *mode_f = get_field("r1:mode");
 	freq = atol(get_field("r1:freq")->value);
-/*
-  if(!strcmp(mode_f->value, "CW")){
-    freq = freq + pitch; 
-  }
-*/
+
 	span = atof(get_field("#span")->value);
 	bw_high = atoi(get_field("r1:high")->value);
 	bw_low = atoi(get_field("r1:low")->value);
@@ -1389,16 +1520,13 @@ void draw_spectrum(struct field *f_spectrum, cairo_t *gfx){
 
 		// the center fft bin is at zero, from MAX_BINS/2 onwards,
 		// the bins are at lowest frequency (-ve frequency)
-		int offset = i;
-		offset = (offset - MAX_BINS/2);
 		//y axis is the power  in db of each bin, scaled to 80 db
-		y = ((power2dB(cnrmf(fft_bins[i])) + waterfall_offset) * f->height)/80; 
+		y = ((spectrum_plot[i] + waterfall_offset) * f->height)/80; 
 		// limit y inside the spectrum display box
 		if ( y <  0)
 			y = 0;
 		if (y > f->height)
 			y = f->height - 1;
-		spectrum_plot[i] = y;
 		//the plot should be increase upwards
 		cairo_line_to(gfx, f->x + f->width - (int)x, f->y + grid_height - y);
 
@@ -1478,6 +1606,9 @@ void draw_dial(struct field *f, cairo_t *gfx){
 	struct field *rit = get_field("#rit");
 	struct field *split = get_field("#split");
 	struct field *vfo = get_field("#vfo");
+	struct field *vfo_a = get_field("#vfo_a_freq");
+	struct field *vfo_b = get_field("#vfo_b_freq");
+	struct field *rit_delta = get_field("#rit_delta");
 	char buff[20];
 
   char temp_str[20];
@@ -1486,9 +1617,9 @@ void draw_dial(struct field *f, cairo_t *gfx){
 
 	//update the vfos
 	if (vfo->value[0] == 'A')
-		vfo_a_freq = atoi(f->value);
+			strcpy(vfo_a->value, f->value);
 	else
-		vfo_b_freq = atoi(f->value);
+			strcpy(vfo_b->value, f->value);
 
 	int width, offset;	
 	
@@ -1501,43 +1632,47 @@ void draw_dial(struct field *f, cairo_t *gfx){
     if (!in_tx){
       sprintf(buff, "TX:%s", freq_with_separators(f->value));
       draw_text(gfx, f->x+5 , f->y+6 , buff , FONT_LARGE_FIELD);
-      sprintf(temp_str, "%d", (atoi(f->value) + rit_delta));
+      sprintf(temp_str, "%d", (atoi(f->value) + atoi(rit_delta->value)));
       sprintf(buff, "RX:%s", freq_with_separators(temp_str));
       draw_text(gfx, f->x+5 , f->y+25 , buff , FONT_LARGE_VALUE);
     }
     else {
       sprintf(buff, "TX:%s", freq_with_separators(f->value));
       draw_text(gfx, f->x+5 , f->y+25 , buff , FONT_LARGE_VALUE);
-      sprintf(temp_str, "%d", (atoi(f->value) + rit_delta));
+      sprintf(temp_str, "%d", (atoi(f->value) + atoi(rit_delta->value)));
       sprintf(buff, "RX:%s", freq_with_separators(temp_str));
       draw_text(gfx, f->x+5 , f->y+6 , buff , FONT_LARGE_FIELD);
     }
   }
   else if (!strcmp(split->value, "ON")){
     if (!in_tx){
-      sprintf(temp_str, "%d", vfo_b_freq);
+   //   sprintf(temp_str, "%d", vfo_b_freq);
+			strcpy(temp_str, vfo_b->value);
       sprintf(buff, "TX:%s", freq_with_separators(temp_str));
       draw_text(gfx, f->x+5 , f->y+6 , buff , FONT_LARGE_FIELD);
       sprintf(buff, "RX:%s", freq_with_separators(f->value));
       draw_text(gfx, f->x+5 , f->y+25 , buff , FONT_LARGE_VALUE);
     }
     else {
-      sprintf(temp_str, "%d", vfo_b_freq);
+//      sprintf(temp_str, "%d", vfo_b_freq);
+			strcpy(temp_str, vfo_b->value);
       sprintf(buff, "TX:%s", freq_with_separators(temp_str));
       draw_text(gfx, f->x+5 , f->y+25 , buff , FONT_LARGE_VALUE);
-      sprintf(buff, "RX:%d", atoi(f->value) + rit_delta);
+      sprintf(buff, "RX:%d", atoi(f->value) + atoi(rit_delta->value));
       draw_text(gfx, f->x+5 , f->y+6 , buff , FONT_LARGE_FIELD);
     }
   }
   else if (!strcmp(vfo->value, "A")){
     if (!in_tx){
-      sprintf(temp_str, "%d", vfo_b_freq);
+      //sprintf(temp_str, "%d", vfo_b_freq);
+			strcpy(temp_str, vfo_b->value);
       sprintf(buff, "B:%s", freq_with_separators(temp_str));
       draw_text(gfx, f->x+15 , f->y+6 , buff , FONT_LARGE_FIELD);
       sprintf(buff, "A:%s", freq_with_separators(f->value));
       draw_text(gfx, f->x+5 , f->y+25 , buff , FONT_LARGE_VALUE);
     } else {
-      sprintf(temp_str, "%d", vfo_b_freq);
+      //sprintf(temp_str, "%d", vfo_b_freq);
+			strcpy(temp_str, vfo_b->value);
       sprintf(buff, "B:%s", freq_with_separators(temp_str));
       draw_text(gfx, f->x+5 , f->y+6 , buff , FONT_LARGE_FIELD);
       sprintf(buff, "TX:%s", freq_with_separators(f->value));
@@ -1546,13 +1681,15 @@ void draw_dial(struct field *f, cairo_t *gfx){
   }
   else{
     if (!in_tx){
-      sprintf(temp_str, "%d", vfo_a_freq);
+			strcpy(temp_str, vfo_a->value);
+      //sprintf(temp_str, "%d", vfo_a_freq);
       sprintf(buff, "A:%s", freq_with_separators(temp_str));
       draw_text(gfx, f->x+5 , f->y+6 , buff , FONT_LARGE_FIELD);
       sprintf(buff, "B:%s", freq_with_separators(f->value));
       draw_text(gfx, f->x+5 , f->y+25 , buff , FONT_LARGE_VALUE);
     }else {
-      sprintf(temp_str, "%d", vfo_a_freq);
+			strcpy(temp_str, vfo_a->value);
+      //sprintf(temp_str, "%d", vfo_a_freq);
       sprintf(buff, "A:%s", freq_with_separators(temp_str));
       draw_text(gfx, f->x+5 , f->y+6 , buff , FONT_LARGE_FIELD);
       sprintf(buff, "TX:%s", freq_with_separators(f->value));
@@ -1598,7 +1735,9 @@ void redraw_main_screen(GtkWidget *widget, cairo_t *gfx){
 
 /* gtk specific routines */
 static gboolean on_draw_event( GtkWidget* widget, cairo_t *cr, gpointer user_data ) {
+	printf("{");
 	redraw_main_screen(widget, cr);	
+	printf("}\r");
   return FALSE;
 }
 
@@ -1608,19 +1747,10 @@ static gboolean on_resize(GtkWidget *widget, GdkEventConfigure *event, gpointer 
 	screen_height = event->height;
 }
 
-
 void update_field(struct field *f){
-	GdkRectangle r;
-	r.x = f->x;
-	r.y = f->y;
-	r.width = f->width;
-	r.height = f->height;
-	//the update_field could be triggered from the sdr's waterfall update
-	//which starts before the display_area is called 
-	if (f->y >= 0){
-		invalidate_rect(r.x, r.y, r.width, r.height);
+	if (f->y >= 0)
 		f->is_dirty = 1;
-	}
+	f->update_remote = 1;
 } 
 
 static void hover_field(struct field *f){
@@ -1644,6 +1774,7 @@ static void edit_field(struct field *f, int action){
 
 	if (f->fn){
 		f->is_dirty = 1;
+	 	f->update_remote = 1;
 		if (f->fn(f, NULL, FIELD_EDIT, action, 0, 0))
 			return;
 	}
@@ -1721,7 +1852,9 @@ static void edit_field(struct field *f, int action){
 	char buff[200];
 	sprintf(buff, "%s=%s", f->cmd, f->value);
 	do_cmd(buff);
-	update_field(f);
+	f->is_dirty = 1;
+	f->update_remote = 1;
+//	update_field(f);
 	settings_updated++;
 }
 
@@ -1767,18 +1900,24 @@ time_t time_sbitx(){
 void set_operating_freq(int dial_freq, char *response){
 	struct field *rit = get_field("#rit");
 	struct field *split = get_field("#split");
+	struct field *vfo_a = get_field("#vfo_a_freq");
+	struct field *vfo_b = get_field("#vfo_b_freq");
+	struct field *rit_delta = get_field("#rit_delta");
+
 	char freq_request[30];
  
 	if (!strcmp(rit->value, "ON")){
 		if (!in_tx)
-			sprintf(freq_request, "r1:freq=%d", dial_freq + rit_delta); 		
+			sprintf(freq_request, "r1:freq=%d", dial_freq + atoi(rit_delta->value)); 		
 		else
 			sprintf(freq_request, "r1:freq=%d", dial_freq); 		
 	}
 	else if (!strcmp(split->value, "ON")){
 		if (!in_tx)
-			sprintf(freq_request, "r1:freq=%d", vfo_b_freq);
+//			sprintf(freq_request, "r1:freq=%d", vfo_b_freq);
+			sprintf(freq_request, "r1:freq=%s", vfo_b->value);
 		else
+//			sprintf(freq_request, "r1:freq=%d", dial_freq);
 			sprintf(freq_request, "r1:freq=%d", dial_freq);
 	}
 	else
@@ -1788,8 +1927,10 @@ void set_operating_freq(int dial_freq, char *response){
 	sdr_request(freq_request, response);
 }
 
-void clear_tx_text_buffer(){
+void abort_tx(){
 	set_field("#text_in", "");
+	modem_abort();
+	tx_off();
 }
 
 int do_spectrum(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
@@ -1821,7 +1962,7 @@ int do_spectrum(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
         freq = atoi(f_freq->value);
         f_span = get_field("#span");
         span = atof(f_span->value) * 1000;
-        f_pitch = get_field("#rx_pitch");
+        f_pitch = get_field("rx_pitch");
         pitch = atoi(f_pitch->value);
         if (mode == MODE_CW){
           freq += ((((float)(a - f->x) / (float)f->width) - 0.5) * (float)span) - pitch;
@@ -1861,6 +2002,15 @@ int do_waterfall(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 	return 0;	
 }
 
+void remote_execute(char *cmd){
+
+	if (q_remote_commands.overflow)
+		q_empty(&q_remote_commands);
+	while (*cmd)
+		q_write(&q_remote_commands, *cmd++);
+	q_write(&q_remote_commands, 0);
+}
+
 void call_wipe(){
 	contact_callsign[0] = 0;
 	contact_grid[0] = 0;
@@ -1872,6 +2022,8 @@ void call_wipe(){
 
 void update_log_ed(){
 	struct field *f = get_field("#log_ed");
+	struct field *f_sent_exchange = get_field("#sent_exchange");
+
 	char *log_info = f->label;
 
 	strcpy(log_info, "Log:");
@@ -1890,9 +2042,9 @@ void update_log_ed(){
 	strcat(log_info, " Sent:");
 	if (strlen(sent_rst)){	
 				strcat(log_info, sent_rst);
-		if (strlen(sent_exchange)){
+		if (strlen(f_sent_exchange->value)){
 			strcat(log_info, " ");
-			strcat(log_info, sent_exchange);
+			strcat(log_info, f_sent_exchange->value);
 		}
 	}
 	else	
@@ -1931,6 +2083,7 @@ int do_console(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 			if (l < 0)
 				l += MAX_CONSOLE_LINES;
 			console_selected_line = l;
+		/*
 			if (!strcmp(get_field("r1:mode")->value, "FT8")){
 				char ft8_response[100];
 				ft8_interpret(console_stream[l].text, ft8_response);
@@ -1939,7 +2092,7 @@ int do_console(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 					update_log_ed();
 				}
 			}
-//			printf("chosen line is %d[%s]\n", l, console_stream[l].text);
+		*/
 			f->is_dirty = 1;
 			return 1;
 		break;
@@ -1954,13 +2107,21 @@ int do_status(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 		time_t now = time_sbitx();
 		struct tm *tmp = gmtime(&now);
 
-		sprintf(buff, "%s | %s", mycallsign, mygrid);
+		sprintf(buff, "%s | %s", get_field("#mycallsign")->value, get_field("#mygrid")->value);
 		draw_text(gfx, f->x+1, f->y+2 , buff, FONT_FIELD_LABEL);
 		
-		sprintf(buff, "UTC:%04d/%02d/%02d %02d:%02d:%02d",  
+		sprintf(buff, "%04d/%02d/%02d %02d:%02d:%02dZ",  
 			tmp->tm_year + 1900, tmp->tm_mon + 1, tmp->tm_mday, tmp->tm_hour, tmp->tm_min, tmp->tm_sec); 
 		int width = measure_text(gfx, buff, FONT_FIELD_LABEL);
-		draw_text(gfx, f->x + f->width - width - 1, f->y + 2, buff, FONT_FIELD_LABEL);
+		int line_height = font_table[f->font_index].height; 	
+		if (width < f->width)
+			draw_text(gfx, f->x + f->width - width - 1, f->y + 2, buff, FONT_FIELD_LABEL);
+		else
+			draw_text(gfx, f->x,  f->y + 2 + line_height, buff, FONT_FIELD_LABEL);
+
+		strcpy(f->value, buff);
+		f->is_dirty = 1;
+		f->update_remote = 1;
 		return 1;
 	}
 	return 0;
@@ -1980,6 +2141,7 @@ int do_text(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 	int text_line_width = 0;
 
 	if (event == FIELD_EDIT){
+		printf("text_in: edited with %d to ", a);
 		//if it is a command, then execute it and clear the field
 		if (f->value[0] == COMMAND_ESCAPE &&  strlen(f->value) > 1 && (a == '\n' || a == MIN_KEY_ENTER)){
 			cmd_exec(f->value + 1);
@@ -1988,7 +2150,7 @@ int do_text(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 		}
 		else if ((a =='\n' || a == MIN_KEY_ENTER) && !strcmp(get_field("r1:mode")->value, "FT8") 
 			&& f->value[0] != COMMAND_ESCAPE){
-			ft8_tx(f->value, atoi(get_field("#rx_pitch")->value));
+			ft8_tx(f->value, atoi(get_field("#tx_pitch")->value));
 			f->value[0] = 0;		
 		}
 		else if (a >= ' ' && a <= 127 && strlen(f->value) < f->max-1){
@@ -1996,11 +2158,14 @@ int do_text(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 			f->value[l++] = a;
 			f->value[l] = 0;
 		}
-		else if (a == MIN_KEY_BACKSPACE && strlen(f->value) > 0){
+		//handle ascii delete 8 or gtk 
+		else if ((a == MIN_KEY_BACKSPACE || a == 8) && strlen(f->value) > 0){
 			int l = strlen(f->value) - 1;
 			f->value[l] = 0;
 		}
-		
+		printf("[%s]\n", f->value);
+		f->is_dirty = 1;
+		f->update_remote = 1;
 		return 1;
 	}
 	else if (event == FIELD_DRAW){
@@ -2048,6 +2213,9 @@ int do_pitch(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 		sprintf(f->value, "%d", v);
 		update_field(f);
 		modem_set_pitch(v);
+		char buff[20], response[20];
+		sprintf(buff, "rx_pitch=%d", v);
+		sdr_request(buff, response);
 		return 1;
 	}
 	return 0;
@@ -2056,10 +2224,9 @@ int do_pitch(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 //called for RIT as well as the main tuning
 int do_tuning(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 
-static struct timespec last_change_time, this_change_time;
+	static struct timespec last_change_time, this_change_time;
 
 	int	v = atoi(f->value);
-
   int temp_tuning_step = tuning_step;
 
 	if (event == FIELD_EDIT){
@@ -2090,8 +2257,14 @@ static struct timespec last_change_time, this_change_time;
 		if (a == MIN_KEY_UP && v + f->step <= f->max){
 			//this is tuning the radio
 			if (!strcmp(get_field("#rit")->value, "ON")){
-				if(rit_delta < MAX_RIT)
+				struct field *f = get_field("#rit_delta");
+				int rit_delta = atoi(f->value);
+				if(rit_delta < MAX_RIT){
 					rit_delta += tuning_step;
+					char tempstr[100];
+					sprintf(tempstr, "%d", rit_delta);
+					set_field("#rit_delta", tempstr);
+				}
 				else
 					return 1;
 			}
@@ -2100,14 +2273,21 @@ static struct timespec last_change_time, this_change_time;
 		}
 		else if (a == MIN_KEY_DOWN && v - f->step >= f->min){
 			if (!strcmp(get_field("#rit")->value, "ON")){
-				if (rit_delta > -MAX_RIT)
+				struct field *f = get_field("#rit_delta");
+				int rit_delta = atoi(f->value);
+				if (rit_delta > -MAX_RIT){
 					rit_delta -= tuning_step;
+					char tempstr[100];
+					sprintf(tempstr, "%d", rit_delta);
+					set_field("#rit_delta", tempstr);
+					printf("moved rit to %s\n", f->value);
+				}
 				else
 					return 1;
 			}
 			else
 				v = (v / tuning_step - 1)*tuning_step;
-			clear_tx_text_buffer();
+			abort_tx();
 		}
 		
 		sprintf(f->value, "%d",  v);
@@ -2149,59 +2329,25 @@ int do_kbd(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 }
 
 void write_call_log(){
-	char fullpath[200];	//dangerous, find the MAX_PATH and replace 200 with it
+	struct field *f_sent_exchange = get_field("#sent_exchange");
 
-	char *path = getenv("HOME");
-	sprintf(fullpath, "%s/sbitx/data/logbook.txt", path); 
-
-	time_t log_time = time_sbitx();
-//	time(&log_time);
-	struct tm *tmp = gmtime(&log_time);
-			//tmp->tm_year + 1900, tmp->tm_mon + 1, tmp->tm_mday, tmp->tm_hour, tmp->tm_min, tmp->tm_sec); 
-	
-	char *p, mode[10];
-	p = get_field("r1:mode")->value;
-	if (!strcmp(p, "USB") || !strcmp(p, "LSB") || !strcmp(p, "AM"))
-		strcpy(mode, "PH");
-	else if (!strcmp(p, "CW") || strcmp(p, "CWR"))
-		strcpy(mode, "CW");
-	else if (!strcmp(p, "FM"))
-		strcpy(mode, "FM");
-	else if (!strncmp(p, "RTTY", 4))
-		strcpy(mode, "RY");
-	else
-		strcpy(mode, "DG");
-
-	FILE *pf = fopen(fullpath, "a");
-	
-	fprintf(pf, "QSO: %7d %s %04d-%02d-%02d %02d%02d %s", 
-		atoi(get_field("r1:freq")->value)/1000, mode, 
-			tmp->tm_year + 1900, tmp->tm_mon + 1, tmp->tm_mday,
-			tmp->tm_hour, tmp->tm_min,
-			mycallsign);
-
-	int padding = 10 - strlen(mycallsign);
-	for (int i = 0; i < padding; i++)
-			fputc(' ', pf);
-
-	fprintf(pf, "%3s %5s ", sent_rst, sent_exchange);
-	padding = 10 - strlen(contact_callsign);
-	fprintf(pf, contact_callsign);
-	for(int i = 0; i < padding; i++)
-		fputc(' ', pf);
-	fprintf(pf, "%3s %5s %d\n", received_rst, received_exchange, tx_id+0); 
-
-	fclose(pf);
-
+	logbook_add(contact_callsign, sent_rst, f_sent_exchange->value, received_rst, received_exchange); 
 	write_console(FONT_LOG, "\nQSO logged with ");
 	write_console(FONT_LOG, contact_callsign);
 	write_console(FONT_LOG, " ");
-	write_console(FONT_LOG, sent_exchange); 
+	write_console(FONT_LOG, f_sent_exchange->value); 
 	write_console(FONT_LOG, "\n");
 
-	if (contest_serial > 0){
-		contest_serial++;
-		sprintf(sent_exchange, "%04d", contest_serial);
+	struct field *f_contest_serial = get_field("#contest_serial");
+	int  ctx_serial = atoi(f_contest_serial->value);
+	if (ctx_serial > 0){
+		ctx_serial++;
+		char sent[100], serial[100];
+
+		sprintf(sent, "%04d", ctx_serial);
+		set_field("#sent_exchange", sent);
+		sprintf(serial, "%d", ctx_serial);
+		set_field("#contest_serial", serial);	
 	}
 	//wipe it clean, deffered for the time being
 	//call_wipe();
@@ -2279,20 +2425,20 @@ void macro_get_var(char *var, char *s){
 	*s = 0;
 
 	if(!strcmp(var, "MYCALL"))
-		strcpy(s, mycallsign);
+		strcpy(s, get_field("#mycallsign")->value);
 	else if (!strcmp(var, "CALL"))
 		strcpy(s, contact_callsign);
 	else if (!strcmp(var, "SENTRST"))
 		sprintf(s, "%s", sent_rst);
 	else if (!strcmp(var, "GRID"))
-		strcpy(s, mygrid);
+		strcpy(s, get_field("#mygrid")->value);
 	else if (!strcmp(var, "GRIDSQUARE")){
-		strcpy(var, mygrid);
+		strcpy(var, get_field("#mygrid")->value);
 		var[4] = 0;
 		strcpy(s, var);
 	}
 	else if (!strcmp(var, "EXCH")){
-		strcpy(s, sent_exchange);
+		strcpy(s, get_field("#sent_exchange")->value);
 	}
 	else if (!strcmp(var, "WIPE"))
 		call_wipe();
@@ -2341,12 +2487,11 @@ int do_macro(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 		//add the end of transmission to the expanded buffer for the fldigi modes
 		if (!strcmp(mode, "RTTY") || !strcmp(mode, "PSK31")){
 			strcat(buff, "^r");
-			tx_on();
+			tx_on(TX_SOFT);
 		}
 
 		if (!strcmp(mode, "FT8") && strlen(buff)){
-			//we use the setting of the PITCH control for tx freq
-			ft8_tx(buff, atoi(get_field("#rx_pitch")->value));
+			ft8_tx(buff, atoi(get_field("#tx_pitch")->value));
 			set_field("#text_in", "");
 			//write_console(FONT_LOG_TX, buff);
 		}
@@ -2420,8 +2565,13 @@ int do_record(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 	return 0;
 }
 
-void tx_on(){
+void tx_on(int trigger){
 	char response[100];
+
+	if (trigger != TX_SOFT && trigger != TX_PTT){
+		puts("Error: tx_on trigger should be SOFT or PTT");
+		return;
+	}
 
 	struct field *f = get_field("r1:mode");
 	if (f){
@@ -2445,15 +2595,12 @@ void tx_on(){
 
 	if (in_tx == 0){
 		sdr_request("tx=on", response);	
-		in_tx = 1;
+		in_tx = trigger; //can be PTT or softswitch
 		char response[20];
 		struct field *freq = get_field("r1:freq");
 		set_operating_freq(atoi(freq->value), response);
 		update_field(get_field("r1:freq"));
 	}
-	// let the modems decide this
-	//if (tx_mode == MODE_DIGITAL || tx_mode == MODE_RTTY || tx_mode == MODE_PSK31)
-		//sound_input(1);
 
 	tx_start_time = millis();
 }
@@ -2463,7 +2610,7 @@ void tx_off(){
 
 	modem_abort();
 
-	if (in_tx == 1){
+	if (in_tx){
 		sdr_request("tx=off", response);	
 		in_tx = 0;
 		sdr_request("key=up", response);
@@ -2505,14 +2652,19 @@ void load_ui(char *name){
 	strcpy(directory, path);
 	strcat(directory, "/sbitx/data/");
 	strcat(directory, name);
-	strcat(directory, ".ini");
+	strcat(directory, "_layout.ini");
 	
   if (ini_parse(directory, layout_handler, NULL)<0){
     printf("Unable to load layout file %s\n", directory);
+		return;
   }
+
+	//waterfall might have changed, so rebuild the gdkpixbuff of the waterfall
+	init_waterfall();
 
 	for (int i = 0; active_layout[i].cmd[0] > 0; i++)
 		active_layout[i].is_dirty = 1;
+	invalidate_rect(0,0,screen_width, screen_height);
 }
 
 void set_ui(int id){
@@ -2587,7 +2739,7 @@ static gboolean on_key_press (GtkWidget *widget, GdkEventKey *event, gpointer us
 				tx_off();
 				break;
 			case 't':
-				tx_on();
+				tx_on(TX_SOFT);
 				break;
 			case 'm':
 				if (current_layout == LAYOUT_MACROS)
@@ -2810,11 +2962,11 @@ void init_gpio_pins(){
 	pinMode(DASH, INPUT);
 	pullUpDnControl(DASH, PUD_UP);
 }
-
+/*
 int read_switch(int i){
 	return digitalRead(i) == HIGH ? 0 : 1;
 }
-
+*/
 uint8_t dec2bcd(uint8_t val){
 	return ((val/10 * 16) + (val %10));
 }
@@ -2895,6 +3047,25 @@ void rtc_write(int year, int month, int day, int hours, int minutes, int seconds
 */
 }
 
+//this will copy the computer time
+//to the rtc
+void rtc_sync(){
+	time_t t = time(NULL);
+	struct tm *t_utc = gmtime(&t);
+
+	printf("Checking for valid NTP time ...");
+	if (system("ntpstat") != 0){
+		printf(".. not found.\n");
+		return;
+	}
+	printf("Syncing RTC to %04d-%02d-%02d %02d:%02d:%02d\n", 
+		t_utc->tm_year + 1900,  t_utc->tm_mon + 1, t_utc->tm_mday, 
+		t_utc->tm_hour, t_utc->tm_min, t_utc->tm_sec);
+
+	rtc_write( t_utc->tm_year + 1900,  t_utc->tm_mon + 1, t_utc->tm_mday, 
+		t_utc->tm_hour, t_utc->tm_min, t_utc->tm_sec);
+}
+
 int key_poll(){
 	int key = 0;
 	
@@ -2973,7 +3144,7 @@ void hw_init(){
 void hamlib_tx(int tx_input){
   if (tx_input){
     sound_input(1);
-		tx_on();
+		tx_on(TX_SOFT);
 	}
   else {
     sound_input(0);
@@ -2983,20 +3154,27 @@ void hamlib_tx(int tx_input){
 
 
 int get_cw_delay(){
-	return cw_delay;
+	return atoi(get_field("#cwdelay")->value);
 }
 
 int get_cw_input_method(){
-	return cw_input_method;
+	struct field *f = get_field("#cwinput");
+	if (!strcmp(f->value, "KEYBOARD"))
+		return CW_KBD;
+	else if (!strcmp(f->value, "IAMBIC"))
+		return CW_IAMBIC;
+	else
+		return CW_STRAIGHT;
 }
 
 int get_pitch(){
-	struct field *f = get_field("#rx_pitch");
+	struct field *f = get_field("rx_pitch");
 	return atoi(f->value);
 }
 
 int get_cw_tx_pitch(){
-	return cw_tx_pitch;
+	struct field *f = get_field("#tx_pitch");
+	return atoi(f->value);
 }
 
 int get_data_delay(){
@@ -3017,17 +3195,30 @@ void tuning_isr(void){
 		tuning_ticks--;	
 }
 
-int16_t vfwd, vref;
 void query_swr(){
 	uint8_t response[4];
-	vfwd = vref = 0;
+	int16_t vfwd, vref;
+	int  vswr;
+	char buff[20];
 
+	if (!in_tx)
+		return;
 	if(i2cbb_read_i2c_block_data(0x8, 0, 4, response) == -1)
 		return;
-	
+
+	vfwd = vref = 0;
+
+
 	memcpy(&vfwd, response, 2);
 	memcpy(&vref, response+2, 2);
-//	printf("swr : %u / %u\n", vfwd, vref); 
+	if (vref >= vfwd)
+		vswr = 100;
+	else
+		vswr = (10*(vfwd + vref))/(vfwd-vref);
+	sprintf(buff,"%d", (vfwd * 40)/68);
+	set_field("#fwdpower", buff);		
+	sprintf(buff, "%d", vswr);
+	set_field("#vswr", buff);
 }
 
 void bin_dump(int length, uint8_t *data){
@@ -3037,15 +3228,88 @@ void bin_dump(int length, uint8_t *data){
 	printf("\n");
 }
 
+int  web_get_console(char *buff, int max){
+	char c;
+	int i;
+
+	if (q_length(&q_web) == 0)
+		return 0;
+	strcpy(buff, "CONSOLE ");
+	buff += strlen("CONSOLE ");
+	for (i = 0; (c = q_read(&q_web)) && i < max; i++){
+		if (c < 128 && c >= ' ')
+			*buff++ = c;
+	}
+	*buff = 0;
+	return i;
+}
+
+void web_get_spectrum(char *buff){
+
+	int n_bins = (int)((1.0 * spectrum_span) / 46.875);
+	//the center frequency is at the center of the lower sideband,
+	//i.e, three-fourth way up the bins.
+	int starting_bin = (3 *MAX_BINS)/4 - n_bins/2;
+	int ending_bin = starting_bin + n_bins; 
+
+	int j = 0;
+	if (in_tx)
+		strcpy(buff, "TX ");
+	else
+		strcpy(buff, "RX ");
+	j += 3;//move the pointer forward
+	for (int i = starting_bin; i <= ending_bin; i++){
+		int y = spectrum_plot[i] + waterfall_offset;
+		if (y > 96)
+			buff[j++] = 127;
+		else if(y > 0 && y < 96)
+			buff[j++] = y + 32;
+		else
+			buff[j++] = ' ';
+	}
+
+	buff[j++] = 0;
+	return;
+}
+
 gboolean ui_tick(gpointer gook){
 	int static ticks = 0;
 
 	ticks++;
 
-	//update all the fields, we should instead mark fields dirty and update only those
+	while (q_length(&q_remote_commands) > 0){
+		//read each command until the 
+		char remote_cmd[1000];
+		int c, i;
+		for (i = 0; i < sizeof(remote_cmd)-2 &&  (c = q_read(&q_remote_commands)) > 0; i++){
+			remote_cmd[i] = c;
+		}
+		remote_cmd[i] = 0;
+
+		//echo the keystrokes for chatty modes like cw/rtty/psk31/etc
+		if (!strncmp(remote_cmd, "key ", 4))
+			for (int i = 4; remote_cmd[i] > 0; i++)
+				edit_field(get_field("#text_in"), remote_cmd[i]);	
+		else {
+			cmd_exec(remote_cmd);
+			settings_updated = 1; //save the settings
+		}
+	}
+
 	for (struct field *f = active_layout; f->cmd[0] > 0; f++){
-		if (f->is_dirty)
-			update_field(f);
+		if (f->is_dirty){
+			if (f->y >= 0){
+				GdkRectangle r;
+				r.x = f->x;
+				r.y = f->y;
+				r.width = f->width;
+				r.height = f->height;
+				invalidate_rect(r.x, r.y, r.width, r.height);
+			}
+//			char buff[1000];
+//			sprintf(buff, "%s %s", f->label, f->value);
+//			printf("%d: updating dirty field %s\n",ticks,  f->cmd);
+		}
 	}
   //char message[100];
 	
@@ -3069,6 +3333,7 @@ gboolean ui_tick(gpointer gook){
 	}
 
 
+//	printf("Tick %d\n", ticks);
 	if (ticks == 100){
 
 		char response[6], cmd[10];
@@ -3082,12 +3347,6 @@ gboolean ui_tick(gpointer gook){
 		update_field(f);
 		f = get_field("#status");
 		update_field(f);
-
-//		f = get_field("#console");
-//		update_field(f);
-		ticks = 0;
-//		update_field(get_field("#console"));
-//		update_field(get_field("#status"));
 
 		if (digitalRead(ENC1_SW) == 0)
 				focus_field(get_field("r1:volume"));
@@ -3134,6 +3393,7 @@ gboolean ui_tick(gpointer gook){
       gdk_window_set_cursor(gdk_get_default_root_window(), new_cursor);
     }
 
+		ticks = 0;
   }
   modem_poll(mode_id(get_field("r1:mode")->value));
 	//update_field(get_field("#text_in")); //modem might have extracted some text
@@ -3148,8 +3408,8 @@ gboolean ui_tick(gpointer gook){
 	if (f && (!strcmp(f->value, "2TONE") || !strcmp(f->value, "LSB") || 
 	!strcmp(f->value, "USB"))){
 		if (digitalRead(PTT) == LOW && in_tx == 0)
-			tx_on();
-		else if (digitalRead(PTT) == HIGH && in_tx == 1)
+			tx_on(TX_PTT);
+		else if (digitalRead(PTT) == HIGH && in_tx  == TX_PTT)
 			tx_off();
 	}
 
@@ -3175,6 +3435,8 @@ void ui_init(int argc, char *argv[]){
 	screen_width = gdk_screen_width();
 	screen_height = gdk_screen_height();
 #pragma pop
+
+	q_init(&q_web, 1000);
 
   window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
   //gtk_window_set_default_size(GTK_WINDOW(window), 800, 480);
@@ -3211,7 +3473,6 @@ void ui_init(int argc, char *argv[]){
 	scale_ui();	
   gtk_widget_show_all(window);
 	gtk_window_fullscreen(GTK_WINDOW(window));
-
 	focus_field(get_field("r1:volume"));
 	webserver_start();
 }
@@ -3222,14 +3483,6 @@ long get_freq(){
 	return atol(get_field("r1:freq")->value);
 }
 
-//this is used to trigger an actual frequency change
-//by eventually calling set_operating_freq() through do_cmd
-//and update the frequency display as well
-void set_freq(long freq){
-	char cmd[100];
-	sprintf(cmd, "r1:freq:%ld", freq);
-	do_cmd(cmd);
-}
 
 void set_mode(char *mode){
 	struct field *f = get_field("r1:mode");
@@ -3266,9 +3519,10 @@ int get_tx_data_byte(char *c){
 		for (int i = 0; i < length; i++)
 			f->value[i] = f->value[i+1];
 	}
+	f->is_dirty = 1;
+	f->update_remote = 1;
+	//update_field(f);
 	return length;
-	update_field(f);
-	return *c;
 }
 
 int get_tx_data_length(){
@@ -3297,7 +3551,7 @@ void change_band(char *request){
 
 	//find the band that has just been selected, the first char is #, we skip it
 	for (new_band = 0; new_band < max_bands; new_band++)
-		if (!strcmp(request+1, band_stack[new_band].name))
+		if (!strcmp(request, band_stack[new_band].name))
 			break;
 
 	//continue if the band is legit
@@ -3352,7 +3606,7 @@ void change_band(char *request){
   set_field("r1:low",get_field("r1:low")->value);
   set_field("r1:high",get_field("r1:high")->value);
 
-	clear_tx_text_buffer();
+	abort_tx();
 }
 
 void utc_set(char *args, int update_rtc){
@@ -3413,8 +3667,9 @@ void do_cmd(char *cmd){
 	
 	strcpy(request, cmd);			//don't mangle the original, thank you
 
-	if (!strcmp(request, "#close"))
+	if (!strcmp(request, "#close")){
 		gtk_window_iconify(GTK_WINDOW(window));
+	}
 	else if (!strcmp(request, "#off")){
 		tx_off();
 		set_field("#record", "OFF");
@@ -3422,7 +3677,10 @@ void do_cmd(char *cmd){
 		exit(0);
 	}
 	else if (!strcmp(request, "#tx")){	
-		tx_on();
+		tx_on(TX_SOFT);
+	}
+	else if (!strcmp(request, "#web")){
+		execute_app("chromium-browser --enable-features=OverlayScrollbar http://127.0.0.1:8000 &");
 	}
 	else if (!strcmp(request, "#rx")){
 		tx_off();
@@ -3437,46 +3695,52 @@ void do_cmd(char *cmd){
 	else if (!strcmp(request, "#vfo=B")){
 		struct field *f = get_field("r1:freq");
 		struct field *vfo = get_field("#vfo");
+		struct field *vfo_a = get_field("#vfo_a_freq");
+		struct field *vfo_b = get_field("#vfo_b_freq");
 		if (!strcmp(vfo->value, "B")){
-			vfo_a_freq = atoi(f->value);
-			sprintf(buff, "%d", vfo_b_freq);
-			set_field("r1:freq", buff);
+			//vfo_a_freq = atoi(f->value);
+			strcpy(vfo_a->value, f->value);
+			//sprintf(buff, "%d", vfo_b_freq);
+			set_field("r1:freq", vfo_b->value);
 			settings_updated++;
 		}
 	}
 	else if (!strcmp(request, "#vfo=A")){
 		struct field *f = get_field("r1:freq");
 		struct field *vfo = get_field("#vfo");
+		struct field *vfo_a = get_field("#vfo_a_freq");
+		struct field *vfo_b = get_field("#vfo_b_freq");
 		//printf("vfo old %s, new %s\n", vfo->value, request);
 		if (!strcmp(vfo->value, "A")){
-			vfo_b_freq = atoi(f->value);
-			sprintf(buff, "%d", vfo_a_freq);
-			set_field("r1:freq", buff);
+		//	vfo_b_freq = atoi(f->value);
+			strcpy(vfo_b->value, f->value);
+	//		sprintf(buff, "%d", vfo_a_freq);
+			set_field("r1:freq", vfo_a->value);
 			settings_updated++;
 		}
 	}
 	//tuning step
-  else if (!strcmp(request, "#step=1MHz"))
+  else if (!strcmp(request, "#step=1M"))
     tuning_step = 1000000;
-	else if (!strcmp(request, "#step=100KHz"))
+	else if (!strcmp(request, "#step=100K"))
 		tuning_step = 100000;
-	else if (!strcmp(request, "#step=10KHz"))
+	else if (!strcmp(request, "#step=10K"))
 		tuning_step = 10000;
-	else if (!strcmp(request, "#step=1KHz"))
+	else if (!strcmp(request, "#step=1K"))
 		tuning_step = 1000;
-	else if (!strcmp(request, "#step=100Hz"))
+	else if (!strcmp(request, "#step=100H"))
 		tuning_step = 100;
-	else if (!strcmp(request, "#step=10Hz"))
+	else if (!strcmp(request, "#step=10H"))
 		tuning_step = 10;
 
 	//spectrum bandwidth
-	else if (!strcmp(request, "#span=2.5KHz"))
+	else if (!strcmp(request, "#span=2.5K"))
 		spectrum_span = 2500;
-	else if (!strcmp(request, "#span=6KHz"))
+	else if (!strcmp(request, "#span=6K"))
 		spectrum_span = 6000;
-	else if (!strcmp(request, "#span=10KHz"))
+	else if (!strcmp(request, "#span=10K"))
 		spectrum_span = 10000;
-	else if (!strcmp(request, "#span=25KHz"))
+	else if (!strcmp(request, "#span=25K"))
 		spectrum_span = 25000;
 		
 	//handle the band stacking
@@ -3488,7 +3752,7 @@ void do_cmd(char *cmd){
 		!strcmp(request, "#15m") || 
 		!strcmp(request, "#12m") || 
 		!strcmp(request, "#10m")){
-		change_band(request);		
+		change_band(request+1); //skip the hash		
 	}
 	else if (!strcmp(request, "#record=ON")){
 		char fullpath[200];	//dangerous, find the MAX_PATH and replace 200 with it
@@ -3524,6 +3788,39 @@ void do_cmd(char *cmd){
 	}
 }
 
+void enter_qso(char *args){
+	char contact_callsign[20];
+	char rst_sent[10];
+	char exchange_sent[10];
+	char rst_recv[10];
+	char exchange_recv[10];
+	char *p, *q;
+	int i = 0, len;
+
+	q = args;	
+	len = strlen(args);
+	for(p = contact_callsign; *q != '|' && *q; i++)
+		*p++ = *q++; 
+	*p = 0; q++;
+
+	for(p = rst_sent; *q != '|' && *q; i++)
+		*p++ = *q++; 
+	*p = 0; q++;
+
+	for(p = exchange_sent; *q != '|' && *q; i++)
+		*p++ = *q++; 
+	*p = 0; q++;
+
+	for(p = rst_recv; *q != '|' && *q; i++)
+		*p++ = *q++; 
+	*p = 0; q++;
+
+	for(p = exchange_recv; *q != '|' && *q; i++)
+		*p++ = *q++; 
+	*p = 0;
+
+	logbook_add(contact_callsign, rst_sent, exchange_sent, rst_recv, exchange_recv);
+}
 
 void cmd_exec(char *cmd){
 	int i, j;
@@ -3553,15 +3850,17 @@ void cmd_exec(char *cmd){
 
 	char response[100];
 	if (!strcmp(exec, "callsign")){
-		strcpy(mycallsign,args); 
-		sprintf(response, "\n[Your callsign is set to %s]\n", mycallsign);
+		strcpy(get_field("#mycallsign")->value,args); 
+		sprintf(response, "\n[Your callsign is set to %s]\n", get_field("#mycallsign")->value);
 		write_console(FONT_LOG, response);
 	}
+	else if (!strcmp(exec, "abort"))
+		abort_tx();
 	else if (!strcmp(exec, "rtc"))
 		rtc_read();
-	else if (!strcmp(exec, "grid")){
-		strcpy(mygrid, args);
-		sprintf(response, "\n[Your grid is set to %s]\n", mygrid);
+	else if (!strcmp(exec, "grid")){	
+		set_field("#mygrid", args);
+		sprintf(response, "\n[Your grid is set to %s]\n", get_field("#mygrid")->value);
 		write_console(FONT_LOG, response);
 	}
 	else if (!strcmp(exec, "utc")){
@@ -3582,35 +3881,32 @@ void cmd_exec(char *cmd){
 	}
 	else if(!strcmp(exec, "macro")){
 		if (!strcmp(args, "list"))
-			macro_list();
-		else if (!macro_load(args)){
+			macro_list(NULL);
+		else if (!macro_load(args, NULL)){
 			set_ui(LAYOUT_MACROS);
-			strcpy(current_macro, args);
-			settings_updated++;
+			set_field("#current_macro", args);
 		}
-		else if (strlen(current_macro)){
+		else if (strlen(get_field("#current_macro")->value)){
 			write_console(FONT_LOG, "current macro is ");
-			write_console(FONT_LOG, current_macro);
+			write_console(FONT_LOG, get_field("#current_macro")->value);
 			write_console(FONT_LOG, "\n");
 		}
 		else
 			write_console(FONT_LOG, "macro file not loaded\n");
 	}
+	else if (!strcmp(exec, "qso"))
+		enter_qso(args);
 	else if (!strcmp(exec, "exchange")){
-		sent_exchange[0] = 0;
-		contest_serial = 0;
+		set_field("#contest_serial", "0");
+		set_field("#sent_exchange", "");
 
-		if (atoi(args) == 1)
-			contest_serial = 1;
-		else if (strlen(args) > 1)
-			strcpy(sent_exchange, args);
-		else
-			sent_exchange[0] = 0;
-		write_console(FONT_LOG, "Exchange set to [");
-		if (contest_serial > 0){
-			sprintf(sent_exchange, "%04d", contest_serial);
+		if (strlen(args)){
+			set_field("#sent_exchange", args);
+			if (atoi(args))
+				set_field("#contest_serial", args);
 		}
-		write_console(FONT_LOG, sent_exchange);
+		write_console(FONT_LOG, "Exchange set to [");
+		write_console(FONT_LOG, get_field("#sent_exchange")->value);
 		write_console(FONT_LOG, "]\n");
 	}
 	else if(!strcmp(exec, "freq") || !strcmp(exec, "f")){
@@ -3627,18 +3923,6 @@ void cmd_exec(char *cmd){
 			set_field("r1:freq", freq_s);
 		}
 	}
-	else if (!strcmp(exec, "cwdelay")){
-		if (strlen(args)){
-			int d = atoi(args);
-			if (d < 50 || d > 2000)
-				write_console(FONT_LOG, "cwdelay should be between 100 and 2000 msec");
-			else 
-				cw_delay = d;
-		}	
-		char buff[10];
-		sprintf(buff, "cwdelay: %d msec\n", cw_delay);
-		write_console(FONT_LOG, buff);
-	}
 	else if (!strcmp(exec, "ui")){
 		load_ui(args);
 	}
@@ -3648,8 +3932,6 @@ void cmd_exec(char *cmd){
     save_user_settings(1);
     exit(0);
   }
-
-
   else if ((!strcmp(exec, "lsb")) || (!strcmp(exec, "LSB"))){
     set_mode("LSB");
   }
@@ -3677,7 +3959,8 @@ void cmd_exec(char *cmd){
   else if ((!strcmp(exec, "2tone")) || (!strcmp(exec, "2TONE"))){
     set_mode("2TONE");
   }
-
+	else if (!strcmp(exec, "band"))
+		change_band(args); 
   else if ((!strcmp(exec, "help")) || (!strcmp(exec, "?"))){
     write_console(FONT_LOG, "Help\r\n\r\n");
     write_console(FONT_LOG, "\\audio\r\n");
@@ -3738,63 +4021,6 @@ void cmd_exec(char *cmd){
     write_console(FONT_LOG, "\r\n");
 
   }
-
-	else if (!strcmp(exec, "ft8mode")){
-		switch(args[0]){
-			case 'a':
-			case 'A':
-				ft8_setmode(FT8_AUTO);
-				write_console(FONT_LOG, "ft8mode set to auto\n");
-				break;
-			case 's':
-			case 'S':
-				ft8_setmode(FT8_SEMI);
-				write_console(FONT_LOG, "ft8mode set to semiauto\n");
-				break;
-			case 'm':
-			case 'M':
-				ft8_setmode(FT8_MANUAL);
-				write_console(FONT_LOG, "ft8mode set to manual\n");
-				break;
-			default:
-				write_console(FONT_LOG, "Usage: \\ft8mode auto or semi or manual\n");
-				break;
-		}
-	}
-	else if (!strcmp(exec, "sidetone")){
-		char buff[50];
-		if (strlen(args)){
-			int temp_sidetone = atoi(args);
-			if (temp_sidetone >= 0 && temp_sidetone <= 100){
-				sidetone = temp_sidetone;
-				sprintf(buff, "sidetone=%d", sidetone);
-				char response[10]; 
-				sdr_request(buff, response);
-			}
-		}
-		sprintf(buff, "sidetone: set to %d/100\n", sidetone);
-		write_console(FONT_LOG, buff);
-	}
-	else if (!strcmp(exec, "cwinput")){
-		if (strlen(args)){
-			if (!strcmp(args, "kbd"))
-				cw_input_method = CW_KBD;
-			else if(!strcmp(args, "key"))
-				cw_input_method = CW_STRAIGHT;
-			else if (!strcmp(args, "keyer"))
-				cw_input_method = CW_IAMBIC;
-		}
-		char buff[40];
-		if (cw_input_method == CW_KBD)
-			strcpy(buff, "cwinput = kbd [kbd/key/keyer]");
-		else if (cw_input_method == CW_STRAIGHT)
-			strcpy(buff, "cwinput = key [kbd/key/keyer]");
-		else if (cw_input_method == CW_IAMBIC)
-			strcpy(buff, "cwinput = keyer [kbd/key/keyer]");
-		else
-			strcpy(buff, "cwinput  = [kbd/key/keyer]");
-		write_console(FONT_LOG, buff);
-	}
 	else if (!strcmp(exec, "qrz")){
 		if(strlen(args))
 			qrz(args);
@@ -3806,11 +4032,15 @@ void cmd_exec(char *cmd){
 	else if (!strcmp(exec, "mode") || !strcmp(exec, "m"))
 		set_mode(args);
 	else if (!strcmp(exec, "t"))
-		tx_on();
+		tx_on(TX_SOFT);
 	else if (!strcmp(exec, "r"))
 		tx_off();
-	else if (!strcmp(exec, "telnet"))
-		telnet_open(args);
+	else if (!strcmp(exec, "telnet")){
+		if (strlen(args) > 5) 
+			telnet_open(args);
+		else
+			telnet_open(get_field("#telneturl")->value);
+	}
 	else if (!strcmp(exec, "tclose"))
 		telnet_close(args);
 	else if (!strcmp(exec, "tel"))
@@ -3819,35 +4049,71 @@ void cmd_exec(char *cmd){
 		if (strlen(args)){
 			int t = atoi(args);	
 			if (t > 100 && t < 4000)
-				cw_tx_pitch = t;
+				set_field("#tx_pitch", args);
 			else
 				write_console(FONT_LOG, "cw pitch should be 100-4000");
 		}
 		char buff[100];
-		sprintf(buff, "cw txpitch is set to %d Hz\n", cw_tx_pitch);
+		sprintf(buff, "txpitch is set to %d Hz\n", get_cw_tx_pitch());
 		write_console(FONT_LOG, buff);
+	}
+	else if (exec[0] == 'F' && isdigit(exec[1])){
+		char buff[1000];
+		printf("executing macro %s\n", exec);
+		macro_exec(atoi(exec+1), buff);
+		if (strlen(buff))
+			set_field("#text_in", buff);
 	}
 	else {
 		//see if it matches any of the fields of the UI that have FIELD_NUMBER 
 		char field_name[32];
+		//conver the string to upper if not already so
+		for (char *p = exec; *p; p++)
+			*p =  toupper(*p);
 		struct field *f = get_field_by_label(exec);
 		if (f){
-			//convert all the letters to uppercase
-			for(char *p = args; *p; p++)
+			if (strlen(args)){
+				//convert all the letters to uppercase
+				for(char *p = args; *p; p++)
 					*p = toupper(*p);
-			if(set_field(f->cmd, args)){
-				write_console(FONT_LOG, "Invalid setting\r\n");
-      } else {
-        write_console(FONT_LOG, "\\");
-        write_console(FONT_LOG, exec);
-        write_console(FONT_LOG, " ");
-        write_console(FONT_LOG, args);        
-        write_console(FONT_LOG, "\r\n");
-      }
+				if(set_field(f->cmd, args)){
+					write_console(FONT_LOG, "Invalid setting:");
+      	} else {
+					f_focus = f_hover = f;
+					//f->update_remote = 0; // prevent the spiral of updates
+        	write_console(FONT_LOG, exec);
+        	write_console(FONT_LOG, " ");
+       	  write_console(FONT_LOG, args);        
+        	write_console(FONT_LOG, "\n");
+      	}
+			}
+			else {
+				//show help
+				char buff[1000];
+
+				sprintf(buff, "Usage: %s\n", f->label);
+				write_console(FONT_LOG, buff);
+				switch(f->value_type){
+				case FIELD_NUMBER:
+						sprintf(buff, "set to %d, min=%d, max=%d\n", atoi(f->value), f->min, f->max);
+						break;	
+				case FIELD_BUTTON:
+				case FIELD_TOGGLE:
+						sprintf(buff, "set to %s, This is a switch that can be toggled On/Off\n", f->value);
+						break;
+				case FIELD_SELECTION:
+						sprintf(buff, "set to %s, permitted values are : %s\n", f->value, f->selection);
+						break;
+				case FIELD_TEXT:					
+						sprintf(buff, "set to [%s], permissible length is from %d to %d\n", f->min, f->max);
+				}
+				write_console(FONT_LOG, buff);
+			}	
 		}
 	}
 	save_user_settings(0);
 }
+
 
 int main( int argc, char* argv[] ) {
 
@@ -3857,13 +4123,16 @@ int main( int argc, char* argv[] ) {
 	//unlink any pending ft8 transmission
 	unlink("/home/pi/sbitx/ft8tx_float.raw");
 	call_wipe();
-	strcpy(sent_exchange, "");
 
 	ui_init(argc, argv);
 	hw_init();
 	console_init();
 
+	q_init(&q_remote_commands, 1000); //not too many commands
 	setup();
+
+	rtc_sync();
+
 	struct field *f;
 	f = active_layout;
 
@@ -3879,14 +4148,12 @@ int main( int argc, char* argv[] ) {
 	do_cmd("r1:freq=7100000");
 	do_cmd("r1:mode=LSB");	
 	do_cmd("#step=1000");	
-  do_cmd("#span=25KHZ");
+  do_cmd("#span=25K");
 	strcpy(vfo_a_mode, "USB");
 	strcpy(vfo_b_mode, "LSB");
-	strcpy(mycallsign, "vu2lch");
-	strcpy(mygrid, "Mk97fj");
-	current_macro[0] = 0;
-	vfo_a_freq = 14000000;
-	vfo_b_freq = 7000000;
+	set_field("#mycallsign", "VU2LCH");
+	//vfo_a_freq = 14000000;
+	//vfo_b_freq = 7000000;
 	
 	f = get_field("spectrum");
 	update_field(f);
@@ -3908,20 +4175,21 @@ int main( int argc, char* argv[] ) {
   }
 
 
-	if (strlen(current_macro))
-		macro_load(current_macro);
+	if (strlen(get_field("#current_macro")->value))
+		macro_load(get_field("#current_macro")->value, NULL);
 	char buff[1000];
 
 	//now set the frequency of operation and more to vfo_a
-  sprintf(buff, "%d", vfo_a_freq);
-  set_field("r1:freq", buff);
+  //sprintf(buff, "%d", vfo_a_freq);
+  set_field("r1:freq", get_field("#vfo_a_freq")->value);
 
 	console_init();
 	write_console(FONT_LOG, VER_STR);
   write_console(FONT_LOG, "\r\nEnter \\help for help\r\n");
 
-	if (strcmp(mycallsign, "N0BDY")){
-		sprintf(buff, "\nWelcome %s your grid is %s\n", mycallsign, mygrid);
+	if (strcmp(get_field("#mycallsign")->value, "NOBDY")){
+		sprintf(buff, "\nWelcome %s your grid is %s\n", 
+		get_field("#mycallsign")->value, get_field("#mygrid")->value);
 		write_console(FONT_LOG, buff);
 	}
 	else 
@@ -3939,13 +4207,7 @@ int main( int argc, char* argv[] ) {
 	//rtc_read();
 	printf("done!\n");
 
-	FILE *pf = fopen("default_layout.ini", "w");
-	for (int i = 0; active_layout[i].cmd[0] > 0; i++){
-		struct field *f = active_layout + i;
-		fprintf(pf, "[%s]\nx=%d\ny=%d\nwidth=%d\nheight=%d\n\n", f->cmd, f->x, f->y, f->width, f->height); 
-	}	
-	fclose(pf);
-
+	execute_app("chromium-browser --enable-features=OverlayScrollbar http://127.0.0.1:8080 &");
   gtk_main();
   
   return 0;

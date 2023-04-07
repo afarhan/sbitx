@@ -40,7 +40,7 @@
 #define SI5351_CLK_DRIVE_STRENGTH_6MA   (2<<0)
 #define SI5351_CLK_DRIVE_STRENGTH_8MA   (3<<0)
 
-#define PLL_N 32
+#define PLL_N 35
 #define PLLFREQ (xtal_freq_calibrated * PLL_N)
 //int xtal_freq_calibrated = 25012725; // crystal oscillator 
 int xtal_freq_calibrated = 25000000; // tcxo
@@ -138,6 +138,7 @@ static void setup_multisynth(uint8_t clk, uint8_t pllSource, uint32_t divider,  
   uint32_t P3;
   uint32_t div4 = 0;
 
+
   /* Output Multisynth Divider Equations
    * where: a = div, b = num and c = denom
    * P1 register is an 18-bit value using following formula:
@@ -195,9 +196,11 @@ static void set_frequency_fixedpll(int clk, int pll, uint32_t pllfreq, uint32_t 
   uint32_t divider = pllfreq / freq; // range: 8 ~ 1800
   uint32_t integer_part = divider * freq;
   uint32_t reminder = pllfreq -  integer_part;
+	uint32_t multi = pllfreq / xtal_freq_calibrated;
 
   uint32_t num = ((uint64_t)reminder * (uint64_t)denom)/freq;
 
+  setup_pll(pll, multi, 0, denom);
   setup_multisynth(clk, pll, divider, num, denom, rdiv, drive_strength);
 }
 
@@ -238,6 +241,8 @@ void si5351bx_setfreq(uint8_t clk, uint32_t frequency){
 
    set_freq_fixeddiv(clk, pll, frequency, pll_div, 
                     SI5351_CLK_DRIVE_STRENGTH_8MA);
+//	set_frequency_fixedpll(clk, pll, PLLFREQ, frequency, SI_R_DIV_1, 
+//		SI5351_CLK_DRIVE_STRENGTH_8MA);
 }
 
 
@@ -247,8 +252,12 @@ void si5351_set_calibration(int32_t cal){
 
 void si5351bx_init(){ 
   i2cbb_init(SDA, SCL);
+	delay(10);
   si5351_reset();
-  si5351a_clkoff(1);
+	delay(10);
+  si5351a_clkoff(SI_CLK0_CONTROL);
+  si5351a_clkoff(SI_CLK1_CONTROL);
+  si5351a_clkoff(SI_CLK2_CONTROL);
 }
 
 /*

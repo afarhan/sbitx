@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="en" data-bs-theme="dark">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>sBitx</title>
+    <script src="jquery.min.js"></script>
+    <script src="jquery.knob.min.js"></script>
+    <script src="pcm-player.js">
+    //https://github.com/samirkumardas/pcm-player
+    </script> 
+		<style>
+		body {
+			background-color: #000;
+			color: cyan;
+			font-family: Helvetica, Verdana, Sans-serif;
+		}
+		</style>
+  </head>
+  <body>
+  <div id="login_page">
+  	<form action="/login" method="post" id="login">
+  		<p>Enter passkey to access your sbitx. 
+  		The passkey is set with \passkey command on the radio.</p>
+  		<div class="mb-3">
+  			<label for="passkey" class="form-label">Passkey</label>
+  			<input type="text" class="form-control" id="passkey" name="passkey">
+  		</div>
+  		<div class="mb-3">
+  			<button type="submit" id="start_login" class="btn btn-primary" >Start</button>
+			</div>  		
+  	</form>
+  </div><!-- end of login -->
+  <div id="sdr_page">
+		<input type="hidden" id="FREQ" value="7040000"></input>
+    <h1 id="display_frequency">7020000 KHz</h1>
+		<select class="sbitx-selection" id="MODE">
+			<option value="USB">USB</option>
+			<option value="LSB">LSB</option>
+			<option value="CW">CW</option>
+			<option value="CWR">CWR</option>
+			<option value="FT8">FT8</option>
+			<option value="PSK31">PSK31</option>
+			<option value="RTTY">RTTY</option>
+			<option value="DIGITAL">Digital</option> 
+			<option value="2TONE">2TONE</option>
+		</select>
+		| AGC
+		<select class="sbitx-selection" id="AGC">
+			<option value="FAST">FAST</option>
+			<option value="MED">MED</option>
+			<option value="SLOW">SLOW</option>
+			<option value="OFF">OFF</option>
+		</select>
+    <button class="sbitx-btn" id="band 80m" type="submit">80M</button>
+    <button class="sbitx-btn" id="band 40m" type="submit">40M</button>
+    <button class="sbitx-btn" id="band 30m" type="submit">30M</button>
+    <button class="sbitx-btn" id="band 20m" type="submit">20M</button>
+    <button class="sbitx-btn" id="band 17m" type="submit">17M</button>
+    <button class="sbitx-btn" id="band 15m" type="submit">15M</button>
+    <button class="sbitx-btn" id="band 12m" type="submit">12M</button>
+    <button class="sbitx-btn" id="band 10m" type="submit">10M</button>
+		<div>
+			High: <input type="number" class="sbitx-selection" id="HIGH" max="4000" min="0" step="50" value="2200" />
+			| Low: <input type="number" class="sbitx-selection" id="LOW" max="4000" min="0" step="50" value="200" />
+		|	Volume: <input type="range" class="sbitx-selection" id="AUDIO" max="100" min="0" step="5" value="80" />
+		|	Rx Gain: <input type="range" class="sbitx-selection" id="IF" max="100" min="0" step="5" value="80" /><br/>
+		| TX Drive <input type="number" class="sbitx-selection" id="DRIVE" max="100" min="0" step="1" value="80" />
+		Pitch: <input type="number" class="sbitx-selection" id="PITCH" max="4000" min="0" step="10" value="600" />
+		<button id="streamaudio" type="submit" onclick="audio_start();">Stream Audio</button> 
+		</div>
+		<div class="tuning_knob" height=200>
+			<input class="knob" data-width="200" data-displayInput=false data-cursor=true data-fgColor="#222222" data-thickness=.3 data-step=1 data-max=360 value="0">
+		</div>
+		<div width="100%"><canvas id="spectrum" width="600" height ="100"></canvas></div>
+		<div width="100%"><canvas id="waterfall" width="600" height="600"></canvas></div>
+	<h3>Log</h3>
+	<div id="log">
+	</div>
+	</div> <!-- end of sdr_page -->    
+  </body>
+<script>
+
+/* a few helper functions */
+function el(element_id){
+	return document.getElementById(element_id);
+}
+
+function log(str){
+	console.log(str);
+}
+/* socket handlers */
+socket = null;
+
+function on_open(event){
+	log("socket is connected");
+	socket.send("login="+el("passkey").value);
+}
+
+function on_close(event){
+	log("socket was closed by the radio");
+	socket = null;
+	show_login();
+}
+
+function on_message(event){
+	response_handler(event.data);
+}
+
+function on_error(event){
+  log("socket communication error, resetting now");
+  socket.close();
+  socket = null;
+  show_login();
+}
+
+el("login").onsubmit = function(event) {
+	if (socket != null)
+		socket.close();
+	socket = new WebSocket("ws://" + location.host + "/websocket");
+	socket.onopen = on_open;
+	socket.onmessage = on_message;
+	socket.onclose = on_close;
+	socket.onerror = on_error;
+	return false;
+;}
+
+
+//radio values
+
+
+// ui panel switchers
+function show_login(){
+	el("sdr_page").hidden = true;
+	el("login_page").hidden = false;
+}
+
+function show_main(){
+	el("sdr_page").hidden = false;
+	el("login_page").hidden = true;
+//	audio_start();
+//	document.documentElement.requestFullscreen();
+}
+
+function freq_display_set(freq){
+	el("display_frequency").innerText = freq + " KHz";
+}
+
+function update_freq(freq){
+	socket.send("freq "+freq);
+}
+
+function freq_up(){
+	
+	f = el('FREQ');
+	f.value = parseFloat(f.value) + 100;
+	update_freq(f.value);	
+}
+
+function freq_down(){
+	f = el('FREQ');
+	f.value = parseFloat(f.value) - 100;
+	update_freq(f.value);	
+}
+
+//initialization code
+let tuning_knob_position = 0;
+
+//link the knob to the jquery code
+$(function($) {
+	$(".knob").knob({
+  	change : function (value) {
+			var v = value/6;
+		if (v < 5 && tuning_knob_position > 55 || v > tuning_knob_position)
+			freq_up();
+		else if (value > 45 && tuning_knob_position < 5 || v < tuning_knob_position)
+			freq_down();  
+    console.log("change : " + v); 
+    tuning_knob_position = v;
+	},
+	release : function (value) {
+  	//console.log(this.$.attr('value'));
+    console.log("release : " + value);
+ 	},
+	cancel : function () {
+		console.log("cancel : ", this);
+	},
+  draw : function () {
+  }
+  });
+});
+
+//waterfall!
+var waterfall_image = null;
+function waterfall_init(){
+	var w = el("waterfall");
+	var ctx = w.getContext("2d");
+	var waterfall_image = ctx.createImageData(w.width,w.height);
+	i = 0;
+	for (var y = 0; y < w.height; y++){
+		for (var x = 0; x < w.width; x++){
+			waterfall_image.data[i++] = (256 * y)/ w.height;
+			waterfall_image.data[i++] = (256 * x)/ w.width;
+			waterfall_image.data[i++] = 0;
+			waterfall_image.data[i++] = 255;
+		}
+	}
+	ctx.putImageData(waterfall_image, 0, 0);
+}
+
+var nbins = 0;
+/*
+function get_position(pitch, width, ){
+	//we got half from here
+	var bin_offset =  49.7;
+	return bin_offset;	
+}
+*/
+
+function spectrum_update(update){
+	var w = el("spectrum");
+	var ctx = w.getContext("2d");
+	nbins = update.length;
+	var scale = w.width/nbins;
+
+	ctx.fillStyle = "black";
+	ctx.fillRect(0,0,w.width, w.height);
+	ctx.beginPath();
+	for (var x = 0; x < 10; x++){
+		ctx.moveTo(w.width*x/10, 0);
+		ctx.lineTo(w.width*x/10, w.height);
+	}
+	for (var x = 0; x < 8; x++){
+		ctx.moveTo(0, w.height*x/8);
+		ctx.lineTo(w.width, x* w.height/8);
+	}
+	ctx.strokeStyle = "#000f0f";
+
+	ctx.stroke();
+		
+
+	ctx.beginPath();
+	ctx.moveTo(w.width, w.height - (update.charCodeAt(0) - 32));
+	for (var x = 0; x < nbins; x++)
+		ctx.lineTo((nbins - x) * scale, w.height - (update.charCodeAt(x) - 32));
+	ctx.strokeStyle = "#ffff00";
+	ctx.stroke();	
+/*
+	var low = el("LOW").value;
+	var high = el("HIGH").value;
+	var pitch = el("PITCH").value;
+	ctx.fillStyle="#ccc";
+	ctx.fill
+	ctx.moveTo(w.width/2 + p, 0);
+	ctx.lineTo(w.width/2 + p, w.height); 
+*/
+}
+
+function waterfall_update(update){
+	var w = el("waterfall");
+	var ctx = w.getContext("2d", {willReadFrequently:true});
+
+	//first move the old image down by 1 pixels (bitblt it down)
+	var img = ctx.getImageData(0,0,w.width, w.height);
+	ctx.putImageData(img, 0, 3);
+	
+	var i = 0;
+	nbins = update.length;
+	var scale = nbins/w.width;
+
+	//create a new strip of waterfall width, but 1 pixels high
+	img = ctx.getImageData(0,0,w.width, 1);
+	var i = 0;
+	for (var x = 0; x < w.width; x++){
+		var bin = (w.width - x) * scale;
+			
+		var v = (update.charCodeAt(bin) - 32) * 2;
+		if (v > 100)
+			v = 100;
+		var r, g, b;
+		if (v < 20){
+			r = 0;
+			g = 0;
+			b = v * 12;
+		}
+		else if (v < 40){
+			r = 0;
+			g = (v - 20) * 12;
+			b = 255;
+		}
+		else if (v < 60){
+			r =  0;
+			g = 255;
+			b = (60-v) * 12;
+		}
+		else if (v < 80){
+			r = (v-60) * 12;
+			g = 255;
+			b = 0;
+		} 
+		else {
+			r = 255;
+			g = (100-v) * 12;
+			b = 0;
+		}
+		img.data[i++] = r;
+		img.data[i++] = g;
+		img.data[i++] = b; 
+		img.data[i++] = 255;	
+	}
+	ctx.putImageData(img, 0,0);
+	ctx.putImageData(img, 0,1);
+	ctx.putImageData(img, 0,2);
+
+}
+
+//setup the audio
+var player = null;
+
+function audio_start(){
+	player = new PCMPlayer({
+		encoding: '16bitInt',
+		channels: 1,
+		sampleRate: 48000,
+		flushingTime: 200
+   });
+}
+
+var phase = 0;
+function audio_beep_more(){
+	if (player == null)
+		return;
+
+	log("Adding more noise");
+	var noise = new Float32Array(1600);
+	for (var i = 0; i < noise.length; i++){
+		//noise[i] = Math.random() * 2 - 1;
+		noise[i] = Math.sin(phase);
+		phase += Math.PI / 6;
+	}
+	player.feed(noise);
+}
+
+//user interaction handlers
+function sbitx_button_clicked(event){
+	socket.send(event.currentTarget.id);
+}
+
+function sbitx_selection_changed(event){
+	socket.send(event.currentTarget.id + " " + event.currentTarget.value);
+}
+
+$(".sbitx-btn").on("click", sbitx_button_clicked);
+$(".sbitx-selection").on("change", sbitx_selection_changed);	
+
+function ui_tick(){
+	if (socket != null){
+		if (socket.readyState == 1)
+			socket.send("spectrum");
+	}	
+}
+
+//audio interpolation variables
+var prev_sample = 0;
+var intp_factor = 3;
+function response_handler(response){
+	var cmd = "";
+	var args = "";
+
+	if (response instanceof Blob){
+		f = new FileReader();
+		f.onload = () => {
+			if (player != null){
+				var samples = new Int16Array(f.result);
+				var upsample =  new Int16Array(samples.length * intp_factor);
+				var j = 0;	
+				//interpolate, generating higher sampling rate
+				for (var i = 0; i < samples.length; i++)
+					for (var x = 0; x < intp_factor; x++){
+						upsample[j++] = ((prev_sample * (intp_factor- x- 1)) 
+							+ (samples[i] * (x + 1)))/intp_factor; 
+						prev_sample = samples[i];
+					}
+				player.feed(upsample);
+/*
+				var upsample =  new Int16Array(samples.length * 2);
+				for (var i = 0; i < upsample.length; i++)
+					upsample[i] = samples[i/2];
+				player.feed(upsample);
+	
+//				player.feed(samples);
+*/
+			}
+		}
+		f.readAsArrayBuffer(response);
+		return;
+	}
+
+	if (response.charAt(0) == '*'){
+		spectrum_update(response);
+		waterfall_update(response);
+		return;
+	}
+	var i = response.indexOf(' ');	
+	if (i >= 0){
+		cmd = response.substring(0, i);
+		args = response.substring(i+1);
+	}
+	else
+		return;
+
+	switch(cmd){
+		case 'login':
+			if (args == 'ok')
+				show_main();
+			break;
+		case 'spectrum':
+		case 'waterfall':
+		case '00:00:00':
+		case 'console':
+		case '#status':
+			break;
+		case 'FREQ':
+			e = el(cmd);
+			if (e)
+				e.value = args;
+			freq_display_set(args);
+			break;
+		default:
+			e = el(cmd);
+			if (e)
+				e.value = args;
+	}
+}
+
+show_login();
+waterfall_init();
+//setInterval(waterfall_update, 100);
+setInterval(ui_tick, 50);
+el("waterfall").width = window.innerWidth;
+el("spectrum").width = window.innerWidth;
+</script>
+</html>

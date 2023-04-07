@@ -23,8 +23,6 @@
 
 void ft8_tx(char *message, int freq);
 void ft8_interpret(char *received, char *transmit);
-extern int ft8_mode;
-extern char mycallsign[];
 
 const int kMin_score = 10; // Minimum sync score threshold for candidates
 const int kMax_candidates = 120;
@@ -361,7 +359,6 @@ void monitor_reset(monitor_t* me)
 
 int sbitx_ft8_decode(float *signal, int num_samples, bool is_ft8)
 {
-
     int sample_rate = 12000;
 
     LOG(LOG_DEBUG, "Sample rate %d Hz, %d samples, %.3f seconds\n", sample_rate, num_samples, (double)num_samples / sample_rate);
@@ -385,6 +382,8 @@ int sbitx_ft8_decode(float *signal, int num_samples, bool is_ft8)
 
 		int i;
 		char mycallsign_upper[20];
+		char mycallsign[20];
+		get_field_value("#mycallsign", mycallsign);
 		for (i = 0; i < strlen(mycallsign); i++)
 			mycallsign_upper[i] = toupper(mycallsign[i]);
 		mycallsign_upper[i] = 0;	
@@ -463,25 +462,27 @@ int sbitx_ft8_decode(float *signal, int num_samples, bool is_ft8)
            decoded_hashtable[idx_hash] = &decoded[idx_hash];
            ++num_decoded;
 
-           // Fake WSJT-X-like output for now
-           int snr = 0; // TODO: compute SNR
 					char buff[1000];
-          sprintf(buff, "%s %3d %+4.2f %4.0f ~  %s\n", time_str, 
-						cand->score, time_sec, freq_hz, message.text);
+          sprintf(buff, "%s %3d %3d %-4.0f ~  %s\n", time_str, 
+						cand->score, cand->snr, freq_hz, message.text);
 
 					if (strstr(buff, mycallsign_upper))
-						write_console(FONT_LOG_TX, buff);
+						write_console(FONT_FT8_TX, buff);
 					else 
-						write_console(FONT_LOG_RX, buff);
-
-					if (ft8_mode != FT8_MANUAL && strstr(buff, mycallsign_upper)){
+						write_console(FONT_FT8_RX, buff);
+/* We have temporarily moved this to javascript 
+					char ft8_mode[10];
+					get_field_value("#ft8_auto", ft8_mode);
+					if (strstr(buff, mycallsign_upper) && !strcmp(ft8_mode, "ON")){
 						char response[1000];
 						ft8_interpret(buff, response);
-						if (ft8_mode && strlen(response))
-							ft8_tx(response, get_pitch());
+						if (strlen(response))
+							ft8_tx(response, get_cw_tx_pitch());
 						else
 							set_field("#text_in", response);
 					}
+*/
+
 					n_decodes++;
         }
     }

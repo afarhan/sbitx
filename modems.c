@@ -27,22 +27,33 @@
 #include "sound.h"
 
 typedef float float32_t;
-extern char mycallsign[];
 extern char contact_callsign[];
 extern char sent_rst[];
 extern char received_rst[];
 extern char sent_exchange[];
 extern char received_exchange[];
-extern char mygrid[];
 extern char contact_grid[];
+
+//when running
+#define QSO_STATE_ZOMBIE 0
+
+#define QSO_STATE_CQ_CALLING 6
+#define QSO_STATE_CQ_REPORT 2 
+#define QSO_STATE_CQ_RRR 4
+
+//when search & pounding
+#define QSO_STATE_REPLY_GRID 1
+#define QSO_STATE_REPLY_REPORT 3
+
+#define QSO_STATE_73 5   //we are done anyway
+
+int qso_state = QSO_STATE_ZOMBIE;
 
 /*
 	This file implements modems for :
 	1. Fldigi: We use fldigi as a proxy for all the modems that it implements
 
-	2. FT8 : uses the command line FT8 encoder/decoders from Karlis Goba
-
-	3. CW : transmit only
+	2. CW : transmit only
 
 	General:
 
@@ -59,10 +70,7 @@ extern char contact_grid[];
 
 	The strangness of FT8:
  
-	1. FT8 is not really a modem, we use a slightly modified version of the command line
-	decode_ft8 and gen_ft8 programs written by Karlis Goba at https://github.com/kgoba/ft8_lib.
-
-	2. FT8 handles short blocks of data every 15 seconds. On the 0, 15th, 30th and 45th second of 
+	1. FT8 handles short blocks of data every 15 seconds. On the 0, 15th, 30th and 45th second of 
 	the minute. It assumes that the clock is synced to the GMT's second and minute ticks.
 
 	3. The ft8_rx() routine accumulates samples until it has enough samples and it is time to 
@@ -121,114 +129,6 @@ void ft8_setmode(int config){
 	}
 }
 
-void ft8_interpret(char *received, char *transmit){
-	char first_word[100];
-	char second_word[100];
-	char third_word[100];
-	char fourth_word[100];
-	int freq;
-
-	//reset the transmit buffer
-	transmit[0]= 0;	
-
-	//extract the received frequency if any
-	char *f = received + 17;
-	if (*f == ' ')
-		f++;
-	ft8_pitch = atoi(f);
-
-	//move past the prefixes	
-	char *q, *p = received + 25;
-	while (*p == ' ')
-		p++;
-
-	//read in four words, max
-	q = first_word;
-	for (int i =0; *p && isalnum(*p) && i < 99; i++)
-		*q++ = *p++;
-	*q = 0;
-
-	while (*p == ' ')
-		p++;
-
-	q = second_word;
-	for (int i =0; *p && isalnum(*p) && i < 99 && *p; i++)
-		*q++ = *p++;
-	*q = 0;
-
-	while(*p == ' ')
-		p++;
-
-	q = third_word;
-	for (int i =0; *p && (isalnum(*p) || *p == '+' || *p == '-') && i < 99 && *p; i++)
-		*q++ = *p++;
-	*q = 0;
-
-	while(*p == ' ')
-		p++;
-
-	q = fourth_word;
-	for (int i =0; *p && isalnum(*p) && i < 99 && *p; i++)
-		*q++ = *p++;
-	*q = 0;
-
-	if (!strcmp(first_word, "CQ")){
-		if (strlen(second_word) == 2 && strlen(fourth_word) > 0){
-			strcpy(contact_callsign, third_word);
-			strcpy(contact_grid, fourth_word);
-		}
-		else{
-			strcpy(contact_callsign, second_word);
-			strcpy(contact_grid, third_word);
-		}
-
-		char grid_square[10];
-		strcpy(grid_square, mygrid);
-		strcpy(sent_rst, "-10"); //this is fudged, replace it with the actual value
-		grid_square[4] = 0;
-		received_rst[0] = 0;
-		sprintf(transmit, "%s %s %s", contact_callsign, mycallsign, grid_square);
-	}
-	//this is a station that has replied/called me
-	else if (!strcasecmp(first_word, mycallsign)){
-		strcpy(contact_callsign, second_word);
-		if (!strncmp(third_word, "R-", 2) || !strncmp(third_word, "R+", 2)){
-			strcpy(received_rst, third_word + 1);
-			sprintf(transmit, "%s %s RRR", contact_callsign, mycallsign);
-			if (ft8_mode != 0)
-				write_call_log();
-		}
-		else if (!strcmp(third_word, "RRR")){
-			sprintf(transmit, "%s %s 73", contact_callsign, mycallsign);
-			if(ft8_mode != 0)
-				write_call_log();
-		}
-		else if (third_word[0] == '-' || third_word[0] == '+'){
-			strcpy(received_rst, third_word);
-			sprintf(transmit, "%s %s R-10", contact_callsign, mycallsign);
-			strcpy(sent_rst, "-10");
-		}
-		else if (strlen(third_word) == 4){
-			// this is a fresh call
-			strcpy(contact_callsign, second_word);
-			strcpy(contact_grid, third_word);
-			//don't autorespond, wait for the macro to reply
-			transmit[0] = 0;
-			//sprintf(transmit, "%s %s -10", contact_callsign, mycallsign);
-			strcpy(sent_rst, "-10");
-			received_rst[0] = 0;
-		}
-	}
-	else { //i have just picked a station in qso with someone else
-		strcpy(contact_callsign, second_word);
-		sprintf(transmit, "%s %s %s", contact_callsign, mycallsign, mygrid);
-		received_rst[0] = 0;
-		contact_grid[0] = 0;
-	}
-	redraw();
-	update_log_ed();	
-}
-
 int sbitx_ft8_encode(char *message, int32_t freq,  float *signal, bool is_ft4);
 
 void ft8_tx(char *message, int freq){
@@ -242,17 +142,14 @@ void ft8_tx(char *message, int freq){
 	time_t	rawtime = time_sbitx();
 	struct tm *t = gmtime(&rawtime);
 
-  sprintf(buff, "%02d%02d%02d           %04d ~  %s\n", t->tm_hour, t->tm_min, t->tm_sec, get_pitch(), message);
-	write_console(FONT_LOG_TX, buff);
+  sprintf(buff, "%02d%02d%02d 99 +00 %04d ~ %s\n", t->tm_hour, t->tm_min, t->tm_sec, get_cw_tx_pitch(), message);
+	write_console(FONT_FT8_TX, buff);
 
-//	if (!strncmp(message, "CQ ", 3) || ft8_pitch == 0) 
-		ft8_pitch = freq;
+	ft8_pitch = freq;
 
 	ft8_tx_nsamples = sbitx_ft8_encode(message, ft8_pitch, ft8_tx_buff, false); 
 	
-
 	ft8_tx_buff_index = 0;
-	//printf("ft8 ready to transmit with %d samples\n", ft8_tx_nsamples);
 }
 
 int sbitx_ft8_decode(float *signal, int num_samples, bool is_ft8);
@@ -297,15 +194,13 @@ void ft8_rx(int32_t *samples, int count){
 	else 
 		return;
 
-	// do nothing unless we are on a 15 second boundary
 	if (wallclock % 15)
 		return;
 
 	//we should have atleast 12 seconds of samples to decode
-	if (ft8_rx_buff_index >= 14 * 12000)
+	if (ft8_rx_buff_index >= 12 * 12000)
 		ft8_do_decode = 1;
 
-//	ft8_rx_buff_index = 0;	
 }
 
 
@@ -365,7 +260,7 @@ struct morse morse_table[] = {
 	{'[', ".-.-."},
 	{']', ".-..."},
 	{'+', ".-.-."},
-	{'=', "-...-"},
+	{'&', "-...-"},
 	{'\'', "--..--"},
 };
 
@@ -377,12 +272,11 @@ static struct vfo cw_tone, cw_env;
 static int keydown_count=0;			//counts down the pause afer a keydown is finished
 static int keyup_count = 0;			//counts down to how long a key is held down
 static float cw_envelope = 1;
-static int cw_pitch = 700;
 static int cw_tx_until = 0;
 static int data_tx_until = 0;
 
 char cw_text[] = " cq cq dx de vu2ese A k";
-char *symbol_next = NULL;
+static char *symbol_next = NULL;
 char paddle_next = 0;
 
 
@@ -396,23 +290,25 @@ static char cw_get_next_kbd_symbol(){
 		}
 		symbol_next = morse_table->code; // point to the first symbol, by default
 
+		printf("trying to transmit [%c: %d]\n", c, c);
 		char b[2];
 		b[0]= c;
 		b[1] = 0;
-//		write_console(FONT_LOG_TX, b);
+		printf("Found  letter [%s]\n", b);
 
 		for (int i = 0; i < sizeof(morse_table)/sizeof(struct morse); i++)
 			if (morse_table[i].c == tolower(c))
 				symbol_next = morse_table[i].code;
+		printf("Picked symbole [%s]\n", symbol_next);
 	}
 
 	if (!*symbol_next){ 		//send the letter seperator
 		symbol_next = NULL;
-//		printf("symbol_next set to NULL, returning / \n");
+		printf("symbol_next set to NULL, returning / \n");
 		return '/';
 	}
 	else{
-//		printf("cw_kbd_read returning %c\n", *symbol_next);
+		printf("cw_kbd_read returning %c:%d\n", *symbol_next, *symbol_next);
 		return *symbol_next++;
 	}
 }
@@ -431,8 +327,8 @@ float cw_get_sample(){
 	//start new symbol, if any
 	if (!keydown_count && !keyup_count){
 
-		if (cw_tone.freq_hz != get_cw_tx_pitch())
-			vfo_start(&cw_tone, get_cw_tx_pitch(), 0);
+		if (cw_tone.freq_hz != get_pitch())
+			vfo_start(&cw_tone, get_pitch(), 0);
 
 		if (get_cw_input_method() == CW_KBD || get_cw_input_method() == CW_IAMBIC){
 			char c, key;
@@ -517,7 +413,7 @@ float cw_get_sample(){
 				cw_key_letter[len] = 0;	
 			}		
 			else if (last_symbol  == ' '){
-				write_console(FONT_LOG_TX, " ");
+				write_console(FONT_CW_TX, " ");
 				cw_key_letter[0] = 0;
 			}
 			else if (last_symbol == '/'){
@@ -527,7 +423,7 @@ float cw_get_sample(){
 						char buff[2];
 						buff[0] = morse_table[i].c;
 						buff[1] = 0;
-						write_console(FONT_LOG_TX, buff);
+						write_console(FONT_CW_TX, buff);
 					}
 				cw_key_letter[0] = 0;
 			} 
@@ -841,7 +737,8 @@ void fldigi_read(){
 
 	if(!fldigi_call("rx.get_data", "", buffer)){		
 		if (strlen(buffer))
-			write_console(FONT_LOG_RX, buffer);
+				write_console(FONT_FLDIGI_RX, buffer);
+		
 	}
 	fldigi_retry_at = millis() + 250;
 }
@@ -863,7 +760,7 @@ void fldigi_tx_more_data(){
 		buff[0] = c;
 		buff[1] = 0;
 		fldigi_call("text.add_tx", buff, resp);
-		write_console(FONT_LOG_TX, buff);
+		write_console(FONT_FLDIGI_TX, buff);
 	}
 }
 	
@@ -873,6 +770,7 @@ void modem_set_pitch(int pitch){
 	fldigi_call_i("modem.set_carrier", pitch, response);
 //		puts("fldigi modem.set_carrier error");
 }
+
 
 int last_pitch = 0;
 void modem_rx(int mode, int32_t *samples, int count){
@@ -920,11 +818,9 @@ void modem_init(){
 	int e = system("pidof -x fldigi > /dev/null");
 	if (e == 256)
 		system("fldigi -i &");
+
 }
 
-void modem_abort(){
-	ft8_tx_nsamples = 0;
-}
 
 //this called routinely to check if we should start/stop the transmitting
 //each mode has its peculiarities, like the ft8 will start only on 15th second boundary
@@ -947,13 +843,13 @@ void modem_poll(int mode){
 		}while(l > 0);
 
 		//clear the text buffer	
-		clear_tx_text_buffer();
+		abort_tx();
 
 		if (current_mode == MODE_FT8)
-			macro_load("ft8");
+			macro_load("ft8", NULL);
 		else if (current_mode == MODE_RTTY || current_mode == MODE_PSK31 ||
 			MODE_CWR || MODE_CW){
-			macro_load("cw1");	
+			macro_load("cw1", NULL);	
 			modem_set_pitch(get_pitch());
 		}
 	}
@@ -963,7 +859,7 @@ void modem_poll(int mode){
 		t = time_sbitx();
 		if ((t % 15) == 0){
 			if(ft8_tx_nsamples > 0 && !tx_is_on){
-				tx_on();	
+				tx_on(TX_SOFT);	
 			}
 			if (tx_is_on && ft8_tx_nsamples == 0)
 				tx_off();
@@ -973,7 +869,7 @@ void modem_poll(int mode){
 	case MODE_CWR:
 		key_status = key_poll();
 		if (!tx_is_on && (bytes_available || key_status) > 0){
-			tx_on();
+			tx_on(TX_SOFT);
 			cw_init();
 			symbol_memory = key_status;
 			cw_tx_until = millis() + get_cw_delay();; //at least for 200 msec to  begin with
@@ -1036,3 +932,7 @@ float modem_next_sample(int mode){
 	return sample;
 }
 
+
+void modem_abort(){
+	ft8_tx_nsamples = 0;
+}

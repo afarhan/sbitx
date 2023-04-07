@@ -33,6 +33,7 @@ typedef struct
     int16_t freq_offset; ///< Index of the frequency bin
     uint8_t time_sub;    ///< Index of the time subdivision used
     uint8_t freq_sub;    ///< Index of the frequency subdivision used
+		int16_t snr;
 } candidate_t;
 
 /// Structure that holds the decoded message

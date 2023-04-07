@@ -111,7 +111,6 @@ warnings from popping up all the time, from the commaind line run:
 	sudo apt remove lxplug-ptbatt
 
 
-
 ##STEP 8: Install ntpstat
 ntp and ntpstat are useful to know if the radio is synched to realtime.
 this is important when the date/time in the logbook needs to be accruate.
@@ -119,3 +118,28 @@ it is also useful for ft8 synchronization
 
 sudo apt install ntp
 sudo apt install ntpstat
+
+## step 9: the webserver of sbitx runs on port 8080 this has
+to redirect to port 80. To do this...
+sudo iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 8080
+sudo iptables -t nat -I OUTPUT -p tcp -d 127.0.0.1 --dport 80 -j REDIRECT --to-ports 8080
+
+and then, install iptables-persistent (so it saves the current iptables)
+sudo apt-get install iptables-persistent --fix-missing
+
+## step 10: to make your sbitx appear as sbitx.local on the local network
+copy the files hosts and hostname to etc under sudo
+
+sudo cp hosts /etc/hosts
+sudo cp hostname /etc/hostname
+
+## step 11: create a fresh logbook database in the data subdirectory
+you may have to install sqlite3 first
+
+sudo apt update
+sudo apt install sqlite3
+sudo apt install libsqlite3-dev
+
+cd data 
+sqlite3 < create_db.sql
+

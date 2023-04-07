@@ -1,0 +1,2290 @@
+<html>
+<!--
+	HOW IT WORKS
+	
+	1. A number of classes with names starting with sbitx- are defined these are
+	used to implment sbitx specific handlers for events, etc.
+
+	2. A single websocket is used for efficient communication with the sbitx process
+	The websocket is used to transmit text messages for UI interactions and a binary
+	format for raw audio samples. 
+	2.1 The audio samples are enabled only for remote login. We do this by detecting if
+	the sbitx url is localhost or not.
+	2.2 All commands are implemented as fields of UI in sbitx. Read the C source to 
+	understand those.
+
+	SEMANTIC STRUCTURE		
+
+  
+  The top bar has frequency, volume, mode and icons to restore the web ui,
+	enable/disable the on-screen keyboard, etc.  
+
+	Each mode like ssb, ft8, etc has its one div that is enabled and others are all disabled.
+	
+	MAKING YOUR OWN SKINS
+	we can use different skins by replacing/editing the index.html and the style.css
+	in /home/pi/sbitx/web directory on the sbitx. 	
+
+	CREDITS:
+	The wonderful knob is from https://github.com/aterrien/jQuery-Knob
+-->
+	<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>sBitx</title>
+    <script src="jquery.min.js"></script>
+    <script src="jquery.knob.min.js"></script>
+    <script src="pcm-player.js"></script> 
+		<link rel="stylesheet" href="style.css">
+  </head>
+  <body>
+  <div id="sdr_page">
+		<input type="hidden" id="FREQ" value="7040000"/>
+		<input type="hidden" id="VFOA" value="7040000"/>
+		<input type="hidden" id="VFOB" value="7040000"/>
+		<input type="hidden" id="POWER" value="0"/>
+		<input type="hidden" id="REF" value="1"/>
+		<input type="hidden" id="MACRO" value =""/>
+		<input type="hidden" id="FT8_AUTO" value ="ON"/>
+		<input type="hidden" id="STATUS" value="---" />
+		<input type="hidden" id="SPLIT"  class="sbitx-update-toggle" value="OFF" /> 
+		<input type="hidden" id="RIT" class="sbitx-update-toggle" value="OFF" /> 
+		<input type="hidden" id="REC" value="OFF" /> 
+		<input type="hidden" id="RIT_DELTA" name="RIT_DELTA" value="" /> 
+		<input type="hidden" id="VFO" value="A" />
+		<input type="hidden" id="TELNETURL" value="" />
+		<span id="restore-btn" onclick="toggle_fullscreen();"> &#X21F3; </span>
+		<div id="topbar"> 
+			<div class="menu-item" id="dial">
+    		<span id="current_freq">A:00.000.000</span> 
+				<span id="other_freq">B: 00.000.000</span> 
+				<span id="freq_status">RIT ON</span>
+				<div class="dial_details_container">
+					<span class="dial_details" id="bandwidth">BW 2.4KHz &#187;</span>
+					<span class="dial_details" id="agc_reading">AGC Fast</span>
+				</div>
+				<div class="dial_details_container">
+					<span class="dial_details" id="if_reading">IF Gain: 60</span>
+					<span class="dial_details" id="tx_drive_reading">TX Drive: 40</span>
+				</div>
+			</div>
+			<div class="menu-item">
+			</div>
+				<div class="menu-item">
+					MODE 
+					<select class="sbitx-selection" id="MODE">
+						<option value="USB">USB</option>
+						<option value="LSB">LSB</option>
+						<option value="CW">CW</option>
+						<option value="CWR">CWR</option>
+						<option value="FT8">FT8</option>
+						<option value="PSK31">PSK31</option>
+						<option value="RTTY">RTTY</option>
+						<option value="DIGITAL">Digital</option> 
+						<option value="2TONE">2TONE</option>
+					</select>
+			</div>
+			<div id="tx_meters">
+				<div class="menu-item">
+						Watts <meter id="POWER_meter" max="500" min="0" value="0"></meter>
+						<span id="POWER_reading"></span> 
+				</div>
+				<div class="menu-item">
+						SWR <meter id="REF_meter" max="1000" min="0" value="0"></meter>
+						<span id="REF_reading"/></span>
+				</div>
+			</div>
+			<span id="rx_controls">
+				<div class="menu-item">
+						<span class="slider-label">VOL</span>
+						<input type="range" class="sbitx-slider" id="AUDIO" 
+								max="100" min="0" step="5" value="80" />
+						<span class="sbitx-slider" id="AUDIO_reading"></span>
+				</div>
+				<div class="menu-item">
+					<span class="slider-label">RF</span>
+					<input type="range" class="sbitx-slider" id="IF" 
+						max="100" min="0" step="5" value="80" />
+					<span class="sbitx-slider" id="IF_reading"></span>
+				</div>
+			</span>
+			<div class="menu-item">
+				<input class="knob" data-width="190" data-height="190" data-displayInput=false 
+					data-cursor=true data-fgColor="#222222" data-thickness=.3 
+					data-step=1 data-max=360 value="0">
+			</div>
+			<div class="menu-item">	
+				<div id="step-wrapper">	STEP
+						<select id="STEP" class="sbitx-selection">
+							<option value="10H">10 Hz</option>
+							<option value="100H">100 Hz</option>
+							<option value="1K">1 KHz</option>
+							<option value="10K">10 KHz</option>
+							<option value="100K">100 KHz</option>
+						</select>
+				</div>
+			</div>
+			<div class="menu-item">
+		 			<span class="slider-label">DRIVE</span> 
+					<input type="range" class="sbitx-slider" id="DRIVE" max="100" min="0" step="1" value="80" />
+					<span id="DRIVE_reading"></span>
+				</div>
+			<div class="menu-item">	
+				<button class="topbar-btn" id="keyboard-open">Keyboard</button>
+				<button class="topbar-btn" id="console-open">Console</button>
+				<button class="topbar-btn" id="telnet-open">Telnet</button>
+				<button class="topbar-btn" id="recorder-open">Recorder</button>
+				<button class="topbar-btn" id="settings-open">Settings</button>
+			</div>
+			<div class="menu-item">
+				<a href="https://www.hamqsl.com/solar.html" 
+					title="Click to add Solar-Terrestrial Data to your website!">
+					<img src="https://www.hamqsl.com/solarbc.php">
+				</a>
+			</div>
+		</div> <!-- end of topbar -->	
+		<div id="main">
+  		<div id="login_panel">
+				<div class="help_text">
+				<h1>sBitx v2</h1>
+					<p>The sBitx is an open-source, hackable, next generation radio.</p>
+ 			 			<p>Enter passkey to access your sbitx.</p> 
+						<div id="login_error"></div>
+  					<input type="text" class="sbitx-text-input" id="passkey" 
+						name="passkey" autocomplete="off" placeholder="passkey"/>
+  					<button class="logger-button" id="start_login" >Start</button>
+					<p>New user? Try 123 as the passkey. Change it when prompted.</p>	
+					<p>Released under General Public Licens v3.0.<br/>
+					(c) Ashhar Farhan, 2023
+					</p>
+					<a href="#" onclick="location.reload();">Reload</a>
+				</div>
+  		</div><!-- end of login -->
+			<div id="extra-controls">
+				<button id="streamaudio" type="submit" onclick="audio_start();">Stream Audio</button> 
+			</div>
+<!-- frequency control -->
+		<div id = "vfo_panel" class="sbitx-panel">
+			<span class="sbitx-panel-title">
+				<button class="sbitx-btn-back" data-for="panel_bar">&#x2716; Close</button>  
+			</span>
+			<div class="help_text">
+			<div class="sbitx-btn-set">
+				<div class="vfo_panel_item">
+					<select class="sbitx-selection" id="AGC">
+						<option value="FAST">AGC FAST</option>
+						<option value="MED">AGC MED</option>
+						<option value="SLOW">AGC SLOW</option>
+						<option class="greyed" value="OFF">AGC OFF</option>
+					</select>
+				</div>
+			</div>
+    	<div class="sbitx-btn-set">
+    		<button class="sbitx-btn band-btn" id="band 80m" type="submit">80M</button>
+    		<button class="sbitx-btn band-btn" id="band 40m" type="submit">40M</button>
+    		<button class="sbitx-btn band-btn" id="band 30m" type="submit">30M</button>
+    		<button class="sbitx-btn band-btn" id="band 20m" type="submit">20M</button>
+    		<button class="sbitx-btn band-btn" id="band 17m" type="submit">17M</button>
+    		<button class="sbitx-btn band-btn" id="band 15m" type="submit">15M</button>
+    		<button class="sbitx-btn band-btn" id="band 12m" type="submit">12M</button>
+				<button class="sbitx-btn band-btn" id="band 10m" type="submit">10M</button>
+			</div>
+    	<div class="sbitx-btn-set">
+				<button class="sbitx-toggle vfo-btn" id="toggle_RIT">RIT OFF</button>
+				<button class="sbitx-toggle vfo-btn" id="toggle_SPLIT" value="OFF"/> SPLIT OFF</button>
+    		<button class="sbitx-btn vfo-btn" id="VFO A" type="submit">VFO A</button>
+    		<button class="sbitx-btn vfo-btn" id="VFO B" type="submit">VFO B</button>
+    		<button class="sbitx-btn vfo-btn" id="vfo_reset" type="submit">A=B</button>
+    		<button class="sbitx-btn vfo-btn" id="vfo_swap" type="submit">A<->B</button>
+			</div>
+			<h2>Filter</h2>
+			<p>You can manually adjust the filter with HIGH and LOW or use one of the 9 filters.</p>
+    		<button class="bw-btn" id="3000" type="submit">3KH</button>
+    		<button class="bw-btn" id="2400" type="submit">2.4KH</button>
+    		<button class="bw-btn" id="1800" type="submit">1.8KH</button>
+    		<button class="bw-btn" id="1500" type="submit">1.5KH</button>
+    		<button class="bw-btn" id="1000" type="submit">1KH</button>
+    		<button class="bw-btn" id="800" type="submit">800H</button>
+    		<button class="bw-btn" id="400" type="submit">400H</button>
+    		<button class="bw-btn" id="200" type="submit">200H</button>
+    		<button class="bw-btn" id="100" type="submit">100H</button>
+			<div class="sbitx-rx-control">
+					<span class="slider-label">High </span>
+					<input type="range" class="sbitx-slider" id="HIGH" max="4000" min="0" step="50" value="2200" />
+					<span class="slider-reading" id="HIGH_reading"></span>Hz
+			</div>
+			<div class="sbitx-rx-control">
+					<span class="slider-label">Low </span>
+					<input type="range" class="sbitx-slider" id="LOW" max="4000" min="0" step="50" value="200" />
+					<span class="slider-reading" id="LOW_reading"></span>Hz
+			</div>
+		</div><!-- end of help-text box -->
+	</div> <!-- end of vfo_panel -->
+<!--   panadapter, xxxx_open functions will resize this as needed -->
+<!-- pan adapter and waterfall -->
+		<div id="pan_adapter">
+			<div id="spectrum-wrap">
+				<div id="span-control">
+					SPAN
+					<select class="sbitx-selection" id="SPAN">
+						<option value="25K">25K</option>
+						<option value="10K">10K</option>
+						<option value="6K">6K</option>
+						<option value="2.5K">2.5K</option>
+					</select>
+				</div><!-- end of span-control -->
+				<div width="100%"><canvas id="spectrum" width="600" height ="80"></canvas></div>
+			</div><!-- end of spectrum-wrap -->
+			<div width="100%"><canvas id="waterfall" width="600" height="80"></canvas></div>
+		</div>
+<!-- receiver panel -->
+		<div id="receiver_panel" class="sbitx-panel">
+			<div class="sbitx-panel-title">
+				<button class="sbitx-btn-back" data-for="panel_bar">&#x2039;</button> Receiver 
+			</div>
+		</div><!-- end of receiver panel -->
+<!- wsjtx specific controls -->
+		<div id="FT8_ui" class="sbitx-panel mode-panel">
+			<div id="wsjtx-activity" class="sbitx-list-container" >
+				Band Activity
+				<ol size="10" class="sbitx-list-box">
+				</ol>
+			</div>
+			<div id="wsjtx-rx" class="sbitx-list-container" >
+				RX Frequency
+				<ol size="10" class="sbitx-list-box">
+				</ol>
+			</div>
+			<div id="FT8-control-panel">
+					<input type="checkbox"  class="sbitx-toggle" id="toggle_FT8_AUTO" value="on"/ > Auto
+					<button id="ft8-call-cq">Call CQ</button> 
+					RX Freq <input size="4" readonly="readonly" type="number" min="0" max="4000" id="FT8-rx-freq" /> |
+					TX Freq
+					<input type="range" class="sbitx-slider" id="TX_PITCH" max="4000" min="0" step="50" value="2200" /> 
+					<span id="TX_PITCH_reading"></span>Hz  
+			</div>
+		</div>
+<!- cw pane -->
+		<div id="CW_ui" class="sbitx-panel mode-panel">
+			<div id="cw_settings">
+				<span class="slider-label">SPEED</span>
+					<input type="range" class="sbitx-slider" id="WPM" max="50" min="5" step="1" value="13" /> 
+				<span class="sbitx-slider" id="WPM_reading"></span> WPM | 
+				<span class="slider-label">PITCH</span> 
+					<input type="range" class="sbitx-slider" id="PITCH" max="3000" min="0" step="10" value="600" size="3"/> 
+				<span class="sbitx-slider" id="PITCH_reading"></span>Hz 
+			</div>
+			<div id="data_window" tabindex="0">
+				<span id="text_done"></span>
+				<span id="text_pending"></span>
+			</div>
+			<span id="data_chat">
+					<button  id="data_chat_tx">TX</button> 
+					<button id="data_chat_rx">RX</button> 
+			</span>
+		</div>
+<!-- ssb/2tone pane -->
+	<div id="Voice_ui" class="sbitx-panel mode-panel">
+			<div class="menu_item">
+				MIC
+				<input type="range" class="sbitx-slider" id="MIC" max="50" min="1" step="1" value="25" /> 
+				<span class="sbitx-slider" id="MIC_reading"></span> 
+			</div>
+			<div class="menu_item">
+				<button id="ptt_tx">TX</button>
+				<button id="ptt_rx">RX</button>
+			</div>
+	</div>	
+<!-- logger panel -->
+	<div id="logger_panel" class="sbitx-panel">
+				<input type="text" class="logger-input sbitx-text-input" 
+					id="logger-callsign" placeholder="Call" size="6" />
+				<input type="text" class="logger-input sbitx-text-input" 
+					id="logger-rst-sent" placeholder="Sent" size="3" />
+				<input type="text" class="logger-input sbitx-text-input" 
+					id="logger-rst-received" placeholder="Rcv" size="3" />
+				<input type="text" class="logger-input sbitx-text-input" 
+					id="logger-exchange-received" placeholder="Exch" size="2" />
+				<input type="text" class="logger-input sbitx-text-input" 
+					id="logger-exchange-sent" placeholder="Nr" size="2" />
+				<button class="sbitx-btn logger-button" id="logger-log">Log &#187;</button>
+				<br />
+				<button class="sbitx-btn logger-button" id="esc">Esc</button>
+				<button class="sbitx-btn logger-button" id="wipe">Wipe</button>
+				<button class="sbitx-btn logger-button" id="qrz">QRZ</button>
+				<button class="sbitx-btn logger-button" id="macros">Macros</button>
+				<button class="sbitx-btn logger-button" id="logbook-open">Logbook</button>
+			<div id="logger-macros">
+				<button class="sbitx-btn macro-button" id="F1">F1</button>
+				<button class="sbitx-btn macro-button" id="F2">F2</button>
+				<button class="sbitx-btn macro-button" id="F3">F3</button>
+				<button class="sbitx-btn macro-button" id="F4">F4</button>
+				<button class="sbitx-btn macro-button" id="F5">F5</button>
+				<button class="sbitx-btn macro-button" id="F6">F6</button>
+				<button class="sbitx-btn macro-button" id="F7">F7</button>
+				<button class="sbitx-btn macro-button" id="F8">F8</button>
+				<button class="sbitx-btn macro-button" id="F9">F9</button>
+				<button class="sbitx-btn macro-button" id="F10">F10</button>
+				<button class="sbitx-btn macro-button" id="F11">F11</button>
+				<button class="sbitx-btn macro-button" id="F12">F12</button> 
+				<select id="MACROS_list">
+				</select>
+			</div> 
+	</div> <!-- end of logging panel -->
+	<!-- logbook -->
+	<div id="logbook_panel" class="sbitx-panel">
+		<span class="sbitx-panel-title">
+			<button class="sbitx-btn-back" data-for="panel_bar">&#x2716; Close</button>  
+		</span>
+		<div id="logbook-toolbar">
+			<button class="logger-button" id="btn-logbook-search">Search:</button> 
+			<input id="logbook-search" type="text" size="4" prompt="Search"/>
+			<button class="logger-button" id="btn-logbook-load">Load</button> 
+		</div>
+		<table id="logbook_table">
+			<thead><tr>
+				<th class="logbook-datestamp">Date-Time</th>
+				<th class="logbook-field">Freq</th>
+				<th class="logbook-field">Mode</th>
+				<th class="logbook-field">Call</th>
+				<th class="logbook-field">Sent</th>
+				<th class="logbook-field">Recv</th>
+			</tr></thead>
+			<tbody>
+			</tbody>
+		</table>
+	</div>
+<!-- recorder panel -->
+	<div id="recorder_panel" class="sbitx-panel mode-panel">
+			<span class="sbitx-panel-title">
+				<button class="sbitx-btn-back" data-for="panel_bar">&#x2716; Close</button>  
+			</span>
+			<div class="menu_item">
+				<button class="logger-button" id="record_start">REC</button>
+				<button class="logger-button" id="record_stop">STOP</button>
+				<span id="record_duration">00:00</span>
+			</div>
+	</div>	
+<!-- console panel -->
+		<div id ="console_panel" class="sbitx-panel">
+			Terminal	
+			<span class="sbitx-panel-title">
+				<button class="sbitx-btn-back" data-for="panel_bar">&#x2716; Close</button>  
+			</span>
+			<div id="console_window">
+			</div>
+			<div id="command_bar">
+				<input type="text" class="sbitx-text-input"  id="text_in" />
+			</div>
+		</div>
+
+<!-- telnet panel -->
+		<div id ="telnet_panel" class="sbitx-panel">
+			<span class="sbitx-panel-title">
+				<button class="sbitx-btn-back" data-for="panel_bar">&#x2716; Close</button>  
+			</span>
+			Telnet 
+				<button id="telnet" class="logger-button sbitx-btn">Start</button>	 
+				<button id="tclose" class="logger-button sbitx-btn">Stop</button> 
+			<div id="telnet_window">
+			</div>
+			<div id="telnet_command_bar">
+				<input type="text" class="sbitx-text-input"  id="telnet_in" />
+			</div>
+		</div>
+
+<!-- settings panel -->
+	<div id="settings_panel" class="sbitx-panel">
+		<span class="sbitx-panel-title">
+			<button class="sbitx-btn-back" data-for="panel_bar">&#x2716; Close</button>  
+		</span>
+
+		<div class="settings-element">
+			<span class="settings-label">Passkey:</span><input id="PASSKEY" 
+					class="settings_input sbitx-text-input" type="text" size="6" />
+		</div>
+
+		<div class="settings-element">
+			<span class="settings-label">My Callsign:</span><input id="MYCALLSIGN" 
+					class="settings_input sbitx-text-input" type="text" size="6" />
+		</div>
+
+		<div class="settings-element">
+			<span class="settings-label">My Grid:</span><input id="MYGRID" 
+					class="settings_input sbitx-text-input" type="text" size="6" />
+		</div>
+		<div class="settings-element">
+			<span class="settings-label">Sidetone:</span>
+				<input type="range" class="sbitx-slider" id="SIDETONE" max="100" min="0" step="5" value="80" />
+		</div>
+		<div class="settings-element">
+			<span class="settings-label">CW Timeout:</span> 
+			<input type="range" class="sbitx-slider" id="CW_DELAY" max="1000" min="0" step="10" size="3" value="600" />	
+			<span class="sbitx-slider" id="CW_DELAY_reading"></span> msec
+		</div>
+		<div class="settings-element">
+			<span class="settings-label">CW Input</span> 
+				<select class="sbitx-selection" id="CW_INPUT">
+					<option value="KEYBOARD">Keyboard</option>
+					<option value="IAMBIC">Iambic Paddle</option>
+					<option value="STRAIGHT">Straight Key</option>
+				</select>
+		</div>
+		<div class="settings-element">
+			<span class="settings-label"></span>
+			<button id="settings_save" class="logger-button">Update</button>		
+		</div>
+	</div><!-- end of help text -->
+</div>
+
+<!-- the keyboard, comes at the bottom of them all -->
+	<div id="keybd-container" class="sbitx-panel">
+		<table id="keybd" class="sbitx-keystroke" width="100%">
+			<tr>
+			<td>1</td><td>2</td><td>3</td><td>4</td><td>5</td><td>6</td><td>7</td><td>8</td><td>9</td><td>0</td><td>&#8676;</td>
+			</tr>
+			<tr>
+			<td>q</td><td>w</td><td>e</td><td>r</td><td>t</td><td>y</td><td>u</td><td>i</td><td>o</td><td>p</td><td>/</td>
+			</tr>
+			<tr>
+			<td>a</td><td>s</td><td>d</td><td>f</td><td>g</td><td>h</td><td>j</td><td>k</td><td>l</td><td>;</td><td>?</td>
+			</tr>
+			<tr>
+			<td>&#x2716;</td><td>z</td><td>x</td><td>c</td><td>v</td><td>b</td><td>n</td><td>m</td><td>,</td><td>.</td><td>&#8617;</td>
+			</tr>
+			<tr>
+			<td>&#x2716;</td><td>AR</td><td>AS</td><td>BT</td><td colspan="4">&#x23D8;</td><td>:<td colspan=2">&#8617;</td>
+			</tr>
+		</table>
+	</div> <!-- end of on screen keyboard -->
+	</div><!-- end of main used to limit overlapping of topbar -->   
+	</div> <!-- end of sdr_page (vs login page, etc)--> 
+<!- tx panel -->
+</body>
+
+<script>
+
+var in_tx = false;
+var parser = null;
+var qrz_window = null;
+var session_id = "nullsession";
+var macros_file = "";
+
+/* a few helper functions */
+function el(element_id){
+	return document.getElementById(element_id);
+}
+
+function log(str){
+	console.log(str);
+}
+
+function isdigit(str){
+	if (isNaN(str[0]))
+		return false;
+	else
+		return true;
+}
+
+/* socket handlers */
+var socket = null;
+
+function on_open(event){
+	log("socket is connected");
+	websocket_send("login="+el("passkey").value);
+}
+
+function on_close(event){
+	log("socket was closed by the radio");
+	end_login("Connection lost");
+}
+
+function on_message(event){
+	response_handler(event.data);
+}
+
+function websocket_send(str){
+	//adds the session id 
+	if (socket == null)
+		return;
+
+	if(str.substring(0,3) == "key")
+		log("got it");
+	var request = session_id + "\n" + str;
+	//log("ws tx:[" + request + "]");
+	socket.send(request);
+}
+
+function on_error(event){
+  log("socket communication error, resetting now");
+	if (socket != null)
+  	socket.close();
+  socket = null;
+	session_id = "nullsession";
+  show_login();
+}
+
+/* login handler */
+
+function end_login(reason){
+	socket = null;
+	session_id = "nullsession";
+	$("#login_error").innerHTML = reason;
+	show_login();
+}
+
+function go_fullscreen(){
+	var elem =	document.documentElement;
+  if (elem.requestFullscreen) {
+    elem.requestFullscreen();
+  } else if (elem.webkitRequestFullscreen) { /* Safari */
+    elem.webkitRequestFullscreen();
+  } else if (elem.msRequestFullscreen) { /* IE11 */
+    elem.msRequestFullscreen();
+  }
+}
+
+function do_login() {
+	log("requesting full screen");
+	go_fullscreen();
+//	document.documentElement.requestFullscreen();
+	log("done full screen");
+	if (socket != null)
+		socket.close();
+	log("reset the socket, if any");
+	if(el("passkey").value.length < 3){
+		alert("Enter the passkey (three characters or more)");
+		return false;
+	}
+	log("creating a new socket, if any");
+	socket = new WebSocket("ws://" + location.host + "/websocket");
+	log("created the new socket");
+	socket.onopen = on_open;
+	socket.onmessage = on_message;
+	socket.onclose = on_close;
+	socket.onerror = on_error;
+	log("all done");
+}
+
+// ui panel switchers
+function show_login(){
+	$("#login_panel").show();
+	$(".sbitx-panel").hide();
+	$("#pan_adapter").hide();
+	$("#cmd").hide();
+	$("#topbar").hide();
+//	if (document.location.hostname == "127.0.0.1")
+		show_keyboard();
+}
+
+function show_main(){
+	$("#topbar").show();
+	$("#pan_adapter").show();
+	$("#login_panel").hide();
+	websocket_send("logbook=-1");
+	websocket_send("macros_list=macros_list");
+	$("#keybd-container").hide();
+	if (document.location.hostname != "127.0.0.1")
+		audio_start();
+}
+
+function toggle_fullscreen(){
+	if (document.fullscreenElement != null){
+		if (document.exitFullscreen)
+			document.exitFullscreen();
+		else
+			document.documentElement.exitFullscreen();
+	}
+	else 
+		document.documentElement.requestFullscreen();
+}
+
+function freq2str(freq){
+	return freq.substring(0,freq.length - 6) + '.' 
+			+ freq.substring(freq.length-6, freq.length - 3) 
+			+ '.' + freq.substring(freq.length-3);		
+}
+
+
+function draw_meters(event){
+	var power = parseInt(el("POWER").value);
+	var ref = parseInt(el("REF").value);
+
+	if (power == 0)
+		ref = 10;
+
+	el("POWER_meter").value = power;
+	el("POWER_reading").innerHTML = (power/10).toFixed(0);
+
+	el("REF_meter").value = ref;
+	el("REF_reading").innerHTML = (ref/10).toFixed(1);
+}
+
+
+function update_freq(freq){
+	websocket_send("freq "+freq);
+}
+
+/* All tuning related functions including the soft-kob, drawing the dial etc. */
+
+// this is called when the dial is clicked
+function show_vfo_panel(){
+	open_panel("vfo_panel");
+	$(".sbitx-btn-set").show();
+ 	sbitx_toggle_update(el("RIT"));
+ 	sbitx_toggle_update(el("SPLIT"));
+}
+
+function close_vfo_panel(){
+	el("vfo_panel").style.display = "none";
+}
+
+function vfo_set(event){
+	var vfo_a = el("VFOA").value;
+	var vfo_b = el("VFOB").value;
+	var vfo   = el("VFO").value; //which one is used?
+	var f = el("FREQ").value;
+
+	var btn_id = event.currentTarget.id;
+
+	if (btn_id == 'vfo_reset'){
+		if (vfo == 'A')
+			vfo_b = vfo_a;
+		else
+			vfo_a = vfo_b;
+	}
+	else if (btn_id == "vfo_swap"){
+		var swap = vfo_a;
+		vfo_a = vfo_b;
+		vfo_b = swap;
+	}
+	websocket_send("VFOB " + vfo_b);
+	websocket_send("VFOA " + vfo_a);
+	el("VFOA").value = vfo_a;
+	el("VFOB").value = vfo_b;
+	if (vfo == 'A')
+		websocket_send("FREQ " + vfo_a);
+	else
+		websocket_send("FREQ " + vfo_b);
+	draw_dial();
+}
+
+//draw_dial is called after setting FREQ to the current freq
+function draw_dial(){
+	var freq = el("FREQ").value;
+	var split = el("SPLIT").value;
+	var rit   = el("RIT").value;
+	var vfo_a = el("VFOA").value;
+	var vfo_b = el("VFOB").value;
+	var vfo   = el("VFO").value; //which one is used?
+	var rit_delta = el("RIT_DELTA").value;
+
+	el("agc_reading").innerHTML = "AGC "+ el("AGC").value;
+	el("if_reading").innerHTML = "IF Gain " + el("IF").value;
+	el("tx_drive_reading").innerHTML = "TX Drive " + el("DRIVE").value;	
+
+	if (rit == "ON"){
+		if (in_tx == 1){
+			el("current_freq").innerHTML = "TX&nbsp;" + freq2str(freq);
+			el("other_freq").innerHTML = 
+				"RX&nbsp;" + freq2str((parseInt(freq)+ parseInt(rit_delta)).toString()); 
+		}
+		else {
+			el("current_freq").innerHTML = 
+				"RX&nbsp;" + freq2str((parseInt(freq) + parseInt(rit_delta)).toString());
+			el("other_freq").innerHTML = "TX&nbsp;" + freq2str(freq); 
+		}
+		el("freq_status").innerHTML = "RIT ON";
+	}
+	else if (split == "ON") {
+		if (in_tx == 0){
+			el("current_freq").innerHTML =  "RX&nbsp;" + freq2str(freq);
+			el("other_freq").innerHTML =  "TX&nbsp;" + freq2str(vfo_b);
+		}
+		else {
+			el("current_freq").innerHTML = "TX&nbsp;" + freq2str(vfo_b);
+			el("other_freq").innerHTML = "RX&nbsp;" + freq2str(freq);
+			
+		}
+		el("freq_status").innerHTML = "SPLIT ON";
+	}
+	else if (vfo == 'A'){
+		if (!in_tx){
+			el("current_freq").innerHTML = "A&nbsp;" + freq2str(freq);
+			el("other_freq").innerHTML =  "B&nbsp;" + freq2str(vfo_b);
+		} else {
+			el("current_freq").innerHTML = "TX&nbsp;" + freq2str(vfo_a);
+			el("other_freq").innerHTML = "B&nbsp;" + freq2str(freq);
+		}
+		el("freq_status").innerHTML = "";
+	}
+	else if (vfo == 'B'){
+		if (!in_tx){
+			el("current_freq").innerHTML = "B&nbsp;" + freq2str(freq);
+			el("other_freq").innerHTML = "A&nbsp;" + freq2str(vfo_a);
+		} else {
+			el("current_freq").innerHTML =  "TX&nbsp;" + freq2str(freq);
+			el("other_freq").innerHTML = "A&nbsp;" + freq2str(vfo_a);
+		}
+		el("freq_status").innerHTML = "";
+	}	
+}
+
+
+
+/*
+	TUNING PANEL
+	This handles all frequency changing related functionality
+	like RIT, SPLIT, etc.
+*/
+
+let tuning_position_last = 0;
+var knob_resolution = 6;
+
+function tuning_panel_open(){
+	log("intializing the tuning panel");
+	//resize the waterfall and the spectrum, both need to be visible when tuning
+	var waterfall = el("waterfall");
+	var spectrum = el("spectrum");
+//	spectrum.height = 50;
+//	waterfall.height = 50;
+		
+}
+
+function tuning_panel_close(){
+}
+
+function tuning_knob_handler(position_now){
+	//avoid small movements
+	if (Math.abs(position_now - tuning_position_last) < knob_resolution)
+		return;
+
+	//calculate the relative movement of the dial knob
+	var delta = 0;
+	//we reduce the granulity of the step 
+	if (position_now < 90 && tuning_position_last > 270)
+		delta = position_now + 360.0 - tuning_position_last;
+	else if (position_now > 270 && tuning_position_last < 90)
+		delta =  tuning_position_last + 360 - position_now;
+	else
+		delta = position_now - tuning_position_last;
+
+	tuning_position_last = position_now;
+	
+	//reduce the precision of delta
+	delta = Math.round(delta / knob_resolution);
+	//tuning up or down by the step value		
+	var step_text = el("STEP").value;
+	var step_size = 1000;
+	switch(step_text){
+		case "10H": step_size = 10; break;
+		case "100H": step_size = 100; break;
+		case "1K": step_size = 1000; break;
+		case "10K": step_size = 10000; break;
+		case "100K": step_size = 100000; break;
+	}
+	f = el('FREQ');
+	var freq = parseInt(f.value);
+	freq = Math.round(freq/step_size) * step_size;
+	if (delta > 0)
+		delta = step_size;
+	else
+		delta = -step_size;
+	f.value = freq + delta;
+	update_freq(f.value);	
+}
+
+//initialization code
+
+//link the knob to the jquery code
+$(function($) {
+	$(".knob").knob({
+  	change : function (value) {
+		tuning_knob_handler(value);
+	},
+	release : function (value) {
+  	//console.log(this.$.attr('value'));
+    //console.log("release : " + value);
+ 	},
+	cancel : function () {
+		//console.log("cancel : ", this);
+	},
+  draw : function () {
+  }
+  });
+});
+
+
+
+/* waterfall and spectrum */
+
+function resize_ui(){
+	var b = $("body");
+	var topbar_width = $("#topbar").width();
+
+	el("waterfall").width = b.width()-topbar_width;//-topbar.width;
+	el("spectrum").width = b.width()-topbar_width;//-topbar.width;
+}
+
+var waterfall_image = null;
+
+function waterfall_init(){
+	var w = el("waterfall");
+	var ctx = w.getContext("2d");
+	var waterfall_image = ctx.createImageData(w.width,w.height);
+	i = 0;
+	for (var y = 0; y < w.height; y++){
+		for (var x = 0; x < w.width; x++){
+			waterfall_image.data[i++] = (256 * y)/ w.height;
+			waterfall_image.data[i++] = (256 * x)/ w.width;
+			waterfall_image.data[i++] = 0;
+			waterfall_image.data[i++] = 255;
+		}
+	}
+	ctx.putImageData(waterfall_image, 0, 0);
+}
+
+var nbins = 0;
+
+function spectrum_update(update){
+	var w = el("spectrum");
+	var ctx = w.getContext("2d");
+	nbins = update.length - 3; //the first three characters are the  status
+ 	var scale = w.width/nbins;
+	var height = w.height - 15;
+//	ctx.fillStyle = "#004d4d";
+	ctx.fillStyle = "#000";
+	ctx.fillRect(0,0,w.width, w.height);
+
+	//draw the filter block
+	var low = el("LOW").value;
+	var high = el("HIGH").value;
+	var mode = el("MODE").value;
+	var status = el("STATUS").value;
+	var calculated_span = nbins * 46.875; //this comes from the sampling rate of the sdr
+	var hz_per_pixel = w.width / calculated_span;
+	
+//	ctx.fillStyle = "#009999";
+	ctx.fillStyle = "#444";
+	if (mode == 'LSB' || mode == 'CWR'){
+		ctx.fillRect(w.width/2 - (hz_per_pixel * high), 0, 
+			(high-low) * hz_per_pixel, height);
+	}
+	else { 
+		ctx.fillRect(w.width/2 + (hz_per_pixel * low), 0, 
+			(high-low) * hz_per_pixel, height);
+	}
+
+	//draw the grid
+	ctx.beginPath();
+	for (var x = 0; x < 10; x++){
+		ctx.moveTo(w.width*x/10, 0);
+		ctx.lineTo(w.width*x/10, height);
+	}
+	for (var x = 0; x < 8; x++){
+		ctx.moveTo(0, height*x/8);
+		ctx.lineTo(w.width, x* height/8);
+	}
+	ctx.closePath();
+	ctx.strokeStyle = "#333";
+	ctx.stroke();
+
+	//plot the spectrum
+	ctx.beginPath();
+	ctx.moveTo(w.width, height - (update.charCodeAt(0) - 32));
+	//we index the charcodes at an offset of 3 (the first three are status)
+	for (var x = 0; x < nbins; x++)
+		ctx.lineTo((nbins - x - 1) * scale, height - (update.charCodeAt(x+3) - 32));
+	ctx.strokeStyle = "#ffff00";
+	ctx.stroke();	
+	
+	//write the spectrum edges
+	ctx.fillStyle="cyan";
+	ctx.font = "14px Sans";
+	ctx.fillStyle = "orange";
+
+	//write the status
+	ctx.fillText(status, w.width/2 - ctx.measureText(status).width/2, 14); 
+
+	//now, draw the tx and rx lines
+	var rx_pitch = el("PITCH").value;
+	var tx_pitch = el("TX_PITCH").value;
+
+	ctx.beginPath();
+	ctx.font = "12px Sans";
+	ctx.strokeStyle = "#00f";
+	ctx.fillStyle = "cyan";
+	if (mode == 'CWR' || mode == 'LSB'){
+		ctx.moveTo(w.width/2 - (rx_pitch * hz_per_pixel), 0);
+		ctx.lineTo(w.width/2 - (rx_pitch * hz_per_pixel), height);
+		ctx.fillText("RX", w.width/2 - (rx_pitch * hz_per_pixel)-10, height+12);
+	}
+	else{
+		ctx.moveTo(w.width/2 + (rx_pitch * hz_per_pixel), 0);
+		ctx.lineTo(w.width/2 + (rx_pitch * hz_per_pixel), height);
+		ctx.fillText("RX", w.width/2 + (rx_pitch * hz_per_pixel)-10, height+12);
+	}
+	ctx.stroke();
+
+	//draw the tx line separately only for FT8 
+	if (mode != "FT8")
+		return;
+
+	ctx.beginPath();
+	ctx.strokeStyle = "#f00";
+	ctx.fillStyle = "cyan";
+
+	if (mode == 'CWR' || mode == 'LSB'){
+		ctx.moveTo(w.width/2 - (tx_pitch * hz_per_pixel), 0);
+		ctx.lineTo(w.width/2 - (tx_pitch * hz_per_pixel), height);
+		ctx.fillText("TX", w.width/2 - (tx_pitch * hz_per_pixel)-10, height+12);
+	}
+	else{
+		ctx.moveTo(w.width/2 + (tx_pitch * hz_per_pixel), 0);
+		ctx.lineTo(w.width/2 + (tx_pitch * hz_per_pixel), height);
+		ctx.fillText("TX", w.width/2 + (tx_pitch * hz_per_pixel)-10, height+12);
+	}
+	ctx.stroke();
+}
+
+function waterfall_update(update){
+	var w = el("waterfall");
+
+	if (w.width == 0 || w.height== 0)
+		return;
+
+	var ctx = w.getContext("2d", {willReadFrequently:true});
+
+	//first move the old image down by 1 pixels (bitblt it down)
+	var img = ctx.getImageData(0,0,w.width, w.height);
+	ctx.putImageData(img, 0, 3);
+	
+	var i = 0;
+	nbins = update.length - 3;
+	var scale = nbins/w.width;
+
+	//create a new strip of waterfall width, but 1 pixels high
+	img = ctx.getImageData(0,0,w.width, 1);
+	var i = 0;
+	for (var x = 0; x < w.width; x++){
+		var bin = (w.width - x) * scale;
+		
+		//the first three are status	
+		var v = (update.charCodeAt(bin+3) - 32) * 2;
+		if (v > 100)
+			v = 100;
+		var r, g, b;
+		if (v < 20){
+			r = 0;
+			g = 0;
+			b = v * 12;
+		}
+		else if (v < 40){
+			r = 0;
+			g = (v - 20) * 12;
+			b = 255;
+		}
+		else if (v < 60){
+			r =  0;
+			g = 255;
+			b = (60-v) * 12;
+		}
+		else if (v < 80){
+			r = (v-60) * 12;
+			g = 255;
+			b = 0;
+		} 
+		else {
+			r = 255;
+			g = (100-v) * 12;
+			b = 0;
+		}
+		img.data[i++] = r;
+		img.data[i++] = g;
+		img.data[i++] = b; 
+		img.data[i++] = 255;	
+	}
+	ctx.putImageData(img, 0,0);
+	ctx.putImageData(img, 0,1);
+	ctx.putImageData(img, 0,2);
+
+}
+
+/* on screen keyboard panel */
+
+var text_focus = null;
+
+function sbitx_text_focus(event){
+	text_focus = event.currentTarget;
+}
+
+function sbitx_onscreen_key(event){
+	event.stopImmediatePropagation();
+	var key = event.currentTarget.innerHTML;
+
+	if (text_focus == null)
+		return;
+
+	if (text_focus.id == "data_window"){
+		if (key == '\u21E4')
+			websocket_send("key " + String.froCharCode(8));
+		else if (key == '\u23D8')
+			websocket_send("key  ");
+		else if (key == '\u2716')
+			$("#keybd-container").hide();
+		else if (key == "AR")
+			websocket_send("key [");
+		else if (key == "AS")
+			websocket_send("key ]");
+		else if (key == "BT")
+			websocket_send("key &");
+		else
+			websocket_send("key " + key);
+ 		return;	
+	}
+	
+	var caret = text_focus.selectionStart;
+	var string = text_focus.value;
+	//backspace
+	if (key == '\u21E4'){
+		text_focus.value = string.substring(0,caret-1) + string.substring(caret);
+		move_caret(text_focus, caret-1);
+	}//enter key when the focus is on text_in
+	else if (key == "\u8617" && text_focus.id == "text_in"){
+		websocket_send(text_focus.value);
+		text_focus.value = "";
+	}
+	else if (key == '\u23D8'){
+		text_focus.value = string.substring(0, caret) + ' ' + string.substring(caret);
+		move_caret(text_focus, caret+1);
+	}
+	else if (key == '\u2716'){
+		$("#keybd-container").hide();
+	}
+	else {
+		if (key == '\u21A9')
+			key = '\n';
+		text_focus.value = string.substring(0, caret) + key + string.substring(caret);
+		move_caret(text_focus, caret+1);
+	}
+	
+}
+
+function show_keyboard(){
+	$("#keybd-container").show();
+}
+/* Filter Panel */
+
+function receiver_panel_open(){
+	log("intializing the receiver panel");
+	//resize the waterfall and the spectrum, both need to be visible when tuning
+	var waterfall = el("waterfall");
+	var spectrum = el("spectrum");
+//	spectrum.height = 50;
+//	waterfall.height = 50;
+		
+}
+
+function show_bandwidth_panel(){
+	open_panel("bandwidth_panel");
+}
+
+function filter_set(event){
+	var id =parseInt(event.currentTarget.id);
+	var center = parseInt(el("PITCH").value);
+	var mode = el("MODE").value;
+	var low = 300;
+	var high = 3000;
+
+	if (mode == "FT8" || mode == "FT4" || mode == "DIGITAL"){
+		low = 0;
+		high = id;
+	}
+	else if (mode == "LSB" || mode =="USB"){
+		low = 300;
+		high = low + id; 
+	} else {
+		if (center - (id/2) < 0)
+			low = 0;
+		else
+			low = center -(id/2);
+		high = low + id;
+	}
+
+	log("setting filter from " + low + " to " + high);	
+	websocket_send("LOW " + low); 
+	websocket_send("HIGH " + high);
+}
+
+/* audio stuff (this needs to work with webrtc data packets rather than websockets */
+//setup the audio
+var player = null;
+
+function audio_start(){
+	player = new PCMPlayer({
+		encoding: '16bitInt',
+		channels: 1,
+		sampleRate: 48000,
+		flushingTime: 200
+   });
+}
+
+var phase = 0;
+function audio_beep_more(){
+	if (player == null)
+		return;
+
+	log("Adding more noise");
+	var noise = new Float32Array(1600);
+	for (var i = 0; i < noise.length; i++){
+		//noise[i] = Math.random() * 2 - 1;
+		noise[i] = Math.sin(phase);
+		phase += Math.PI / 6;
+	}
+	player.feed(noise);
+}
+
+function move_caret(elem, caretPos) {
+
+    if(elem != null) {
+        if(elem.createTextRange) {
+            var range = elem.createTextRange();
+            range.move('character', caretPos);
+            range.select();
+        }
+        else {
+            if(elem.selectionStart) {
+                elem.focus();
+                elem.setSelectionRange(caretPos, caretPos);
+            }
+            else
+                elem.focus();
+        }
+    }
+}
+
+//user interaction handlers
+
+function open_panel(panel){
+//	$(".sbitx-panel").hide();
+	var active_panel = $("#"+panel);
+	if (active_panel == undefined)
+		return;
+	$("#"+panel).show();
+	if (window[panel+"_open"] == undefined)
+		return;
+	window[panel + "_open"]();
+}
+
+function close_panel(event){
+	//extract the panel name from the parent
+	var panel = event.currentTarget.parentElement;
+	panel.style.display = "none";
+	draw_dial(); //fwiw
+	if (window[panel.id +"_close"] == undefined)
+		return;
+	window[panel.id +  "_close"]();
+}
+
+function sbitx_button_clicked(event){
+	websocket_send(event.currentTarget.id);
+}
+
+
+function sbitx_selection_changed(event){
+	var e = event.currentTarget;
+	var id_reading = e.id + "_reading";
+	websocket_send(e.id + " " + e.value);
+	draw_dial(); 
+}
+
+function set_bandwidth_button_text(){
+	var low = el("LOW").value;
+	var high = el("HIGH").value;
+	var bandwidth = high - low;
+	if (bandwidth > 1000)
+		bandwidth = "BW:" +(bandwidth/1000) + " KHz";
+	else
+		bandwidth = "BW: " + bandwidth + " Hz";
+		
+	el("bandwidth").innerHTML =  bandwidth;
+}
+
+function sbitx_slider_update(e){
+	var id_reading = e.id + "_reading";
+	if (el(id_reading)){
+		if (el(id_reading).innerHTML != e.value)
+			el(id_reading).innerHTML= e.value; 
+	}
+	set_bandwidth_button_text();
+	draw_dial();
+}
+
+function sbitx_slider_changed(event){
+	var e = event.currentTarget;
+	log("slider " + e.id+ " changing to " + e.value);
+	if (e.id == "HIGH"){
+		var low = el("LOW");
+		if (parseInt(low.value) > parseInt(e.value)+200){
+			if (parseInt(e.value) > 400)
+				low.value = parseInt(e.value) - 200;
+			else
+				low.value = e.value;
+			websocket_send("LOW " + low.value);
+		}
+	}
+	if (e.id == "LOW"){
+		var high = el("HIGH");
+		if (parseInt(high.value) < parseInt(e.value)){
+			if (parseInt(e.value) < 3800)
+				high.value = parseInt(e.value) + 200;
+			else
+				high.value = e.value; 
+			websocket_send("HIGH" + high.value);
+		}
+	}
+			
+	websocket_send(e.id + " " + e.value);
+	sbitx_slider_update(e);
+}
+
+function sbitx_toggle_clicked(e){
+
+	var btn = event.currentTarget;
+	if (!btn.classList.contains('sbitx-toggle'))
+		return;
+	var cmd = btn.id.substring('toggle_'.length);
+	if (el(cmd).value == "OFF")
+		websocket_send(cmd +  " ON");
+	else
+		websocket_send(cmd +  " OFF");
+}
+
+function sbitx_toggle_update(e){
+
+	var element = el('toggle_' + e.id);
+	if(element == null)
+		return;
+	if (element.type == 'checkbox'){
+		if (e.value  == "ON")
+			element.checked = true;
+		else
+			element.checked = false;
+	}
+	else {
+		if (e.value == 'ON'){
+			element.innerHTML = e.id + " ON";
+			element.style.backgroundColor = "yellow";
+			element.style.color = "black";
+		}
+		else{
+			element.innerHTML = e.id + " OFF";
+			element.style.backgroundColor = "#555";
+			element.style.color = "white";
+		}
+	}
+	log("toggle updated");
+	draw_dial();
+}
+
+function sbitx_list_select(event){
+	var message = event.currentTarget.innerHTML;	
+	
+	event.currentTarget.classList.add("wsjtx-selected-message");
+	log(message);
+}
+
+
+
+function switch_to_tx(){
+	log("setting in_tx true");
+	$("#tx_meters").show();
+	$("#rx_controls").hide();
+	in_tx = true;
+}
+
+function switch_to_rx(){
+	$("#tx_meters").hide();
+	$("#rx_controls").show();
+	log("setting in_tx false");
+	in_tx = false;
+}
+
+/* wsjtx functionality */
+
+
+function FT8_stylize_message(text){
+	//tokenize the message
+	var token_list = text.match(/\S+/g);
+	if (token_list.length < 8 || token_list[4] != '~' || token_list.length > 9){
+		log("FT8_process_message: error parsing [" + text + "]");
+		return;
+	}
+
+	var index = 1;
+	var confidence_score = token_list[1];
+	var signal_strength = token_list[2];
+	var rx_frequency = token_list[3];
+	var contact_callsign = token_list[5]; 
+	var sender_callsign = token_list[6]; 
+	var message = token_list[7];
+	var mycallsign = $("#MYCALLSIGN").val().toUpperCase();
+	var mygrid = $("#MYGRID").val().substring(0,4).toUpperCase();
+
+	if (contact_callsign == mycallsign)
+		return "sbitx-list-item wsjtx-message-for-me";
+	else if (sender_callsign == mycallsign)
+		return "sbitx-list-item wsjtx-mycallsign";
+	else if (sender_callsign == "CQ")
+		return "sbitx-list-item wsjtx-cq-in-message";
+	else 
+		return "sbitx-list-item";
+}
+
+function FT8_list_append(list_id, text){
+
+	var label_position = text.search("~");
+	var label = text.substring(0,label_position);
+	if (label.length == 21)
+		label = label + '  ';
+	var message = text.substring(label_position+1);
+	var item = document.createElement("li");
+	item.innerHTML = '<span class="ft8-label">' + label 
+		+ '</span><span class="ft8-message">' + message + '</span>';
+	item.className =  FT8_stylize_message(text);
+	item.id = text;
+	item.addEventListener("click", FT8_message_chosen);
+	el(list_id).children[0].appendChild(item);
+	item.scrollIntoView({behaviour: 'smooth', block:'nearest', inline:'start'});
+}
+
+function FT8_transmit(message){
+	websocket_send("key " +  message + "\n");
+	log("FT8 tx: " + message);
+//	FT8_list_append("wsjtx-rx", message);
+}
+
+function FT8_process_message(text, start_call=false){
+	if (text.length == 0)
+		return;
+	//tokenize the message
+	var token_list = text.match(/\S+/g);
+	if (token_list.length < 8 || token_list[4] != '~' || token_list.length > 9){
+		log("FT8_process_message: error parsing [" + text + "]");
+		return;
+	}
+
+	var index = 1;
+	var confidence_score = token_list[1];
+	var signal_strength = token_list[2];
+	var rx_frequency = token_list[3];
+	var contact_callsign = token_list[5]; 
+	var sender_callsign = token_list[6]; 
+	var message = token_list[7];
+	var mycallsign = $("#MYCALLSIGN").val().toUpperCase();
+	var mygrid = $("#MYGRID").val().substring(0,4).toUpperCase();
+
+	//there are six kinds of messages we can receive
+
+	//First three are for S & P
+	//1. Replying to a CQ (new call)
+	if (start_call == true && contact_callsign == "CQ"
+		&& sender_callsign != mycallsign
+		&& ($("#logger-callsign").val() == "" || start_call == true)){
+		$("#FT8-rx-freq").val(rx_frequency);
+		$("#logger-callsign").val(sender_callsign);
+		$("#logger-rst-sent").val(signal_strength);
+		$("#logger-exchange-received").val(message); 
+		$("#logger-exchange-sent").val(mygrid);
+		//transmit a call to the CQer
+		FT8_transmit(sender_callsign + " " + mycallsign + ' ' + mygrid);
+	}
+	else if (contact_callsign == "CQ"){ //strip off other CQs on my all
+		return;
+	}
+	//This is a reply to our CQ with a country grid, the grid has 4 characters 
+	//with alphabet in the begining
+	else if ($("#logger-exchange-received").val() == "" 
+		&& $("#logger-callsign").val() == "" 
+		&& message.length == 4 && message != "RR73" 
+		&& contact_callsign == mycallsign
+		&& message.charCodeAt(0) >= 65 && message.charCodeAt(0) <= 91){
+
+		$("#FT8-rx-freq").val(rx_frequency);
+		$("#logger-callsign").val(sender_callsign);
+		$("#logger-rst-sent").val(signal_strength);
+		$("#logger-exchange-received").val(message); 
+		$("#logger-exchange-sent").val(mygrid);
+
+		FT8_transmit(sender_callsign + " " + mycallsign + " " + signal_strength);
+	}  
+	//for all the remaining messages, the contact's callsign, grid and signal report
+	//should be already in the logger
+	else if ($("#logger-callsign").val() != sender_callsign || contact_callsign != mycallsign){
+		return; // this is not the call in progress
+	}
+	//2. the Runner contact has responded to us with our numeric signal report
+	else if (contact_callsign == mycallsign && message != '73' && !isNaN(parseInt(message))){
+		$("#logger-rst-received").val(message);
+		FT8_transmit(sender_callsign + " " + mycallsign + " R" + signal_strength);
+	}
+	//3. now, the runner has gotten their report and say byebye
+	else if ((message == 'RRR' || message == 'RR73')  
+			&& $("#logger-rst-received").val().length > 2 
+			&& $("#logger-exchange-received").val().length == 4){
+
+		log("qso to be logged");
+		FT8_transmit(sender_callsign + " " + mycallsign + " 73");
+		logger_enter_qso();
+		logger_wipe();
+	}		
+
+	//We are running and someone called	
+	//the processing sequence in the code is altered
+
+	//5. The station who replied to our CQ has sent a second message with our report.
+	// Check that we have already entered this callsign into our logger entry window
+	// from a previous message
+	// the message is like Y0URS M1NE R-12 
+	//we have to handle this in the state machine first (although it comes after message#4
+
+	else if (message.charAt(0) == 'R' && (message.charAt(1) == '-' || message.charAt(1) == '+')
+		&& sender_callsign == $("#logger-callsign").val()
+		&& !isNaN(parseInt(message.substring(1)))){
+			$("#logger-rst-received").val(parseInt(message.substring(1)));
+
+		FT8_transmit(sender_callsign + " " + mycallsign + " RRR");
+	} 
+	//the station has said 73, nothing more to be done now
+	else if (message == "73"  
+		&& $("#logger-rst-received").val().length > 1  
+		&& $("#logger-exchange-received").val().length == 4){
+		//log and wipe the call
+		logger_enter_qso();
+		logger_wipe();
+	}
+}
+
+function FT8_cq(event){
+	logger_wipe();
+	FT8_transmit("CQ " + el("MYCALLSIGN").value.toUpperCase() 
+			+ " " + el("MYGRID").value.substring(0,4).toUpperCase());
+}
+
+
+//you can choose messages that are:
+// 1. reply to your cq
+// 2. someone calling cq
+// 3. a message of your own that you want to resend
+
+function FT8_message_chosen(event){
+	var message_text = event.currentTarget.id;
+	var mycallsign = $("#MYCALLSIGN").val().toUpperCase();
+
+	if (message_text.length == 0)
+		return;
+	//tokenize the message
+	var token_list = message_text.match(/\S+/g);
+	if (token_list.length < 7 || token_list[4] != '~' || token_list.length > 9){
+		log("FT8_process_message: error parsing [" + text + "]");
+		return;
+	}
+
+	var index = 1;
+	var confidence_score = token_list[1];
+	var signal_strength = token_list[2];
+	var rx_frequency = token_list[3];
+	var contact_callsign = token_list[5]; 
+	var sender_callsign = token_list[6]; 
+	var message = token_list[7];
+	var mycallsign = $("#MYCALLSIGN").val().toUpperCase();
+	var mygrid = $("#MYGRID").val().substring(0,4).toUpperCase();
+
+	//this maybe you resending a lost mesage
+	if (sender_callsign == mycallsign){
+		FT8_transmit(contact_callsign + "  " + sender_callsign + " " + message);
+		return;
+	}
+
+	//this is the start of a new call
+	logger_wipe();
+	FT8_list_append("wsjtx-rx", message_text);
+	FT8_process_message(message_text, true);
+}
+
+function FT8_new_message(text){
+	log("ft8:" + text);
+	var words = text.split(' ');
+	FT8_list_append("wsjtx-activity", text) ;
+	var mycallsign = $("#MYCALLSIGN").val().toUpperCase();
+	if (words[4] == $("#FT8-rx-freq").val() || text.search(mycallsign) >= 0)
+		FT8_list_append("wsjtx-rx", text);
+	//now we process the message for a response if any
+	FT8_process_message(text, false);
+}
+
+// setup the html for wsjtx 
+function FT8_open(){
+	el("FT8_ui").style.display = "block";
+	el("keybd-container").style.display = "none";
+//	el("spectrum").height = 70;
+//	el("waterfall").height = 70;
+	el("logger-macros").style.display = "none";
+	websocket_send("HIGH 3000");
+	websocket_send("LOW 100");
+	open_panel("logger_panel");
+}
+
+/* cw functionality */
+
+function cw_open(mode){
+	if (document.location.hostname == "127.0.0.1")
+		el("keybd-container").style.display = "block";
+	open_panel("logger_panel");
+	$("#logger-macros").hide();
+//	el("spectrum").height =  90;
+//	el("waterfall").height = 90;
+	text_focus = el("data_window");
+	if (mode == 'RTTY' || mode == 'PSK31'){
+		$("#data_chat").show();
+		$("#cw_settings").hide();
+	}
+	else {
+		$("#data_chat").hide();
+		$("#cw_settings").show();
+	}
+}
+
+//the keystrokes, as they transfer to the sdr backend
+//are color coded into different colored spans
+
+function cw_keydown(event){
+	//translate backspace
+	var c = event.key;
+	if (c == "Shift" || c == "Alt"){
+		logger_abort();
+		return;
+	}	
+	else if (c == 'Escape'){
+		logger_abort();
+	}
+	else if (c == 'Backspace')
+		c = String.fromCharCode(8);
+	log("CW txing [" + event.key + "]");
+	websocket_send("key " + c);
+}
+
+function cw_input_focus(event){
+	text_focus = event.currentTarget;
+}
+
+function cw_update(text, kindof){
+	var rx_window = el("data_window");
+	var text_done = el("text_done");
+	text_done.innerHTML = text_done.innerHTML
+		+ '<span class="' + kindof + '">' + text + "</span>";
+	rx_window.scrollTop = rx_window.scrollHeight;	
+}
+
+function data_tx(event){
+	websocket_send("t ");
+	text_focus = el("data_window");
+}
+
+function data_rx(event){
+	websocket_send("r ");
+	el("data_window").focus;
+}
+
+/* console functionality */
+
+function console_update(text){
+	var window = el("console_window");
+	window.innerHTML = window.innerHTML + text;
+	window.scrollTop = window.scrollHeight;	
+}
+
+function show_console_panel(){
+	open_panel("console_panel");
+}
+
+/* telnet functionality */
+
+function telnet_update(text){
+	var window = el("telnet_window");
+	window.innerHTML = window.innerHTML + text;
+	window.scrollTop = window.scrollHeight;	
+}
+
+function show_telnet_panel(){
+	open_panel("telnet_panel");
+}
+
+/* voice functionality */
+function voice_open(){
+	open_panel("logger_panel");
+//	el("spectrum").height =  150;
+//	el("waterfall").height = 150;
+}
+
+function ptt_tx(event){
+		websocket_send("t ");
+}
+
+function ptt_rx(event){
+	websocket_send("r ");
+}
+
+/* logger functionality */
+
+
+function logger_wipe(event){
+	websocket_send("ABORT");
+	$("#logger-callsign").val("");
+	$("#logger-rst-sent").val("");
+	$("#logger-rst-received").val("");
+	$("#logger-exchange-received").val(""); 
+	$("#logger-exchange-sent").val("");
+}
+
+function logger_abort(event){
+	websocket_send("abort=1");
+}
+
+function logger_qrz(event){
+	if($("#logger-callsign").val().length < 2)
+		return;
+
+	var url = "https://www.qrz.com/db/" + $("#logger-callsign").val();
+	if (qrz_window == null)
+		qrz_window = window.open(url, "_blank");
+	else if (qrz_window.closed)
+		qrz_window = window.open(url, "_blank");
+	else
+		qrz.window.location = url;
+}
+
+function logger_enter_qso(){
+	var contact_callsign = el("logger-callsign").value.toUpperCase();
+	var rst_sent = el("logger-rst-sent").value.toUpperCase();
+	var exchange_sent = el("logger-exchange-sent").value.toUpperCase();
+	var rst_recv = el("logger-rst-received").value.toUpperCase();	
+	var	exchange_recv = el("logger-exchange-received").value.toUpperCase();	
+	if (contact_callsign.length < 2 || !rst_sent.length  || !rst_recv.length){
+		alert("Fill the logger callsign, RST sent, received to save the QSO");
+		return;
+	}
+	websocket_send("qso="+ contact_callsign +"|"+rst_sent+"|"+ exchange_sent 
+		+ "|" + rst_recv + "|" + exchange_recv); 
+	logger_wipe();
+	setTimeout(logbook_reload, 500);
+}
+
+function logger_list_macros(list){
+	var names = list.split("|");
+	var sel = el("MACROS_list");
+	sel.innerHTML = "";
+//	sel.appendChild(new Option("(Macros)", "--"));
+	for (var i = 0; i < names.length; i++)
+		sel.appendChild(new Option(names[i], names[i]));
+	var current_value = el("MACRO").value;
+	if (current_value.length > 2)
+		sel.value = el("MACRO").value;
+	else
+		websocket_send("MACRO");
+}
+
+function logger_macro_variable(variable){
+	var text = "";
+	switch(variable){
+	case 'MYCALL':
+		return el("MYCALLSIGN").value;
+	case 'CALL':
+		return el("logger-callsign").value;
+	case 'EXCH':
+		return el("logger-exchange-sent").value;
+	case 'FREQ':
+		return el("FREQ").value;
+	case 'SENTRST':
+		return el("logger-rst-sent").value;
+	case 'GRIDSQUARE':
+		return el("MYGRID").value.substring(1,4);
+	case 'SENTRSTCUT':
+		var rst = el("logger-rst-sent").value;
+		text = rst.charAt(0);
+		if (rst.charAt(1) == '9')
+			text += 'N';
+		else
+			text += rst.charAt(1);
+		if (rst.charAt(2) == '9')
+			text += 'N';
+		else
+			text += rst.charAt(2);
+		return text;
+	default:
+		return "";
+	}
+}
+
+function logger_bind_key(fn_key, macro_line){
+	log("macro key ["+fn_key+"] has '" + macro_line + "'");
+	//extract the key name
+	var key_name = "";
+	var i;
+	for (i =0; i < macro_line.length; i++)
+		if (macro_line.charAt(i) == ',')
+			break;
+	if (i == 0 || i == macro_line.length)
+		return;
+	el(fn_key).innerHTML = fn_key + " " + macro_line.substring(0, i);
+	el(fn_key).dataset.macro_text = macro_line.substring(i+1);
+}
+
+function logger_do_macro(macro_key){
+	var output = "";
+	var variable = "";
+	var state = "text";
+
+	var macro_text = el(macro_key).dataset.macro_text;
+
+	var mode = el("MODE").value;
+	if (mode == "USB" || mode == "LSB" || mode == "2TONE")
+		return;
+
+	for (var i = 0; i < macro_text.length; i++){
+		switch(macro_text.charAt(i)){
+		case '!': output += logger_macro_variable("CALL");break; 
+		case '*': output += logger_macro_variable("MYCALL");break;
+		case '#': output += logger_macro_variable("EXCH");break;
+		case '@': output += logger_macro_variable("FREQ");break;
+			break;
+		case '{':
+				state = "var";
+				break;
+			case '}':
+				//substitute the variable
+				output += logger_macro_variable(variable);
+				state = "text";
+				variable = "";
+				break;
+			default:
+				if (state == 'var')
+					variable += macro_text.charAt(i);
+				else
+					output += macro_text.charAt(i);	
+		}
+	}
+
+	// clear the previous buffer if any
+	websocket_send("abort=1");
+	websocket_send("key " + output + "^r");	
+	if (el("MODE").value == "RTTY" || el("MODE").value == PSK31){
+		websocket_send("t ");
+		websocket_send("key " + String.fromCharCode(18));
+	}
+	return output;
+}
+
+function logger_trigger_macro(event){
+	logger_do_macro(event.currentTarget.id);
+}
+
+//we expect the macro file to be in n1mm format
+function logger_keys_update(){
+	var lines = macros_file.split("\n");
+	for (var i = 0; i < lines.length; i++){
+		var line = lines[i];
+		//we deal only with the lines that start with 'FN ' or 'FNN '
+		if (line.charAt(0) == 'F' && isdigit(line.charAt(1))){
+			if (isdigit(line.charAt(2)) && line.charAt(3) == ' ')
+				logger_bind_key(line.substring(0,3), line.substring(4));
+			else if (line.charAt(2) == ' ')
+				logger_bind_key(line.substring(0,2), line.substring(3));
+		}
+	}
+}
+
+function logger_get_macro_file(event){
+	var macro_file_name = event.currentTarget.value;
+	jQuery.get("/"+macro_file_name+".mc", function(data){macros_file = data; logger_keys_update();});
+}
+
+function logger_toggle_macros(event){
+	if ( el("logger-macros").style.display == "block"){
+		el("logger-macros").style.display = "none";
+		return;
+	}
+	el("logger-macros").style.display = "block";
+	var macro_file_name = el("MACROS_list").value
+	jQuery.get("/"+macro_file_name+".mc", function(data){macros_file = data; logger_keys_update();});
+}
+
+// trigged when the back sdr changes the macros
+function logger_macro_changed_from_sdr(new_macro){
+	if (el("MACRO").value == new_macro)
+		return;
+	el("MACRO").value = new_macro;
+	el("MACROS_list").value = new_macro;
+	websocket_send("macro_labels=" + new_macro);
+}
+
+/* logbook */
+
+function open_logbook(event){
+	open_panel("logger_panel");
+	open_panel("logbook_panel");
+}
+
+function logbook_update(args){
+	var token = args.split("|");
+	if(token.length < 10)
+		return;
+
+	log("log entry:" + args);
+	var table = $("#logbook_table tbody")[0];
+
+	//replace existing row?
+	var row = el("logentry-"+token[0]);
+	if (row == null){
+		row = table.insertRow(-1);
+		row.id = "logentry-" + token[0];
+	} else {
+		for (var i = 0; i < 7; i++)
+			row.deleteCell(-1);
+	}
+
+	//date and time are at position 3, 4
+	item = row.insertCell(-1);
+	item.innerHTML = token[3] + ' ' + token[4];
+	item.className = "logbook-datestamp";
+	//frequency
+	item = row.insertCell(-1);
+	item.innerHTML =  token[2];
+	item.className = "logbook-field";
+	//mode
+	item = row.insertCell(-1);
+	item.innerHTML = token[1];
+	item.className = "logbook-field";
+	//callsign
+	item = row.insertCell(-1);
+	item.innerHTML = token[8];
+	item.className = "logbook-field";
+	//sent
+	item = row.insertCell(-1);
+	item.innerHTML = token[6] + '  ' + token[7];		
+	item.className = "logbook-field";
+	//received
+	item = row.insertCell(-1);
+	item.innerHTML = token[9] + '  ' + token[10];		
+	item.className = "logbook-field";
+}
+
+function logbook_reload(){
+	$("#logbook_table tbody")[0].innerHTML = "";
+	websocket_send("logbook=-1");	
+}
+
+function logbook_load(){
+
+	//check if there is a seach query, in which case, you need to reload all over
+	if (el("logbook-search").value.length > 0){
+		$("#logbook_table tbody")[0].innerHTML = "";
+		websocket_send("logbook=-1");	
+		return;
+	}
+
+	var rowcount = $("#logbook_table tbody tr").length
+	if(rowcount > 0){
+		var id = $("#logbook_table tbody tr")[rowcount-1].id;
+		websocket_send("logbook="+id.substring("logentry-".length));
+ 	}
+	else 
+		websocket_send("logbook=-1");
+}
+
+function logbook_search(){
+	$("#logbook_table tbody")[0].innerHTML = "";
+	websocket_send("logbook=-1 " + el("logbook-search").value.toUpperCase());
+}
+
+/* settings panel */
+
+function open_settings(){
+	open_panel("settings_panel");
+	//set the focs to the pin
+	el("PASSKEY").focus();
+	if (document.location.hostname == "127.0.0.1")
+		show_keyboard();
+}
+
+function save_settings(){
+	websocket_send("MYCALLSIGN " + el("MYCALLSIGN").value);
+	websocket_send("MYGRID " + el("MYGRID").value);
+	websocket_send("PASSKEY " + el("PASSKEY").value);
+	websocket_send("SIDETONE " + el("SIDETONE").value);
+	$("#settings_panel").hide();
+}
+
+/* recorder panel */
+
+var record_started = -1;
+
+function open_recorder(){
+	open_panel("recorder_panel");
+}
+
+function start_recorder(){
+	websocket_send("REC ON");
+}
+
+function stop_recorder(){
+	websocket_send("REC OFF");
+}
+
+function update_recorder(){
+	if (record_started == -1)
+		el("record_duration").innerHTML = "00:00";
+	else {
+		seconds = Math.round(Date.now()/1000) - record_started;
+		minutes = Math.round(seconds / 60);
+		seconds = Math.round(seconds % 60);
+		el("record_duration").innerHTML = ("0" + minutes).slice(-2) 
+			+ ":" + ("0" + seconds).slice(-2);
+	}
+}
+
+/* switching the ui for different modes */
+
+// response from the sdr 
+
+function update_data(text){
+	var xml = parser.parseFromString("<updates>" + text + "</updates>", "text/xml");
+	if (xml != null){
+		var wsjtx = xml.getElementsByTagName("WSJTX-RX");
+		if (wsjtx)
+			for (var i = 0; i < wsjtx.length; i++)
+				if (wsjtx[i].innerHTML.length > 30)
+					FT8_new_message(wsjtx[i].innerHTML);
+
+		//read the QSO specific ones too
+		wsjtx = xml.getElementsByTagName("WSJTX-TX");
+		if (wsjtx)
+			for (var i = 0; i < wsjtx.length; i++)
+				if (wsjtx[i].innerHTML.length > 30)
+					FT8_new_message(wsjtx[i].innerHTML);
+
+		var data = xml.getElementsByTagName("TELNET");
+		if (data && in_tx == false)
+			for (var i = 0; i < data.length; i++)
+				telnet_update(data[i].innerHTML, "telnet");
+
+		var data = xml.getElementsByTagName("FLDIGI-RX");
+		if (data && in_tx == false)
+			for (var i = 0; i < data.length; i++)
+				cw_update(data[i].innerHTML, "data_rx");
+
+		var data = xml.getElementsByTagName("FLDIGI-TX");
+		if (data && in_tx == true)
+			for (var i = 0; i < data.length; i++)
+				cw_update(data[i].innerHTML, "data_tx");
+
+		var data = xml.getElementsByTagName("CW-TX");
+		if (data)
+			for (var i = 0; i < data.length; i++)
+				cw_update(data[i].innerHTML, "data_tx");
+
+		var data = xml.getElementsByTagName("LOG");
+		if (data)
+			for (var i = 0; i < data.length; i++)
+				console_update(data[i].innerHTML);
+	}
+	else
+		console_update(text);
+//		el("log").insertAdjacentHTML("beforeend", text);
+}
+
+function ui_tick(){
+	if (socket == null)
+		return;
+
+	//recorder update if it is running
+	if(record_started != -1)
+		update_recorder();
+
+	if (socket.readyState != 1)
+		return;
+	if (session_id ==  'nullsesssion')
+		return;
+	if (player != null)
+		websocket_send("audio");
+	else
+		websocket_send("spectrum");
+}
+
+function mode_set(new_mode){
+
+	$(".mode-panel").hide();
+	switch(new_mode){
+		case 'CW':
+		case 'CWR':
+		case 'RTTY':
+		case 'PSK31':
+			cw_open(new_mode);
+			$("#CW_ui").show();
+		break;
+		case "LSB":
+		case "USB":
+		case "2TONE":
+			voice_open();
+			$("#Voice_ui").show();
+			break;
+		case 'FT8':
+			FT8_open();
+			$("#FT8_ui").show();
+			break;
+		default:
+			var panel_name = "#" + new_mode + "_ui";
+			var active_panel = $(panel_name);
+			if (active_panel.length > 0)
+				$(panel_name).show();
+					return;
+	}
+//	if (window[new_mode+"_open"] == undefined)
+//		return;
+//	window[new_mode + "_open"]();
+}
+
+function mode_changed(event){
+	mode_set(event.currentTarget.value);
+}
+
+//audio interpolation variables
+var prev_sample = 0;
+var intp_factor = 3;
+function response_handler(response){
+	var cmd = "";
+	var args = "";
+
+	if (response instanceof Blob){
+		f = new FileReader();
+		f.onload = () => {
+			if (player != null){
+				var samples = new Int16Array(f.result);
+				var upsample =  new Int16Array(samples.length * intp_factor);
+				var j = 0;	
+				//interpolate, generating higher sampling rate
+				for (var i = 0; i < samples.length; i++)
+					for (var x = 0; x < intp_factor; x++){
+						upsample[j++] = ((prev_sample * (intp_factor- x- 1)) 
+							+ (samples[i] * (x + 1)))/intp_factor; 
+						prev_sample = samples[i];
+					}
+				player.feed(upsample);
+			}
+		}
+		f.readAsArrayBuffer(response);
+		return;
+	}
+
+	if (response.substring(0,3) == "TX " || response.substring(0,3) == "RX "){
+
+		if (response.substring(0,2) == "TX" && in_tx == false)
+			switch_to_tx();
+		else if (response.substring(0,2) == "RX" && in_tx == true)
+			switch_to_rx();
+		
+		spectrum_update(response);
+		waterfall_update(response);
+		return;
+	}
+
+	var i = response.indexOf(' ');	
+	if (i >= 0){
+		cmd = response.substring(0, i);
+		args = response.substring(i+1);
+	}
+	else
+		return;
+
+	switch(cmd){
+		case 'quit':
+			log("Received a quit message");
+			session_id = "nullsession";
+			socket.close();
+			end_login("Logged in from a another device");
+			break;
+		case 'login':
+			if (args !=  'error'){
+				session_id = args;
+				show_main();
+			}
+			else
+				alert("Incorrect passkey.\r\nIf you have forgotten your pass key\r\n" +
+				"You can see it in user_settings.ini in sbitx/data folder");
+			break;
+		case 'QSO':
+			logbook_update(args);
+			break;
+		case 'TEXT':
+			log("text: [ " + args + "]");
+			el("text_pending").innerHTML = args;
+			break;
+		case 'CONSOLE':
+			update_data(args);
+			break;
+		case 'Spectrum':
+		case 'Waterfall':
+			break;
+		case 'FREQ':
+			e = el(cmd);
+			log("freq " + args);
+			if (e)
+				e.value = args;
+			//update the selected VFO
+			if (el("VFO").value  == 'A')
+				el("VFOA").value = args;
+			else
+				el("VFOB").value = args;
+			draw_dial();
+			break;
+		case 'macros_list':
+			logger_list_macros(args);
+			break;
+		case 'MACRO':
+			logger_macro_changed_from_sdr(args);
+			break;
+		case 'MODE':
+			mode_set(args); // ... and let it fall to the default, break
+		default:
+			e = el(cmd);
+			if (e){
+//				log("setting " + cmd + " : " + args);
+				if (e.value != args){
+					e.value = args;
+//					log("changing from " + e.value + " to " + args);
+					if (e.classList.contains('sbitx-slider'))
+						sbitx_slider_update(e);
+					else if(e.classList.contains('sbitx-update-toggle'))
+						sbitx_toggle_update(e);
+					else if (cmd == "MYCALLSIGN" && args== "NOBODY")
+						open_settings("settings_panel");
+
+					if (cmd == "REC"){
+						if (args == "ON")
+							record_started  = Math.round(Date.now()/1000);
+						else
+							record_started = -1; 							
+						update_recorder();
+					}
+				}
+			}
+			else
+				log("unhandled " + cmd + " : " + args);
+
+			if (cmd == 'REF'){
+				draw_meters();
+//				log("meter : " + el("POWER").value + "," + el("REF").value);
+			}
+	}
+}
+
+parser = new DOMParser();
+show_login();
+waterfall_init();
+setInterval(ui_tick, 50);
+
+//init the event handlers
+window.addEventListener("resize", resize_ui);
+$(".sbitx-btn").on("click", sbitx_button_clicked);
+$(".sbitx-selection").on("change", sbitx_selection_changed);	
+$(".sbitx-slider").on("input", sbitx_slider_changed);
+$(".sbitx-toggle").on("click", sbitx_toggle_clicked);
+$(".sbitx-keystroke td").on("click", sbitx_onscreen_key);
+$(".sbitx-panel-title").on("click", close_panel);
+$(".bw-btn").on("click", filter_set);
+
+//ft8 specific handlers
+//$(".ft8-clickable").on("click", FT8_message_chosen);
+
+//specific control handler
+$("#REF").on("change", draw_meters);
+$("#dial").on("click", show_vfo_panel);
+$("#bandwidth").on("click", show_bandwidth_panel);
+$("#MODE").on("change", mode_changed);
+$("#ft8-call-cq").on("click", FT8_cq);
+$("#console-open").on("click", show_console_panel);
+$("#telnet-open").on("click", show_telnet_panel);
+$("#keyboard-open").on("click", show_keyboard);
+
+//vfo buttons
+$(".band-btn").on("click", close_vfo_panel);
+$(".vfo-btn").on("click", close_vfo_panel);
+$("#vfo_reset").on("click", vfo_set);
+$("#vfo_swap").on("click", vfo_set);
+
+// logger buttons
+$("#wipe").on("click", logger_wipe);
+$("#esc").on("click", logger_abort);
+$("#qrz").on("click", logger_qrz);
+$("#logger-log").on("click", logger_enter_qso);
+$("#macros").on("click", logger_toggle_macros);
+$("MACRO").on("change", logger_macro_changed_from_sdr);
+$("#MACROS_list").on("change", logger_get_macro_file);
+$(".macro-button").on("click", logger_trigger_macro); 
+//function key handlers
+document.addEventListener('keydown', function(e){
+	log("key : " + e.key);
+	if(e.key.length > 1 && e.key[0] == 'F' && isdigit(e.key[1])){
+		logger_do_macro(e.key);
+		e.preventDefault();
+	}
+	else if (e.key == "Enter" && text_focus != null && text_focus.id == "text_in"){
+		websocket_send(text_focus.value);
+		text_focus.value = "";
+	}
+	else if (e.key == "Enter" && text_focus != null && text_focus.id == "telnet_in"){
+		websocket_send("tel " + text_focus.value);
+		text_focus.value = "";
+	}
+});
+	
+
+//do login
+$("#start_login").on("click", do_login);
+
+//cw buttons, also used for chatty data
+$("#data_window").on("keydown", cw_keydown);
+$("#data_window").on("click", cw_input_focus);
+$("#data_chat_tx").on("click", data_tx);
+$("#data_chat_rx").on("click", data_rx);
+
+//ssb buttons
+$("#ptt_tx").on("click", ptt_tx);
+$("#ptt_rx").on("click", ptt_rx);
+
+//logbook buttons
+$("#logbook-open").on("click", open_logbook);
+$("#btn-logbook-search").on("click", logbook_search);
+$("#btn-logbook-load").on("click", logbook_load);
+
+//settings buttons
+$("#settings-open").on("click", open_settings);
+$("#settings_save").on("click", save_settings);
+
+//recorder buttons
+$("#recorder-open").on("click", open_recorder);
+$("#record_start").on("click", start_recorder);
+$("#record_stop").on("click", stop_recorder);
+
+//init the state of the ui
+$(".sbitx-text-input").on("focus", sbitx_text_focus);
+el("logger-macros").style.display = "none";
+$("#tx_rx").hide();
+$(".sbitx-panel").hide();
+$("#extra-controls").hide(); //do something about these
+if (document.location.hostname == "127.0.0.1")
+	window.addEventListener("contextmenu", function(e) { e.preventDefault(); }); //uncomment in production
+if (document.location.hostname == "127.0.0.1")
+	show_keyboard();
+</script>
+</html>

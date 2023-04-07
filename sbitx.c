@@ -12,6 +12,7 @@
 #include <linux/limits.h>
 #include <stdint.h>
 #include <time.h>
+#include <signal.h>
 #include "sdr.h"
 #include "sdr_ui.h"
 #include "sound.h"
@@ -35,10 +36,10 @@ FILE *pf_debug = NULL;
 #define LPF_D 11
 
 float fft_bins[MAX_BINS]; // spectrum ampltiudes  
+int spectrum_plot[MAX_BINS];
 fftw_complex *fft_spectrum;
 fftw_plan plan_spectrum;
 float spectrum_window[MAX_BINS];
-
 
 fftw_complex *fft_out;		// holds the incoming samples in freq domain (for rx as well as tx)
 fftw_complex *fft_in;			// holds the incoming samples in time domain (for rx as well as tx) 
@@ -64,6 +65,7 @@ struct rx *tx_list = NULL;
 struct filter *tx_filter;	//convolution filter
 static double tx_amp = 0.0;
 static int tr_relay = 0;
+static int rx_pitch = 700; //used only to offset the lo for CW,CWR
 
 #define MUTE_MAX 6 
 static int mute_count = 50;
@@ -75,14 +77,19 @@ int32_t modulation_buff[MAX_BINS];
 
 #define CMD_TX (2)
 #define CMD_RX (3)
-//#define TUNING_SHIFT (-550)
 #define TUNING_SHIFT (0)
 #define MDS_LEVEL (-135)
-int fserial = 0;
 
+struct Queue qremote;
 
 void radio_tune_to(u_int32_t f){
-  si5351bx_setfreq(2, f + bfo_freq - 24000 + TUNING_SHIFT);
+	if (rx_list->mode == MODE_CW)
+  	si5351bx_setfreq(2, f + bfo_freq - 24000 + TUNING_SHIFT - rx_pitch);
+	else if (rx_list->mode == MODE_CWR)
+  	si5351bx_setfreq(2, f + bfo_freq - 24000 + TUNING_SHIFT + rx_pitch);
+	else
+  	si5351bx_setfreq(2, f + bfo_freq - 24000 + TUNING_SHIFT);
+
   //printf("Setting radio to %d\n", f);
 }
 
@@ -160,9 +167,25 @@ void spectrum_update(){
 	for (int i = 0; i < MAX_BINS; i++){
 		fft_bins[i] = ((1.0 - spectrum_speed) * fft_bins[i]) + 
 			(spectrum_speed * cabs(fft_spectrum[i]));
+
+		int y = power2dB(cnrmf(fft_bins[i])); 
+		// limit to 100 dB 
+		//if ( y <  0)
+		//	y = 0;
+		//if (y > 100)
+		//	y = 100;
+		spectrum_plot[i] = y;
 	}
 
  // redraw();
+}
+
+int remote_audio_output(int16_t *samples){
+	int length = q_length(&qremote);
+	for (int i = 0; i < length; i++){
+		samples[i] = q_read(&qremote) / 32786;
+	}
+	return length;
 }
 
 void set_lpf_40mhz(int frequency){
@@ -192,7 +215,7 @@ void set_lpf_40mhz(int frequency){
 
   //printf("################ setting %d high\n", lpf);
   digitalWrite(lpf, HIGH); 
-  //digitalWrite(LPF_B, HIGH); 
+  //digitalWrite(LPF_A, HIGH); 
 	prev_lpf = lpf;
 }
 
@@ -310,12 +333,12 @@ struct rx *add_tx(int frequency, short mode, int bpf_low, int bpf_high){
 	filter_tune(r->filter, (1.0 * bpf_low)/96000.0, (1.0 * bpf_high)/96000.0 , 5);
 
 	if (abs(bpf_high - bpf_low) < 1000){
-		r->agc_speed = 300;
+		r->agc_speed = 10;
 		r->agc_threshold = -60;
 		r->agc_loop = 0;
 	}
 	else {
-		r->agc_speed = 300;
+		r->agc_speed = 10;
 		r->agc_threshold = -60;
 		r->agc_loop = 0;
 	}
@@ -436,6 +459,60 @@ double agc2(struct rx *r){
 	//printf("%d:s meter: %d %d %d \n", count++, (int)r->agc_gain, (int)r->signal_strength, r->agc_loop);
   return 100000000000 / r->agc_gain;  
 }
+/*
+double tgc(struct rx *r){
+	int i;
+  double signal_strength, agc_gain_should_be;
+
+	//do nothing if agc is off
+  if (r->agc_speed == -1){
+	  for (i=0; i < MAX_BINS/2; i++)
+			__real__ (r->fft_time[i+(MAX_BINS/2)]) *=10000000;
+    return 10000000;
+  }
+
+  //find the peak signal amplitude
+  signal_strength = 0.0;
+	for (i=0; i < MAX_BINS/2; i++){
+		double s = creal(r->fft_time[i+(MAX_BINS/2)]) * 1000;
+		if (signal_strength < s) 
+			signal_strength = s;
+	}
+	//also calculate the moving average of the signal strength
+  r->signal_avg = (r->signal_avg * 0.93) + (signal_strength * 0.07);
+	if (signal_strength == 0)
+		agc_gain_should_be = 10000000;
+	else
+		agc_gain_should_be = 100000000000/signal_strength;
+	r->signal_strength = signal_strength;
+
+	double agc_ramp = 0.0;
+
+  // climb up the agc quickly if the signal is louder than before 
+	if (agc_gain_should_be < r->agc_gain){
+		r->agc_gain = agc_gain_should_be;
+		//reset the agc to hang count down 
+    r->agc_loop = r->agc_speed;
+  }
+	else if (r->agc_loop <= 0){
+		agc_ramp = (agc_gain_should_be - r->agc_gain) / (MAX_BINS/2);	
+	}
+ 
+	if (agc_ramp != 0){
+  	for (i = 0; i < MAX_BINS/2; i++){
+	  	__real__ (r->fft_time[i+(MAX_BINS/2)]) *= r->agc_gain;
+		}
+		r->agc_gain += agc_ramp;		
+	}
+	else 
+  	for (i = 0; i < MAX_BINS/2; i++)
+	  	__real__ (r->fft_time[i+(MAX_BINS/2)]) *= r->agc_gain;
+
+  r->agc_loop--;
+
+  return 100000000000 / r->agc_gain;  
+}
+*/
 
 void my_fftw_execute(fftw_plan f){
 	fftw_execute(f);
@@ -542,7 +619,7 @@ void rx_process(int32_t *input_rx,  int32_t *input_mic,
 	//STEP 9: send the output back to where it needs to go
 	int is_digital = 0;
 
-	if (rx_list->output == 0)
+	if (rx_list->output == 0){
 		for (i= 0; i < MAX_BINS/2; i++){
 			int32_t sample;
 			sample = cimag(r->fft_time[i+(MAX_BINS/2)]);
@@ -551,10 +628,43 @@ void rx_process(int32_t *input_rx,  int32_t *input_mic,
 			output_tx[i] = 0;
 		}
 
+		//push the samples to the remote audio queue, decimated to 16000 samples/sec
+		for (i = 0; i < MAX_BINS/2; i += 6)
+			q_write(&qremote, output_speaker[i]);
+
+	}
 	//push the data to any potential modem 
 	modem_rx(rx_list->mode, output_speaker, MAX_BINS/2);
 }
 
+
+double tgc(struct rx *r){
+	int i;
+	double max = -100.0;
+	double min = 100.0;
+
+	double clipped_max = -100.0;
+	double clipped_min = 100.0;
+
+	for (i= 0; i < MAX_BINS/2; i++){
+		double s = creal(r->fft_time[i+(MAX_BINS/2)]);
+		if (min > s)
+			min = s;
+/*
+		if (max < s)
+			max = s;
+		if (s < -10.0)
+			s = -10;
+		else if (s > 10.0)
+			s = 10;
+*/
+		s = 0;
+		if (clipped_min > s)
+			clipped_min = s;
+		if (clipped_max < s)
+			clipped_max = s;
+	}
+}
 
 void tx_process(
 	int32_t *input_rx, int32_t *input_mic, 
@@ -577,6 +687,8 @@ void tx_process(
 
 	int m = 0;
 	int j = 0;
+	double max = -100.0;
+	double min = 100.0;
 	//gather the samples into a time domain array 
 	for (i= MAX_BINS/2; i < MAX_BINS; i++){
 
@@ -587,7 +699,7 @@ void tx_process(
 			i_sample = modem_next_sample(r->mode) / 3;
 		else 
 	  	i_sample = (1.0 * input_mic[j]) / 2000000000.0;
-
+	
 		//don't echo the voice modes
 		if (r->mode == MODE_USB || r->mode == MODE_LSB || r->mode == MODE_AM 
 			|| r->mode == MODE_NBFM)
@@ -653,27 +765,14 @@ void tx_process(
 	fftw_execute(r->plan_rev);
 
 	float scale = volume;
-
-	if ((r->mode == MODE_USB || r->mode == MODE_LSB) && tx_compress > 10){
-		double max = 0;
-		for (i= 0; i < MAX_BINS/2; i++){
-			double s = creal(r->fft_time[i+(MAX_BINS/2)]);
-			if (max < s)
-				max = s;
-			s *= tx_compress/30;
-			if (s > 35.0)
-				s = 35.0;
-			if (s < -35.0)
-				s = -35.0;
-			output_tx[i] = s * scale * tx_amp;
-		}
-		//printf("max %f\n", max);
-	}
-	else{ 
-		for (i= 0; i < MAX_BINS/2; i++){
+/*
+	if ((r->mode == MODE_USB || r->mode == MODE_LSB || r->mode == MODE_2TONE) 
+		&& tx_compress > 10)
+		tgc(r);
+	*/
+	for (i= 0; i < MAX_BINS/2; i++){
 			double s = creal(r->fft_time[i+(MAX_BINS/2)]);
 			output_tx[i] = s * scale * tx_amp;
-		}
 	}
 
 	sdr_modulation_update(output_tx, MAX_BINS/2, tx_amp);	
@@ -718,6 +817,10 @@ of the event loop
 */
 void loop(){
 	delay(10);
+}
+
+void signal_handler(int signum){
+	digitalWrite(TX_LINE, LOW);
 }
 
 void setup_audio_codec(){
@@ -770,19 +873,6 @@ struct power_settings band_power[] ={
 	{28000000, 29700000,  10, 0.1}  
 };
 
-/*
-struct power_settings band_power[] ={
-	{ 3500000,  4000000, 40, 0.0025},
-	{ 7000000,  7300000, 40, 0.0025},
-	{10000000, 10200000, 30, 0.004},
-	{14000000, 14300000, 30, 0.01},
-	{18000000, 18200000, 25, 0.01},
-	{21000000, 21450000, 20, 0.01},
-	{24800000, 25000000, 10, 0.02},
-	{28000000, 29700000,  10, 0.03}  
-};
-*/
-
 static int hw_init_index = 0;
 static int hw_settings_handler(void* user, const char* section, 
             const char* name, const char* value)
@@ -819,13 +909,11 @@ static void read_hw_ini(){
 */
 void set_tx_power_levels(){
  // printf("Setting tx_power to %d, gain to %d\n", tx_power_watts, tx_gain);
-	int tx_power_gain = 0;
+	//int tx_power_gain = 0;
 
 	//search for power in the approved bands
 	for (int i = 0; i < sizeof(band_power)/sizeof(struct power_settings); i++){
 		if (band_power[i].f_start <= freq_hdr && freq_hdr <= band_power[i].f_stop){
-//			if (tx_power_watts > band_power[i].max_watts)
-//				tx_power_watts = band_power[i].max_watts;
 		
 			//next we do a decimal coversion of the power reduction needed
 			tx_amp = (1.0 * tx_drive * band_power[i].scale);  
@@ -920,6 +1008,7 @@ void setup(){
 	fft_init();
 	vfo_init_phase_table();
   setup_oscillators();
+	q_init(&qremote, 8000);
 
 	modem_init();
 
@@ -938,14 +1027,6 @@ void setup(){
 	vfo_start(&tone_a, 700, 0);
 	vfo_start(&tone_b, 1900, 0);
 
-	fserial = serialOpen("/dev/ttyUSB0", 38400);
-	if (fserial == -1){
-		fserial = serialOpen("/dev/ttyUSB1", 38400);
-		if (!fserial){
-			puts("uBITX not connected");
-			exit(-1);
-		}
-	}
 	delay(2000);	
 
 }
@@ -953,7 +1034,7 @@ void setup(){
 void sdr_request(char *request, char *response){
 	char cmd[100], value[1000];
 
-//	printf("[%s]\n", request);
+	printf("[%s]\n", request);
 
 	char *p = strchr(request, '=');
 	int n = p - request;
@@ -1106,6 +1187,10 @@ void sdr_request(char *request, char *response){
 			//rx_tx_ramp = 10;
 		}
 		*/
+	}
+	else if (!strcmp(cmd, "rx_pitch")){
+		rx_pitch = atoi(value);
+		printf("rx_pitch set to %d\n", rx_pitch);
 	}
 	else if (!strcmp(cmd, "tx_gain")){
 		tx_gain = atoi(value);

@@ -81,21 +81,30 @@ void *telnet_thread_function(void *server){
   struct sockaddr_storage serverStorage;
   socklen_t addr_size;
 	struct sockaddr_in serverAddr;
-	char buff[200], s_name[100];
+	char buff[200], host[100], port[7];
 
-	if (strlen(server) > sizeof(s_name) - 1)
+	if (strlen(server) > sizeof(host) - 1)
 		return NULL;
 
-	strcpy(s_name, server); 
-	char *host_name = strtok((char *)s_name, ":");
-	char *port = strtok(NULL, "");
+	int i;
+	char *p = server;
+	char *q = host;
+	for(i = 0; *p && *p != ':' && i < sizeof(host)-1; i++)
+		*q++ = *p++;
+	*q = 0;
+	
+	q = port;
+	p++;
+	for(i = 0; *p && *p && i < sizeof(port)-1; i++)
+		*q++ = *p++;
+	*q = 0;
 
-	if(!host_name){
-		write_console(FONT_LOG, "Telnet : specify host and port\nex:'\topen dxc.g3lrs.org.uk:7300\n'");
+	if(!strlen(host)){
+		write_console(FONT_TELNET, "Telnet : specify host and port\nex:'\topen dxc.g3lrs.org.uk:7300\n'");
 		return NULL;
 	}
-	if(!port){
-		write_console(FONT_LOG, "Telnet port is missing\n");
+	if(!strlen(port)){
+		write_console(FONT_TELNET, "Telnet port is missing\n");
 		return NULL;	
 	}	
 
@@ -103,26 +112,32 @@ void *telnet_thread_function(void *server){
 		close(telnet_sock);
 
 
-	sprintf(buff, "Finding %s:%d\n", server, port);
-	write_console(FONT_LOG, buff);
+	sprintf(buff, "Finding %s:%s\n", host, port);
+	write_console(FONT_TELNET, buff);
 
   memset(serverAddr.sin_zero, '\0', sizeof serverAddr.sin_zero);  
   serverAddr.sin_family = AF_INET;
   serverAddr.sin_port = htons(atoi(port));
-  serverAddr.sin_addr.s_addr = get_address(server); 
+  serverAddr.sin_addr.s_addr = get_address(host); 
 
-	sprintf(buff, "Opening %s:%d\n", server, port);
-	write_console(FONT_LOG, buff);
+	sprintf(buff, "Opening %s:%s\n", host, port);
+	write_console(FONT_TELNET, buff);
 
 	telnet_sock = socket(AF_INET, SOCK_STREAM, 0);
   if (connect(telnet_sock, 
 			(struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0) {
 		printf("Telnet: failed to connect to %s\n", server);
-		write_console(FONT_LOG, "Failed to open telnet, check hostname and port?\n");
+		write_console(FONT_TELNET, "Failed to open telnet, check hostname and port?\n");
 		close(telnet_sock);
 		telnet_sock = -1;
 		return NULL;
    }
+
+	//send our callsign
+	char mycallsign[100];
+ 	
+	get_field_value("#mycallsign", mycallsign);
+	telnet_write(mycallsign);
 
 	int e;
 	while((e = recv(telnet_sock, buff, sizeof(buff), 0)) >= 0){
@@ -160,7 +175,7 @@ void *telnet_thread_function(void *server){
 			*q = 0;	
 
 //			printf("compressed [%s] to [%s]\n", buff, buff2);
-			write_console(FONT_LOG, buff2);
+			write_console(FONT_TELNET, buff2);
 		}
 	}
 	close(telnet_sock);
@@ -177,14 +192,19 @@ int telnet_write(char *text){
 }
 
 void telnet_close(){
-	puts("Tenet socket is closing");
+	puts("Telnet socket is closing");
 	close(telnet_sock);
 	telnet_sock = 0;
 }
 
 char telnet_server_name[100];
 void telnet_open(char *server){
-	
+
+	//close any existing telnet sessions
+	if (telnet_sock > 1){
+		close(telnet_sock);
+		telnet_sock = 0;
+	}
 	strcpy(telnet_server_name, server);
  	pthread_create( &telnet_thread, NULL, telnet_thread_function, 
 		(void*)telnet_server_name);

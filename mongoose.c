@@ -4484,6 +4484,10 @@ static void mg_iotest(struct mg_mgr *mgr, int ms) {
     struct mg_connection *c = (struct mg_connection *) evs[i].data.ptr;
     if (evs[i].events & EPOLLERR) {
       mg_error(c, "socket error");
+			int error = 0;
+			socklen_t errlen = sizeof(error);
+			getsockopt(mgr->epoll_fd, SOL_SOCKET, SO_ERROR, (void *)&error, &errlen);
+			printf("socket error %d, %s\n", error, strerror(error));
     } else if (c->is_readable == 0) {
       bool rd = evs[i].events & (EPOLLIN | EPOLLHUP);
       bool wr = evs[i].events & EPOLLOUT;
