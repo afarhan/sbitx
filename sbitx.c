@@ -40,6 +40,8 @@ int spectrum_plot[MAX_BINS];
 fftw_complex *fft_spectrum;
 fftw_plan plan_spectrum;
 float spectrum_window[MAX_BINS];
+void calibrate();
+void set_rx1(int frequency);
 
 fftw_complex *fft_out;		// holds the incoming samples in freq domain (for rx as well as tx)
 fftw_complex *fft_in;			// holds the incoming samples in time domain (for rx as well as tx) 
@@ -149,6 +151,46 @@ int mag2db(double mag){
 	return c;
 }
 
+//experiment to measure the passband noise shape
+int calibration = 0;
+int baseline[MAX_BINS];
+
+void calibrate(){
+	if (calibrate == 0)
+		return;
+
+	if (calibration == 1)
+		memset(baseline, 0, sizeof(baseline));
+	if (calibration > 0  && calibration < 1000){
+		for (int i = 0; i < MAX_BINS; i++)
+			baseline[i] += spectrum_plot[i]; 
+//		printf("Calibrate %d\n", calibration);
+		calibration++;
+	}
+	if (calibration == 1000){
+		for (int i = 0; i < MAX_BINS; i++)
+			baseline[i] /= 1000;
+		//turn it off
+		calibration = 0;
+
+		//dump it all
+		FILE *pf = fopen("baseline.csv", "w");
+		for (int i = 0; i < MAX_BINS; i++){
+//			printf("%d, %d\n ", i, baseline[i]);
+			fprintf(pf, "%d,%d\n", baseline[i]);
+		}
+		fclose(pf);
+		printf("\ncalibration done\n");
+ }
+}
+
+void calibration_start(){
+	set_rx1(25200000);	
+	sound_mixer(audio_card, "Capture", 100);
+	delay(50);
+	calibration = 1;
+}
+
 void set_spectrum_speed(int speed){
 	spectrum_speed = speed;
 	for (int i = 0; i < MAX_BINS; i++)
@@ -160,6 +202,8 @@ void spectrum_reset(){
 		fft_bins[i] = 0;
 }
 
+
+
 void spectrum_update(){
 	//we are only using the lower half of the bins, so this copies twice as many bins, 
 	//it can be optimized. leaving it here just in case someone wants to try I Q channels 
@@ -169,15 +213,9 @@ void spectrum_update(){
 			(spectrum_speed * cabs(fft_spectrum[i]));
 
 		int y = power2dB(cnrmf(fft_bins[i])); 
-		// limit to 100 dB 
-		//if ( y <  0)
-		//	y = 0;
-		//if (y > 100)
-		//	y = 100;
 		spectrum_plot[i] = y;
 	}
-
- // redraw();
+	//calibrate();
 }
 
 int remote_audio_output(int16_t *samples){
@@ -221,6 +259,7 @@ void set_lpf_40mhz(int frequency){
 
 
 void set_rx1(int frequency){
+	printf("Tuned to %d\n", frequency);
 	radio_tune_to(frequency);
 	freq_hdr = frequency;
 	set_lpf_40mhz(frequency);
@@ -989,7 +1028,6 @@ void tr_switch(int tx_on){
 		}
 }
 
-
 /* 
 This is the one-time initialization code 
 */
@@ -1035,12 +1073,13 @@ void setup(){
 
 	delay(2000);	
 
+	//calibration_start();
+	//while(calibration != 0)
+	//	delay(10);
 }
 
 void sdr_request(char *request, char *response){
 	char cmd[100], value[1000];
-
-	printf("[%s]\n", request);
 
 	char *p = strchr(request, '=');
 	int n = p - request;

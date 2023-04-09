@@ -1178,7 +1178,6 @@ static int user_settings_handler(void* user, const char* section,
     char cmd[1000];
     char new_value[200];
 
-		//printf("[%s] setting %s = %s\n", section, name, value);
     strcpy(new_value, value);
     if (!strcmp(section, "r1")){
       sprintf(cmd, "%s:%s", section, name);
@@ -2129,6 +2128,7 @@ int do_status(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 
 void execute_app(char *app){
 	int pid = fork();
+	printf("pid forked = %d\n", pid);
 	if (!pid){
 		system(app);
 		exit(0);	
@@ -2141,7 +2141,6 @@ int do_text(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 	int text_line_width = 0;
 
 	if (event == FIELD_EDIT){
-		printf("text_in: edited with %d to ", a);
 		//if it is a command, then execute it and clear the field
 		if (f->value[0] == COMMAND_ESCAPE &&  strlen(f->value) > 1 && (a == '\n' || a == MIN_KEY_ENTER)){
 			cmd_exec(f->value + 1);
@@ -2163,7 +2162,6 @@ int do_text(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 			int l = strlen(f->value) - 1;
 			f->value[l] = 0;
 		}
-		printf("[%s]\n", f->value);
 		f->is_dirty = 1;
 		f->update_remote = 1;
 		return 1;
@@ -2449,12 +2447,20 @@ void macro_get_var(char *var, char *s){
 		*s = 0;
 }
 
+void open_url(char *url){
+	char temp_line[200];
+
+	sprintf(temp_line, "chromium-browser --log-leve=3 "
+	"--enable-features=OverlayScrollbar %s"
+	"  &>/dev/null &", url);
+	execute_app(temp_line);
+}
+
 void qrz(char *callsign){
-	char 	bash_line[1000];
-	sprintf(bash_line, "Querying qrz.com for %s\n", callsign);
-	write_console(FONT_LOG, bash_line);
-	sprintf(bash_line, "chromium-browser https://qrz.com/DB/%s &", callsign);
-	execute_app(bash_line);
+	char 	url[1000];
+
+	sprintf(url, "https://qrz.com/DB/%s &", callsign);
+	open_url(url);
 }
 
 int do_macro(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
@@ -3651,9 +3657,8 @@ void do_cmd(char *cmd){
 	else if (!strcmp(request, "#tx")){	
 		tx_on(TX_SOFT);
 	}
-	else if (!strcmp(request, "#web")){
-		execute_app("chromium-browser --enable-features=OverlayScrollbar http://127.0.0.1:8080 &");
-	}
+	else if (!strcmp(request, "#web"))
+		open_url("http://127.0.0.1:8080");
 	else if (!strcmp(request, "#rx")){
 		tx_off();
 	}
@@ -4178,7 +4183,10 @@ int main( int argc, char* argv[] ) {
 	//rtc_read();
 	printf("done!\n");
 
-	execute_app("chromium-browser --enable-features=OverlayScrollbar http://127.0.0.1:8080 &");
+	open_url("http://127.0.0.1:8080");
+//	execute_app("chromium-browser --log-leve=3 "
+//	"--enable-features=OverlayScrollbar http://127.0.0.1:8080"
+//	"  &>/dev/null &");
   gtk_main();
   
   return 0;

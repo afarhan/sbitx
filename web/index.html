@@ -562,7 +562,8 @@ function do_login() {
 	socket.onmessage = on_message;
 	socket.onclose = on_close;
 	socket.onerror = on_error;
-	log("all done");
+	if (document.location.hostname != "127.0.0.1")
+		audio_start();
 }
 
 // ui panel switchers
@@ -572,8 +573,14 @@ function show_login(){
 	$("#pan_adapter").hide();
 	$("#cmd").hide();
 	$("#topbar").hide();
-//	if (document.location.hostname == "127.0.0.1")
-	show_keyboard();
+	if (document.location.hostname == "127.0.0.1")
+		show_keyboard();
+	
+	//this is a hack to make the onscreen keyboard
+	//work with the passkey
+	text_focus = el("passkey");
+	el("passkey").value = "";
+	$("#passkey").focus();
 }
 
 function show_main(){
@@ -583,8 +590,6 @@ function show_main(){
 	websocket_send("logbook=-1");
 	websocket_send("macros_list=macros_list");
 	$("#keybd-container").hide();
-	if (document.location.hostname != "127.0.0.1")
-		audio_start();
 }
 
 function toggle_fullscreen(){
@@ -823,6 +828,11 @@ function resize_ui(){
 
 	el("waterfall").width = b.width()-topbar_width;//-topbar.width;
 	el("spectrum").width = b.width()-topbar_width;//-topbar.width;
+	if(b.height() > 600){
+		el("waterfall").height = b.height() / 4;
+		el("spectrum").height = b.height() /4;
+	}
+	height = b.height();
 }
 
 var waterfall_image = null;
@@ -893,7 +903,7 @@ function spectrum_update(update){
 	ctx.moveTo(w.width, height - (update.charCodeAt(0) - 32));
 	//we index the charcodes at an offset of 3 (the first three are status)
 	for (var x = 0; x < nbins; x++)
-		ctx.lineTo((nbins - x - 1) * scale, height - (update.charCodeAt(x+3) - 32));
+		ctx.lineTo((nbins - x - 1) * scale, height - (((update.charCodeAt(x+3) - 32)/100)*height));
 	ctx.strokeStyle = "#ffff00";
 	ctx.stroke();	
 	
@@ -1024,7 +1034,12 @@ function sbitx_onscreen_key(event){
 	if (text_focus == null)
 		return;
 
-	if (text_focus.id == "data_window"){
+	//sent key strokes to be transmitted
+	//even if the focus is not on datawindow
+	//as long as we have the CW_ui opened
+
+	if (text_focus.id == "data_window" ||
+		(el("CW_ui").style.display == "block" && text_focus == null)){
 		if (key == '\u21E4')
 			websocket_send("key " + String.froCharCode(8));
 		else if (key == '\u23D8')
@@ -1066,7 +1081,6 @@ function sbitx_onscreen_key(event){
 		text_focus.value = string.substring(0, caret) + key + string.substring(caret);
 		move_caret(text_focus, caret+1);
 	}
-	
 }
 
 function show_keyboard(){
@@ -1126,21 +1140,6 @@ function audio_start(){
 		sampleRate: 48000,
 		flushingTime: 200
    });
-}
-
-var phase = 0;
-function audio_beep_more(){
-	if (player == null)
-		return;
-
-	log("Adding more noise");
-	var noise = new Float32Array(1600);
-	for (var i = 0; i < noise.length; i++){
-		//noise[i] = Math.random() * 2 - 1;
-		noise[i] = Math.sin(phase);
-		phase += Math.PI / 6;
-	}
-	player.feed(noise);
 }
 
 function move_caret(elem, caretPos) {
@@ -1725,19 +1724,6 @@ function logger_macro_variable(variable){
 	}
 }
 
-function logger_bind_key(fn_key, macro_line){
-	log("macro key ["+fn_key+"] has '" + macro_line + "'");
-	//extract the key name
-	var key_name = "";
-	var i;
-	for (i =0; i < macro_line.length; i++)
-		if (macro_line.charAt(i) == ',')
-			break;
-	if (i == 0 || i == macro_line.length)
-		return;
-	el(fn_key).innerHTML = fn_key + " " + macro_line.substring(0, i);
-	el(fn_key).dataset.macro_text = macro_line.substring(i+1);
-}
 
 function logger_do_macro(macro_key){
 	var output = "";
@@ -1777,7 +1763,7 @@ function logger_do_macro(macro_key){
 	// clear the previous buffer if any
 	websocket_send("abort=1");
 	websocket_send("key " + output + "^r");	
-	if (el("MODE").value == "RTTY" || el("MODE").value == PSK31){
+	if (el("CW_ui").style.display == "block"){
 		websocket_send("t ");
 		websocket_send("key " + String.fromCharCode(18));
 	}
@@ -1786,6 +1772,20 @@ function logger_do_macro(macro_key){
 
 function logger_trigger_macro(event){
 	logger_do_macro(event.currentTarget.id);
+}
+
+function logger_bind_key(fn_key, macro_line){
+	log("macro key ["+fn_key+"] has '" + macro_line + "'");
+	//extract the key name
+	var key_name = "";
+	var i;
+	for (i =0; i < macro_line.length; i++)
+		if (macro_line.charAt(i) == ',')
+			break;
+	if (i == 0 || i == macro_line.length)
+		return;
+	el(fn_key).innerHTML = fn_key + " " + macro_line.substring(0, i);
+	el(fn_key).dataset.macro_text = macro_line.substring(i+1);
 }
 
 //we expect the macro file to be in n1mm format
@@ -1803,9 +1803,13 @@ function logger_keys_update(){
 	}
 }
 
+function logger_set_macro(macro_file_name){
+	jQuery.get("/"+macro_file_name+".mc", function(data){macros_file = data; logger_keys_update();});
+}
+
 function logger_get_macro_file(event){
 	var macro_file_name = event.currentTarget.value;
-	jQuery.get("/"+macro_file_name+".mc", function(data){macros_file = data; logger_keys_update();});
+	logger_set_marcro(macro_file_name);
 }
 
 function logger_toggle_macros(event){
@@ -2245,6 +2249,12 @@ document.addEventListener('keydown', function(e){
 		websocket_send("tel " + text_focus.value);
 		text_focus.value = "";
 	}
+	else if (text_focus.id == "data_window"){
+			if (e.key == "Esc")
+				logger_abort();
+			else
+				websocket_send("key " + e.key);
+	}
 });
 	
 
@@ -2281,6 +2291,7 @@ el("logger-macros").style.display = "none";
 $("#tx_rx").hide();
 $(".sbitx-panel").hide();
 $("#extra-controls").hide(); //do something about these
+logger_set_macro("CW1");
 if (document.location.hostname == "127.0.0.1")
 	window.addEventListener("contextmenu", function(e) { e.preventDefault(); }); //uncomment in production
 //if (document.location.hostname == "127.0.0.1")
