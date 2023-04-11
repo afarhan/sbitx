@@ -3,4 +3,6 @@ Type=Link
 Name=sBitx
 Icon=/home/pi/sbitx/sbitx_icon.png
 URL=/home/pi/.local/share/applications/alacarte-made-2.desktop
+Exec=/home/pi/sbitx/sbitx
 Name[en_US]=sBitx
+Terminal=true

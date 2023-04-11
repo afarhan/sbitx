@@ -158,4 +158,8 @@ the alsa startup. the startup.sh has to be made executable
 
 chmod +x startup.sh
 
-
+##step desktop short-cut
+this doesnt work with touch as it needs double click
+fro Accessories->File Manager,
+from edit menu go to preferences and in the general tab turn on 
+open files wiht single click
