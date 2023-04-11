@@ -5,7 +5,9 @@
 #include <fftw3.h>
 #include <time.h>
 #include "sound.h"
+#include "wiringPi.h"
 #include "sdr.h"
+
 
 /* follows the tutorial at http://alsamodular.sourceforge.net/alsa_programming_howto.html
 Next thing to try is http://www.saunalahti.fi/~s7l/blog/2005/08/21/Full%20Duplex%20ALSA
@@ -779,9 +781,16 @@ void *sound_thread_function(void *ptr){
 	//switch to maximum priority
 	sch.sched_priority = sched_get_priority_max(SCHED_FIFO);
 	pthread_setschedparam(sound_thread, SCHED_FIFO, &sch);
- 	//printf("opening %s sound card\n", device);	
-	if (sound_start_play(device)){
-		fprintf(stderr, "*Error opening play device");
+	
+	int i = 0;
+	for (i = 0; i < 10; i++){
+		if (!sound_start_play(device))
+			break;
+			delay(1000); //wait for the sound system to bootup
+			printf("Retrying the sound system %d\n", i);
+	}
+	if (i == 10){
+	 fprintf(stderr, "*Error opening play device");
 		return NULL;
 	}
 

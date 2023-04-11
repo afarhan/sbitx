@@ -4145,7 +4145,8 @@ int main( int argc, char* argv[] ) {
 	strcpy(directory, path);
 	strcat(directory, "/sbitx/data/user_settings.ini");
   if (ini_parse(directory, user_settings_handler, NULL)<0){
-    printf("Unable to load ~/sbitx/data/user_settings.ini\n");
+    printf("Unable to load ~/sbitx/data/user_settings.ini\n"
+		"Loading default.ini instead\n");
 		strcpy(directory, path);
 		strcat(directory, "/sbitx/data/default_settings.ini");
   	ini_parse(directory, user_settings_handler, NULL);

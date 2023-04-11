@@ -143,3 +143,19 @@ sudo apt install libsqlite3-dev
 cd data 
 sqlite3 < create_db.sql
 
+## step 12 : to run sbitx on bootup
+you have to execute 
+	lxterminal -e /home/pi/sbitx/sbitx
+on start of the gui (not the bootup)
+to do this, copy the autostart file to LXDE-pi
+sudo cp autostart /etc/xdg/lxsession/LXDE-pi/autostart
+
+This autostart calls startup.sh in the sbitx directory
+we do this instead of calling sbitx directly from autostart
+as sbitx was not able to acces the ALSA sound card upon bootup
+the startup.sh executes aplay first that somehow fixes
+the alsa startup. the startup.sh has to be made executable
+
+chmod +x startup.sh
+
+
