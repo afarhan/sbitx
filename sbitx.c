@@ -48,7 +48,7 @@ fftw_complex *fft_in;			// holds the incoming samples in time domain (for rx as 
 fftw_complex *fft_m;			// holds previous samples for overlap and discard convolution 
 fftw_plan plan_fwd, plan_tx;
 int bfo_freq = 40035000;
-int freq_hdr = 7000000;
+int freq_hdr = -1;
 
 static double volume 	= 100.0;
 static int tx_drive = 40;
@@ -259,7 +259,8 @@ void set_lpf_40mhz(int frequency){
 
 
 void set_rx1(int frequency){
-	printf("Tuned to %d\n", frequency);
+	if (frequency == freq_hdr)
+		return;
 	radio_tune_to(frequency);
 	freq_hdr = frequency;
 	set_lpf_40mhz(frequency);
@@ -566,10 +567,6 @@ void rx_process(int32_t *input_rx,  int32_t *input_mic,
 	double i_sample, q_sample;
 
 
-	if (mute_count){
-		memset(input_rx, 0, n_samples * sizeof(int32_t));
-		mute_count--;
-	}
 
 	//STEP 1: first add the previous M samples to
 	for (i = 0; i < MAX_BINS/2; i++)
@@ -672,6 +669,12 @@ void rx_process(int32_t *input_rx,  int32_t *input_mic,
 			q_write(&qremote, output_speaker[i]);
 
 	}
+
+	if (mute_count){
+		memset(output_speaker, 0, MAX_BINS/2 * sizeof(int32_t));
+		mute_count--;
+	}
+
 	//push the data to any potential modem 
 	modem_rx(rx_list->mode, output_speaker, MAX_BINS/2);
 }
@@ -1186,52 +1189,6 @@ void sdr_request(char *request, char *response){
 		else
 			tr_switch(0);
 		strcpy(response, "ok");
-		/*
-		if (!strcmp(value, "on")){
-			in_tx = 1;
-			//mute it all and hang on for a millisecond
-			sound_mixer(audio_card, "Master", 0);
-			sound_mixer(audio_card, "Capture", 0);
-			delay(1);
-
-			//now switch of the signal back
-			//now ramp up after 5 msecs
-			digitalWrite(TX_LINE, HIGH);
-			mute_count = 20;
-      fft_reset_m_bins();
-			//give time for the reed relay to switch
-      delay(2);
-			set_tx_power_levels();
-			//finally ramp up the power 
-			digitalWrite(TX_POWER, HIGH);
-			strcpy(response, "ok");
-			spectrum_reset();
-		//	rx_tx_ramp = 1;
-		}
-		else {
-			in_tx = 0;
-			//mute it all and hang on
-			sound_mixer(audio_card, "Master", 0);
-			sound_mixer(audio_card, "Capture", 0);
-			delay(1);
-      fft_reset_m_bins();
-			mute_count = MUTE_MAX;
-			strcpy(response, "ok");
-
-			//power down the PA chain to null any gain
-			digitalWrite(TX_POWER, LOW);
-			delay(2);
-
-			//drive the tx line low, switching the signal path 
-			digitalWrite(TX_LINE, LOW);
-			delay(5); 
-			//audio codec is back on
-			sound_mixer(audio_card, "Master", rx_vol);
-			sound_mixer(audio_card, "Capture", rx_gain);
-			spectrum_reset();
-			//rx_tx_ramp = 10;
-		}
-		*/
 	}
 	else if (!strcmp(cmd, "rx_pitch")){
 		rx_pitch = atoi(value);

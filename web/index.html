@@ -86,11 +86,13 @@
 			</div>
 			<div id="tx_meters">
 				<div class="menu-item">
-						Watts <meter id="POWER_meter" max="500" min="0" value="0"></meter>
+						<span class="slider-label">Watts</span>
+						<meter id="POWER_meter" max="500" min="0" value="0"></meter>
 						<span id="POWER_reading"></span> 
 				</div>
 				<div class="menu-item">
-						SWR <meter id="REF_meter" max="1000" min="0" value="0"></meter>
+						<span class="slider-label">SWR</span> 
+						<meter id="REF_meter" max="1000" min="0" value="0"></meter>
 						<span id="REF_reading"/></span>
 				</div>
 			</div>
@@ -1540,8 +1542,6 @@ function cw_open(mode){
 		el("keybd-container").style.display = "block";
 	open_panel("logger_panel");
 	$("#logger-macros").hide();
-//	el("spectrum").height =  90;
-//	el("waterfall").height = 90;
 	text_focus = el("data_window");
 	if (mode == 'RTTY' || mode == 'PSK31'){
 		$("#data_chat").show();
@@ -1551,24 +1551,37 @@ function cw_open(mode){
 		$("#data_chat").hide();
 		$("#cw_settings").show();
 	}
+	var b = $("body");
+	if(b.height() > 600)
+		el("data_window").styleheight = 50;
 }
 
 //the keystrokes, as they transfer to the sdr backend
 //are color coded into different colored spans
 
-function cw_keydown(event){
-	//translate backspace
-	var c = event.key;
+function cw_keydown(c){
+	//we changed this from being an evernt handler
+	//var c = event.key; 
+
+	
+	if(el("MODE").value != "CW" && el("MODE").value == "CWR" &&
+			el("MODE").value != "PSK31" && el("MODE").value != "RTTY")	
+		return;
+	
 	if (c == "Shift" || c == "Alt"){
 		logger_abort();
 		return;
 	}	
 	else if (c == 'Escape'){
 		logger_abort();
+		return;
 	}
 	else if (c == 'Backspace')
 		c = String.fromCharCode(8);
-	log("CW txing [" + event.key + "]");
+	else if (c.length > 1)
+		return;
+
+	log("user typed cw letter [" + event.key + "], sending to sdr");
 	websocket_send("key " + c);
 }
 
@@ -1762,7 +1775,9 @@ function logger_do_macro(macro_key){
 
 	// clear the previous buffer if any
 	websocket_send("abort=1");
-	websocket_send("key " + output + "^r");	
+	if (mode != "CW" && mode != "CWR")
+		output = output + "^r"; //to end the tx for fldigi
+	websocket_send("key " + output);	
 	if (el("CW_ui").style.display == "block"){
 		websocket_send("t ");
 		websocket_send("key " + String.fromCharCode(18));
@@ -2250,10 +2265,7 @@ document.addEventListener('keydown', function(e){
 		text_focus.value = "";
 	}
 	else if (text_focus.id == "data_window"){
-			if (e.key == "Esc")
-				logger_abort();
-			else
-				websocket_send("key " + e.key);
+			cw_keydown(e.key);
 	}
 });
 	
@@ -2262,7 +2274,7 @@ document.addEventListener('keydown', function(e){
 $("#start_login").on("click", do_login);
 
 //cw buttons, also used for chatty data
-$("#data_window").on("keydown", cw_keydown);
+//$("#data_window").on("keydown", cw_keydown);
 $("#data_window").on("click", cw_input_focus);
 $("#data_chat_tx").on("click", data_tx);
 $("#data_chat_rx").on("click", data_rx);

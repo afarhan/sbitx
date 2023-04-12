@@ -41,6 +41,7 @@ The initial sync between the gui values, the core radio values, settings, et al 
 
 /* command  buffer for commands received from the remote */
 struct Queue q_remote_commands;
+struct Queue q_tx_text;
 
 /* Front Panel controls */
 char pins[15] = {0, 2, 3, 6, 7, 
@@ -715,8 +716,8 @@ int remote_update_field(int i, char *text){
 	int update = f->update_remote;
 	f->update_remote = 0;
 	//debug on
-	if (!strcmp(f->cmd, "#text_in") && strlen(f->value))
-		printf("#text_in [%s] %d\n", f->value, update);
+//	if (!strcmp(f->cmd, "#text_in") && strlen(f->value))
+//		printf("#text_in [%s] %d\n", f->value, update);
 	//debug off
 	return update;
 }
@@ -1734,9 +1735,7 @@ void redraw_main_screen(GtkWidget *widget, cairo_t *gfx){
 
 /* gtk specific routines */
 static gboolean on_draw_event( GtkWidget* widget, cairo_t *cr, gpointer user_data ) {
-	printf("{");
 	redraw_main_screen(widget, cr);	
-	printf("}\r");
   return FALSE;
 }
 
@@ -2128,7 +2127,6 @@ int do_status(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 
 void execute_app(char *app){
 	int pid = fork();
-	printf("pid forked = %d\n", pid);
 	if (!pid){
 		system(app);
 		exit(0);	
@@ -2608,6 +2606,7 @@ void tx_on(int trigger){
 		update_field(get_field("r1:freq"));
 	}
 
+	printf("TX on\n");
 	tx_start_time = millis();
 }
 
@@ -2626,6 +2625,7 @@ void tx_off(){
 		update_field(get_field("r1:freq"));
 	}
 	sound_input(0); //it is a low overhead call, might as well be sure
+	printf("TX off\n");
 }
 
 
@@ -4103,6 +4103,7 @@ int main( int argc, char* argv[] ) {
 	console_init();
 
 	q_init(&q_remote_commands, 1000); //not too many commands
+	q_init(&q_tx_text, 100); //best not to have a very large q 
 	setup();
 
 	rtc_sync();

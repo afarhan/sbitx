@@ -90,9 +90,14 @@ select, select option, input {
 }
 
 #tx_meters {
-	padding-top: 4px;
-	padding-bottom: 4px;
 	background-color: black;
+	display: block;
+	height: 60px;
+}
+
+#rx_controls {
+	display: block;
+	height: 60px;
 }
 
 #tuning_knob {
@@ -254,6 +259,7 @@ select, select option, input {
 	text-align: left;
 	font-size: 12pt;
 	overflow: auto;
+	border: solid 1px #333;
 }
 
 .data_rx{
