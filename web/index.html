@@ -52,7 +52,6 @@
 		<input type="hidden" id="REC" value="OFF" /> 
 		<input type="hidden" id="RIT_DELTA" name="RIT_DELTA" value="" /> 
 		<input type="hidden" id="VFO" value="A" />
-		<input type="hidden" id="TELNETURL" value="" />
 		<span id="restore-btn" onclick="toggle_fullscreen();"> &#X21F3; </span>
 		<div id="topbar"> 
 			<div class="menu-item" id="dial">
@@ -433,6 +432,12 @@
 				</select>
 		</div>
 		<div class="settings-element">
+			<span class="settings-label">Telnet Server:</span> 
+			<input type="text" class="settings_input sbitx-text-input" size="17"
+				id="TELNETURL" />
+			(Like : dxc.nc7j.com:7373)
+		</div>
+		<div class="settings-element">
 			<span class="settings-label"></span>
 			<button id="settings_save" class="logger-button">Update</button>		
 		</div>
@@ -470,6 +475,7 @@ var parser = null;
 var qrz_window = null;
 var session_id = "nullsession";
 var macros_file = "";
+var spots = null;
 
 /* a few helper functions */
 function el(element_id){
@@ -904,7 +910,7 @@ function spectrum_update(update){
 	ctx.beginPath();
 	ctx.moveTo(w.width, height - (update.charCodeAt(0) - 32));
 	//we index the charcodes at an offset of 3 (the first three are status)
-	for (var x = 0; x < nbins; x++)
+	for (let x = 0; x < nbins; x++)
 		ctx.lineTo((nbins - x - 1) * scale, height - (((update.charCodeAt(x+3) - 32)/100)*height));
 	ctx.strokeStyle = "#ffff00";
 	ctx.stroke();	
@@ -917,6 +923,25 @@ function spectrum_update(update){
 	//write the status
 	ctx.fillText(status, w.width/2 - ctx.measureText(status).width/2, 14); 
 
+	//show spots!
+	let freq = parseInt(el("FREQ").value)/1000;
+	let spot_count = 0;
+	let spot_report = "";
+	let dups = new Object();
+
+	for (let i = 0; i < spots.length && spot_count < 10; i++){
+		if (Math.abs(spots[i].frequency - freq) < 25){
+			if (dups[spots[i].callsign] == undefined){
+				spot_report = spot_report + " " + spots[i].frequency + "/" + spots[i].callsign + "/" + spots[i].mode;
+				spot_count++;
+				dups[spots[i].callsign] = spots[i].frequency;
+			}
+		}
+	}
+	ctx.font = "12px Sans";
+	ctx.fillStyle = "white";
+	ctx.fillText(spot_report, 0, height+12);
+
 	//now, draw the tx and rx lines
 	var rx_pitch = el("PITCH").value;
 	var tx_pitch = el("TX_PITCH").value;
@@ -924,7 +949,7 @@ function spectrum_update(update){
 	ctx.beginPath();
 	ctx.font = "12px Sans";
 	ctx.strokeStyle = "#00f";
-	ctx.fillStyle = "cyan";
+	ctx.fillStyle = "white";
 	if (mode == 'CWR' || mode == 'LSB'){
 		ctx.moveTo(w.width/2 - (rx_pitch * hz_per_pixel), 0);
 		ctx.lineTo(w.width/2 - (rx_pitch * hz_per_pixel), height);
@@ -936,6 +961,7 @@ function spectrum_update(update){
 		ctx.fillText("RX", w.width/2 + (rx_pitch * hz_per_pixel)-10, height+12);
 	}
 	ctx.stroke();
+
 
 	//draw the tx line separately only for FT8 
 	if (mode != "FT8")
@@ -1222,7 +1248,6 @@ function sbitx_slider_update(e){
 
 function sbitx_slider_changed(event){
 	var e = event.currentTarget;
-	log("slider " + e.id+ " changing to " + e.value);
 	if (e.id == "HIGH"){
 		var low = el("LOW");
 		if (parseInt(low.value) > parseInt(e.value)+200){
@@ -1625,6 +1650,38 @@ function telnet_update(text){
 	var window = el("telnet_window");
 	window.innerHTML = window.innerHTML + text;
 	window.scrollTop = window.scrollHeight;	
+	
+	let word = text.split(' ');
+	let i = 0;
+	if (word[i] != 'DX')
+		return;
+	i++;
+	while(word[i] == '') i++;
+
+	if (word[i] != 'de')
+		return;
+
+	i++;
+	while(word[i] == '') i++;
+
+	i++; //skip the spotter's callsign
+	while(word[i] == '') i++;
+
+	let freq = parseInt(word[i++]);
+
+	while(word[i] == '') i++;
+
+	let call = word[i++];	
+	while(word[i] == '') i++;
+	
+	let m = word[i];	
+	
+	let s = {
+		frequency: freq,
+		callsign: call,
+		mode: m,	
+	}
+	spots.unshift(s);
 }
 
 function show_telnet_panel(){
@@ -1940,6 +1997,7 @@ function save_settings(){
 	websocket_send("MYGRID " + el("MYGRID").value);
 	websocket_send("PASSKEY " + el("PASSKEY").value);
 	websocket_send("SIDETONE " + el("SIDETONE").value);
+	websocket_send("TELNETURL " + el("TELNETURL").value);
 	$("#settings_panel").hide();
 }
 
@@ -2210,6 +2268,8 @@ parser = new DOMParser();
 show_login();
 waterfall_init();
 setInterval(ui_tick, 50);
+spots = [];
+
 
 //init the event handlers
 window.addEventListener("resize", resize_ui);
