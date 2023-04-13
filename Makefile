@@ -23,7 +23,10 @@ sbitx: $(OBJ) ft8_lib/libft8.a
 .PHONY: clean install
 
 install: sbitx
-	install -D sbitx $(DESTDIR)$(prefix)/bin/sbitx
+	mkdir -p /home/pi/sbitx/audio
+	mkdir -p /home/pi/sbitx/data
+	mkdir -p /home/pi/sbitx/web
+	sqlite3 /home/pi/sbitx/data/sbitx.db < data/create_db.sql
 
 clean:
 	rm -rf sbitx *.o ft8_lib/*.o ft8_lib/ft8/*.o ft8_lib/libft8.a
