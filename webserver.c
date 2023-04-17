@@ -6,6 +6,7 @@
 #include <math.h>
 #include <complex.h>
 #include <fftw3.h>
+#include <wiringPi.h>
 #include "sdr.h"
 #include "sdr_ui.h"
 #include "logbook.h"
@@ -143,6 +144,7 @@ static void web_despatcher(struct mg_connection *c, struct mg_ws_message *wm){
 	cookie = strtok(request, "\n");
 	field = strtok(NULL, "=");
 	value = strtok(NULL, "\n");
+
 
 	if (field == NULL || cookie == NULL){
 		printf("Invalid request on websocket\n");
