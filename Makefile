@@ -1,7 +1,7 @@
 prefix=/usr
 CC=gcc
 
-CFLAGS=`pkg-config --cflags gtk+-3.0` -std=gnu11 -fstack-protector
+CFLAGS=`pkg-config --cflags gtk+-3.0` -Wall -pedantic -std=gnu11 -fstack-protector
 LDFLAGS=`pkg-config --libs gtk+-3.0` -lwiringPi -lasound -lm -lfftw3 -lfftw3f -pthread -lncurses -lsqlite3
 
 all: sbitx
