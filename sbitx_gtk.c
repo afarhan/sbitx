@@ -1340,6 +1340,7 @@ void init_waterfall(){
 		GDK_COLORSPACE_RGB, FALSE, 8, f->width, f->height, f->width*3, NULL,NULL);
 		// format,         alpha?, bit,  widht,    height, rowstride, destryfn, data
 
+	printf("Initialized the waterfall\n");
 //	printf("%ld return from pixbuff", (int)waterfall_pixbuf);	
 }
 
@@ -3274,21 +3275,22 @@ gboolean ui_tick(gpointer gook){
 		}
 	}
 
-	for (struct field *f = active_layout; f->cmd[0] > 0; f++){
-		if (f->is_dirty){
-			if (f->y >= 0){
-				GdkRectangle r;
-				r.x = f->x;
-				r.y = f->y;
-				r.width = f->width;
-				r.height = f->height;
-				invalidate_rect(r.x, r.y, r.width, r.height);
+	if (gtk_window_is_active(GTK_WINDOW(window)) == TRUE)
+		for (struct field *f = active_layout; f->cmd[0] > 0; f++){
+			if (f->is_dirty){
+				if (f->y >= 0){
+					GdkRectangle r;
+					r.x = f->x;
+					r.y = f->y;
+					r.width = f->width;
+					r.height = f->height;
+					invalidate_rect(r.x, r.y, r.width, r.height);
+				}
+//				char buff[1000];
+//				sprintf(buff, "%s %s", f->label, f->value);
+//				printf("%d: updating dirty field %s\n",ticks,  f->cmd);
 			}
-//			char buff[1000];
-//			sprintf(buff, "%s %s", f->label, f->value);
-//			printf("%d: updating dirty field %s\n",ticks,  f->cmd);
 		}
-	}
   //char message[100];
 	
 	// check the tuning knob

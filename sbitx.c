@@ -208,7 +208,12 @@ void spectrum_update(){
 	//we are only using the lower half of the bins, so this copies twice as many bins, 
 	//it can be optimized. leaving it here just in case someone wants to try I Q channels 
 	//in hardware
-	for (int i = 0; i < MAX_BINS; i++){
+//	for (int i = 0; i < MAX_BINS; i++){
+
+	// this has been hand optimized to lower
+	//the inordinate cpu usage
+	for (int i = 1269; i < 1803; i++){
+
 		fft_bins[i] = ((1.0 - spectrum_speed) * fft_bins[i]) + 
 			(spectrum_speed * cabs(fft_spectrum[i]));
 
