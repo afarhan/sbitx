@@ -23,15 +23,12 @@ byte message[4], flag;
 // function that executes whenever data is requested by master
 // this function is registered as an event, see setup()
 void requestEvent() {
-  Wire.write(message, 4); // respond with message of 6 bytes
-  // as expected by master
+  Wire.write(message, 4); // 4 bytes message with fwd and ref
 }
 
 void setup() {
   Wire.begin(8);                // join i2c bus with address #8
   Wire.onRequest(requestEvent); // register event
-  flag = 0;  
-  pinMode(5, OUTPUT);
 }
 
 void loop() {
@@ -42,13 +39,4 @@ void loop() {
   message[1] = fwd >> 8;
   message[2] = ref & 0xff;
   message[3] = ref >> 8;
-  if(flag == 1){
-    digitalWrite(5, LOW);
-    flag = 0;    
-  }
-  else {
-    digitalWrite(5, HIGH);
-    flag = 1;      
-  }
 }
-
