@@ -18,7 +18,7 @@ Adapted from Wire Slave Sender by Nicholas Zambetti <http://www.zambetti.com>
 
 #include <Wire.h>
 int16_t fwd, ref;
-byte message[4], flag;
+byte message[4];
 
 // function that executes whenever data is requested by master
 // this function is registered as an event, see setup()
