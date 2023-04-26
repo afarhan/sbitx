@@ -280,7 +280,6 @@ char cw_text[] = " cq cq dx de vu2ese A k";
 static char *symbol_next = NULL;
 char paddle_next = 0;
 
-
 //when symbol_next is NULL, it reads the next letter from the input
 static char cw_get_next_kbd_symbol(){
 	char c;
@@ -291,26 +290,22 @@ static char cw_get_next_kbd_symbol(){
 		}
 		symbol_next = morse_table->code; // point to the first symbol, by default
 
-//		printf("trying to transmit [%c: %d]\n", c, c);
 		char b[2];
 		b[0]= c;
 		b[1] = 0;
-//		printf("Found  letter [%s]\n", b);
 
 		for (int i = 0; i < sizeof(morse_table)/sizeof(struct morse); i++)
 			if (morse_table[i].c == tolower(c))
 				symbol_next = morse_table[i].code;
-//		printf("Picked symbol [%s]\n", symbol_next);
 	}
 
 	if (!*symbol_next){ 		//send the letter seperator
 		symbol_next = NULL;
-//		printf("symbol_next set to NULL, returning / \n");
 		return '/';
 	}
-//	printf("cw_get_next_kbd_symbol returning %c:%d\n", *symbol_next, *symbol_next);
 	return *symbol_next++;
 }
+
 
 #define CW_MAX_SYMBOLS 12
 char cw_key_letter[CW_MAX_SYMBOLS];
@@ -326,16 +321,12 @@ float cw_get_sample(){
 
 		millis_now = millis();
 
-//		printf("%d: strating new symbol with keydown_count %d, keyup_count %d\n", __LINE__, 
-//			keydown_count, keyup_count);
 
 		if (cw_tone.freq_hz != get_pitch())
 			vfo_start(&cw_tone, get_pitch(), 0);
 
 		//first check if there is a character pending in ascii
-//		printf("%d: polling for the next symbol from keybd\n", __LINE__);
 		char c = cw_get_next_kbd_symbol(); //c holds dot, dash, space, word-space
-//		printf("%d: polling recvd: %c\n", __LINE__, c);
 		if(c){	
 			//set the cw speed
 			cw_period = (12 *9600)/ get_wpm(); 		//as dot = 1.2/wpm

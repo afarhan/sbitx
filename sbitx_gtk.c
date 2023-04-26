@@ -212,6 +212,7 @@ struct Queue q_web;
 #define COMMAND_ESCAPE '\\'
 
 void set_ui(int id);
+void set_bandwidth(int hz);
 
 /* 	the field in focus will be exited when you hit an escape
 		the field in focus will be changeable until it loses focus
@@ -556,15 +557,19 @@ struct field main_controls[] = {
 	{"#ft8_auto", NULL, 1000, -1000, 50, 50, "FT8_AUTO", 40, "ON", FIELD_TOGGLE, FONT_FIELD_VALUE, 
 		"ON/OFF/", 0,0,0},
 
-  {"#cw_bandwidth", NULL, 1000, -1000, 50, 50, "CW_BW", 40, "000000", FIELD_NUMBER, FONT_FIELD_VALUE,
+	//FT8 should be 4000 Hz
+  {"#bw_voice", NULL, 1000, -1000, 50, 50, "BW_VOICE", 40, "2200", FIELD_NUMBER, FONT_FIELD_VALUE,
     "", 300, 3000, 50},
-  {"#cw_voice", NULL, 1000, -1000, 50, 50, "VOICE_BW", 40, "000000", FIELD_NUMBER, FONT_FIELD_VALUE,
+  {"#bw_cw", NULL, 1000, -1000, 50, 50, "BW_CW", 40, "400", FIELD_NUMBER, FONT_FIELD_VALUE,
     "", 300, 3000, 50},
+  {"#bw_digital", NULL, 1000, -1000, 50, 50, "BW_DIGITAL", 40, "3000", FIELD_NUMBER, FONT_FIELD_VALUE,
+    "", 300, 3000, 50},
+
+
 	{"#passkey", NULL, 1000, -1000, 400, 149, "PASSKEY", 70, "123", FIELD_TEXT, FONT_SMALL, 
 		"", 0,32,1},
 	{"#telneturl", NULL, 1000, -1000, 400, 149, "TELNETURL", 70, "dxc.nc7j.com:7373", FIELD_TEXT, FONT_SMALL, 
 		"", 0,32,1},
-
 
 
 	/* band stack registers */
@@ -584,6 +589,8 @@ struct field main_controls[] = {
 		"", 0,0,0},
 	{"#80m", NULL, 500, 430, 50, 50, "80M", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
 		"", 0,0,0},
+
+
 
 	//soft keyboard
 	{"#kbd_q", do_kbd, 0, 360 ,40, 30, "#", 1, "q", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0}, 
@@ -708,13 +715,26 @@ int get_field_value(char *cmd, char *value){
 
 int remote_update_field(int i, char *text){
 	struct field * f = active_layout + i;
+
 	if (f->cmd[0] == 0)
 		return -1;
+	
+	//always send status afresh
+	if (!strcmp(f->label, "STATUS")){
+		//send time
+		time_t now = time_sbitx();
+		struct tm *tmp = gmtime(&now);
+		sprintf(text, "STATUS %04d/%02d/%02d %02d:%02d:%02dZ",  
+			tmp->tm_year + 1900, tmp->tm_mon + 1, tmp->tm_mday, tmp->tm_hour, tmp->tm_min, tmp->tm_sec); 
+		return 1;
+	}
+
 	strcpy(text, f->label);
 	strcat(text, " ");
 	strcat(text, f->value);
 	int update = f->update_remote;
 	f->update_remote = 0;
+
 	//debug on
 //	if (!strcmp(f->cmd, "#text_in") && strlen(f->value))
 //		printf("#text_in [%s] %d\n", f->value, update);
@@ -2213,8 +2233,24 @@ int do_pitch(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 		char buff[20], response[20];
 		sprintf(buff, "rx_pitch=%d", v);
 		sdr_request(buff, response);
+
+		//move the bandwidth accordingly
+  	int mode = mode_id(get_field("r1:mode")->value);
+		int bw = 4000;
+		switch(mode){
+			case MODE_CW:
+			case MODE_CWR:
+				bw = atoi(get_field("#bw_cw")->value);
+				set_bandwidth(bw);
+				break;
+			case MODE_DIGITAL:
+				bw = atoi(get_field("#bw_digital")->value);
+				set_bandwidth(bw);
+				break;
+		}
 		return 1;
 	}
+		
 	return 0;
 }
 
@@ -2942,11 +2978,7 @@ void init_gpio_pins(){
 	pinMode(DASH, INPUT);
 	pullUpDnControl(DASH, PUD_UP);
 }
-/*
-int read_switch(int i){
-	return digitalRead(i) == HIGH ? 0 : 1;
-}
-*/
+
 uint8_t dec2bcd(uint8_t val){
 	return ((val/10 * 16) + (val %10));
 }
@@ -3108,6 +3140,40 @@ int enc_read(struct encoder *e) {
   return result;
 }
 
+static int tuning_ticks = 0;
+void tuning_isr(void){
+	int tuning = enc_read(&enc_b);
+	if (tuning < 0)
+		tuning_ticks++;
+	if (tuning > 0)
+		tuning_ticks--;	
+}
+
+void query_swr(){
+	uint8_t response[4];
+	int16_t vfwd, vref;
+	int  vswr;
+	char buff[20];
+
+	if (!in_tx)
+		return;
+	if(i2cbb_read_i2c_block_data(0x8, 0, 4, response) == -1)
+		return;
+
+	vfwd = vref = 0;
+
+	memcpy(&vfwd, response, 2);
+	memcpy(&vref, response+2, 2);
+	if (vref >= vfwd)
+		vswr = 100;
+	else
+		vswr = (10*(vfwd + vref))/(vfwd-vref);
+	sprintf(buff,"%d", (vfwd * 40)/68);
+	set_field("#fwdpower", buff);		
+	sprintf(buff, "%d", vswr);
+	set_field("#vswr", buff);
+}
+
 void hw_init(){
 	wiringPiSetup();
 	init_gpio_pins();
@@ -3166,39 +3232,97 @@ int get_wpm(){
 	return atoi(f->value);
 }
 
-static int tuning_ticks = 0;
-void tuning_isr(void){
-	int tuning = enc_read(&enc_b);
-	if (tuning < 0)
-		tuning_ticks++;
-	if (tuning > 0)
-		tuning_ticks--;	
+long get_freq(){
+	return atol(get_field("r1:freq")->value);
 }
 
-void query_swr(){
-	uint8_t response[4];
-	int16_t vfwd, vref;
-	int  vswr;
-	char buff[20];
+void set_bandwidth(int hz){
+	char buff[10], bw_str[10];
+	int low, high;
+	struct field *f_mode = get_field("r1:mode");
+	struct field *f_pitch = get_field("rx_pitch");
 
-	if (!in_tx)
-		return;
-	if(i2cbb_read_i2c_block_data(0x8, 0, 4, response) == -1)
-		return;
+	switch(mode_id(f_mode->value)){
+		case MODE_CW:
+		case MODE_CWR:
+			low = atoi(f_pitch->value) - hz/2;
+			high = atoi(f_pitch->value) + hz/2;
+			sprintf(bw_str, "%d", high - low);
+			set_field("#bw_cw", bw_str);
+			break;
+		case MODE_LSB:
+		case MODE_USB:
+			low = 300;
+			high = low + hz;
+			sprintf(bw_str, "%d", high - low);
+			set_field("#bw_voice", bw_str);
+			break;
+		case MODE_DIGITAL:
+			low = atoi(f_pitch->value) - (hz/2);
+			high = atoi(f_pitch->value) + (hz/2);
+			sprintf(bw_str, "%d", high - low);
+			set_field("#bw_digital", bw_str);
+			break;
+		case MODE_FT8:
+			low = 50;
+			high = 4000;
+			break;
+		default:
+			low = 50;
+			high = 3000;
+	}
 
-	vfwd = vref = 0;
+	if (low < 50)
+		low = 50;
+	if (high > 5000)
+		high = 5000;
 
-	memcpy(&vfwd, response, 2);
-	memcpy(&vref, response+2, 2);
-	if (vref >= vfwd)
-		vswr = 100;
+	//now set the bandwidth
+	sprintf(buff, "%d", low);
+	set_field("r1:low", buff);
+	sprintf(buff, "%d", high);
+	set_field("r1:high", buff);
+}
+
+void set_mode(char *mode){
+	struct field *f = get_field("r1:mode");
+	char umode[10], bw_str[10];
+	int i;
+
+	for (i = 0; i < sizeof(umode) - 1 && *mode; i++)
+		umode[i] = toupper(*mode++);
+	umode[i] = 0;
+
+	if(!set_field("r1:mode", umode)){
+		int new_bandwidth = 3000;
+	
+		switch(mode_id(f->value)){
+			case MODE_CW:
+			case MODE_CWR:
+				new_bandwidth = atoi(get_field("#bw_cw")->value);
+				break;
+			case MODE_USB:
+			case MODE_LSB:
+				new_bandwidth = atoi(get_field("#bw_voice")->value);
+				break;
+			case MODE_DIGITAL:
+				new_bandwidth = atoi(get_field("#bw_digital")->value);
+				break;
+			case MODE_FT8:
+				new_bandwidth = 4000;
+				break;
+		}
+		set_bandwidth(new_bandwidth);
+	}
 	else
-		vswr = (10*(vfwd + vref))/(vfwd-vref);
-	sprintf(buff,"%d", (vfwd * 40)/68);
-	set_field("#fwdpower", buff);		
-	sprintf(buff, "%d", vswr);
-	set_field("#vswr", buff);
+		write_console(FONT_LOG, "%s is not a mode\n");
 }
+
+void get_mode(char *mode){
+	struct field *f = get_field("r1:mode");
+	strcpy(mode, f->value);
+}
+
 
 void bin_dump(int length, uint8_t *data){
 	printf("i2c: ");
@@ -3313,7 +3437,6 @@ gboolean ui_tick(gpointer gook){
 	}
 
 
-//	printf("Tick %d\n", ticks);
 	if (ticks == 100){
 
 		char response[6], cmd[10];
@@ -3459,32 +3582,6 @@ void ui_init(int argc, char *argv[]){
 
 /* handle modem callbacks for more data */
 
-long get_freq(){
-	return atol(get_field("r1:freq")->value);
-}
-
-
-void set_mode(char *mode){
-	struct field *f = get_field("r1:mode");
-	char umode[10];
-	int i;
-
-	for (i = 0; i < sizeof(umode) - 1 && *mode; i++)
-		umode[i] = toupper(*mode++);
-	umode[i] = 0;
-
-	if (strstr(f->selection, umode)){
-		strcpy(f->value, umode);
-		update_field(f);
-	}
-	else
-		write_console(FONT_LOG, "%s is not a mode\n");
-}
-
-void get_mode(char *mode){
-	struct field *f = get_field("r1:mode");
-	strcpy(mode, f->value);
-}
 
 int get_tx_data_byte(char *c){
 	//take out the first byte and return it to the modem
@@ -3559,8 +3656,6 @@ void change_band(char *request){
 		if (stack >= 0 && stack < STACK_DEPTH){
 				band_stack[old_band].freq[stack] = old_freq;
 				band_stack[old_band].mode[stack] = old_mode;
-//				printf("bandstack, old band %s / stack %d being saved as  %ld / mode %d\n", 
-//					band_stack[old_band].name, stack, old_freq, old_mode);
 		}
 	}
 
@@ -3571,16 +3666,14 @@ void change_band(char *request){
 		if (stack >= STACK_DEPTH)
 			stack = 0;
 		band_stack[new_band].index = stack;
-//		printf("Band stack moved to %s, stack %d\n", band_stack[new_band].name, stack);
 	}
 	stack = band_stack[new_band].index;
-//	printf("Band stack changed to %s, stack %d : %d / mode %d\n", band_stack[new_band].name, stack,
-//			band_stack[new_band].freq[stack], band_stack[new_band].mode[stack]);
 	sprintf(buff, "%d", band_stack[new_band].freq[stack]);
 	char resp[100];
 	set_operating_freq(band_stack[new_band].freq[stack], resp);
-	set_field("r1:freq", buff);	
-	set_field("r1:mode", mode_name[band_stack[new_band].mode[stack]]);	
+	set_field("r1:freq", buff);
+	set_mode(mode_name[band_stack[new_band].mode[stack]]);	
+	//set_field("r1:mode", mode_name[band_stack[new_band].mode[stack]]);	
 
   // this fixes bug with filter settings not being applied after a band change, not sure why it's a bug - k3ng 2022-09-03
   set_field("r1:low",get_field("r1:low")->value);
@@ -3937,6 +4030,9 @@ void cmd_exec(char *cmd){
   }
 	else if (!strcmp(exec, "band"))
 		change_band(args); 
+	else if (!strcmp(exec, "bandwidth") || !strcmp(exec, "bw")){
+		set_bandwidth(atoi(args));
+	}
   else if ((!strcmp(exec, "help")) || (!strcmp(exec, "?"))){
     write_console(FONT_LOG, "Help\r\n\r\n");
     write_console(FONT_LOG, "\\audio\r\n");
@@ -4005,7 +4101,7 @@ void cmd_exec(char *cmd){
 		else
 			write_console(FONT_LOG, "/qrz [callsign]\n");
 	}
-	else if (!strcmp(exec, "mode") || !strcmp(exec, "m"))
+	else if (!strcmp(exec, "mode") || !strcmp(exec, "m") || !strcmp(exec, "MODE"))
 		set_mode(args);
 	else if (!strcmp(exec, "t"))
 		tx_on(TX_SOFT);
@@ -4032,6 +4128,26 @@ void cmd_exec(char *cmd){
 		char buff[100];
 		sprintf(buff, "txpitch is set to %d Hz\n", get_cw_tx_pitch());
 		write_console(FONT_LOG, buff);
+	}
+	else if (!strcmp(exec, "PITCH")){
+		struct field *f = get_field_by_label(exec);
+		if (f){
+			set_field(f->cmd, args);
+  		int mode = mode_id(get_field("r1:mode")->value);
+			int bw = 4000;
+			switch(mode){
+				case MODE_CW:
+				case MODE_CWR:
+					bw = atoi(get_field("#bw_cw")->value);
+					set_bandwidth(bw);
+					break;
+				case MODE_DIGITAL:
+					bw = atoi(get_field("#bw_digital")->value);
+					set_bandwidth(bw);
+					break;
+			}
+		}
+		focus_field(f);
 	}
 	else if (exec[0] == 'F' && isdigit(exec[1])){
 		char buff[1000];
