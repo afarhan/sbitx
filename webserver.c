@@ -38,6 +38,7 @@ static void get_console(struct mg_connection *c){
 	mg_ws_send(c, buff, strlen(buff), WEBSOCKET_OP_TEXT);
 }
 
+
 static void get_updates(struct mg_connection *c, int all){
 	//send the settings of all the fields to the client
 	char buff[2000];
@@ -45,12 +46,14 @@ static void get_updates(struct mg_connection *c, int all){
 
 	get_console(c);
 
+
 	while(1){
 		int update = remote_update_field(i, buff);
 		// return of -1 indicates the eof fields
 		if (update == -1)
 			return;
-		if (all || update)
+	//send the status anyway
+		if (all || update )
 			mg_ws_send(c, buff, strlen(buff), WEBSOCKET_OP_TEXT); 
 		i++;
 	}
