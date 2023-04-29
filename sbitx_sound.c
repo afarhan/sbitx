@@ -147,6 +147,8 @@ static snd_pcm_sw_params_t *sloop_params;
 static unsigned int exact_rate;   /* Sample rate returned by */
 static int	sound_thread_continue = 0;
 pthread_t sound_thread, loopback_thread;
+pthread_mutex_t suspend_mutex = {0};
+pthread_cond_t resume_condition = {0};
 
 #define LOOPBACK_LEVEL_DIVISOR 8				// Constant used to reduce audio level to the loopback channel (FLDIGI)
 // Note: Error messages appear when the sbitx program is started from the command line
@@ -769,10 +771,6 @@ void *sound_thread_function(void *ptr){
 	char *device = (char *)ptr;
 	struct sched_param sch;
 
-	//switch to maximum priority
-	sch.sched_priority = sched_get_priority_max(SCHED_FIFO);
-	pthread_setschedparam(sound_thread, SCHED_FIFO, &sch);
-	
 	int i = 0;
 	for (i = 0; i < 10; i++){
 		if (!sound_start_play(device))
@@ -785,17 +783,25 @@ void *sound_thread_function(void *ptr){
 		return NULL;
 	}
 
+	//switch to maximum priority
+	sch.sched_priority = sched_get_priority_max(SCHED_FIFO);
+	pthread_setschedparam(sound_thread, SCHED_FIFO, &sch);	
+
 	if (sound_start_capture(device)){
 		fprintf(stderr, "*Error opening capture device");
 		return NULL;
 	}
 
-//  printf("opening loopback on plughw:1,0 sound card\n");	
 	if(sound_start_loopback_play("plughw:1,0")){
 		fprintf(stderr, "*Error opening loopback play device");
 		return NULL;
 	}
 	sound_thread_continue = 1;
+
+    pthread_mutex_lock(&suspend_mutex);
+    pthread_cond_signal(&resume_condition);
+    pthread_mutex_unlock(&suspend_mutex);
+
 	sound_loop();
 	sound_stop();
 	return NULL;
@@ -804,16 +810,20 @@ void *sound_thread_function(void *ptr){
 void *loopback_thread_function(void *ptr){
 	struct sched_param sch;
 	(void) ptr;
-	//switch to maximum priority
-	sch.sched_priority = sched_get_priority_max(SCHED_FIFO);
-	pthread_setschedparam(loopback_thread, SCHED_FIFO, &sch);
-//	printf("loopback thread is %x\n", loopback_thread);
-//  printf("opening loopback on plughw:1,0 sound card\n");	
 
 	if (sound_start_loopback_capture("plughw:2,1")){
 		fprintf(stderr, "*Error opening loopback capture device");
 		return NULL;
 	}
+
+	//switch to maximum priority
+	sch.sched_priority = sched_get_priority_max(SCHED_FIFO);
+	pthread_setschedparam(loopback_thread, SCHED_FIFO, &sch);
+
+    pthread_mutex_lock(&suspend_mutex);
+    pthread_cond_wait(&resume_condition, &suspend_mutex);
+    pthread_mutex_unlock(&suspend_mutex);
+
 	sound_thread_continue = 1;
 	loopback_loop();
 	sound_stop();
@@ -824,9 +834,10 @@ void sound_thread_start(char *device){
 	q_init(&qloop, 10240);
  	qloop.stall = 1;
 
-	pthread_create( &sound_thread, NULL, sound_thread_function, (void*)device);
-	sleep(1);
-	pthread_create( &loopback_thread, NULL, loopback_thread_function, (void*)device);
+    pthread_mutex_init(&suspend_mutex, NULL);
+    pthread_cond_init(&resume_condition, NULL);
+	pthread_create( &sound_thread, NULL, sound_thread_function, device);
+	pthread_create( &loopback_thread, NULL, loopback_thread_function, device);
 }
 
 void sound_thread_stop(){
