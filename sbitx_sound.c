@@ -96,9 +96,6 @@ void sound_mixer(char *card_name, char *element, int make_on)
     snd_mixer_selem_id_set_name(sid, element);
     snd_mixer_elem_t* elem = snd_mixer_find_selem(handle, sid);
 
-/*		if (elem)
-			puts("Element found.");	
-	*/
     //find out if the his element is capture side or plaback
     if(snd_mixer_selem_has_capture_switch(elem)){
 			//puts("this is a capture switch.");  
@@ -147,8 +144,6 @@ static snd_pcm_sw_params_t *sloop_params;
 static unsigned int exact_rate;   /* Sample rate returned by */
 static int	sound_thread_continue = 0;
 pthread_t sound_thread, loopback_thread;
-pthread_mutex_t suspend_mutex = {0};
-pthread_cond_t resume_condition = {0};
 
 #define LOOPBACK_LEVEL_DIVISOR 8				// Constant used to reduce audio level to the loopback channel (FLDIGI)
 // Note: Error messages appear when the sbitx program is started from the command line
@@ -406,17 +401,14 @@ int sound_start_capture(char *device){
 		return(-1);
 	}
 
-
 	/* Set number of periods. Periods used to be called fragments. */ 
 	if ((e = snd_pcm_hw_params_set_periods(pcm_capture_handle, hwparams, n_periods_per_buffer, 0)) < 0) {
 		fprintf(stderr, "*Error setting capture periods.\n");
 		return(-1);
 	}
 
-
 	// the buffer size is each periodsize x n_periods
 	snd_pcm_uframes_t  n_frames= (buff_size  * n_periods_per_buffer)/ 8;
-	//printf("trying for buffer size of %ld\n", n_frames);
 	e = snd_pcm_hw_params_set_buffer_size_near(pcm_play_handle, hwparams, &n_frames);
 	if (e < 0) {
 		    fprintf(stderr, "*Error setting capture buffersize.\n");
@@ -496,14 +488,11 @@ int sound_start_loopback_play(char *device){
 	snd_pcm_uframes_t  n_frames= (buff_size  * n_periods_per_buffer)/8;
 	//lets pump it up to see if we can reduce the dropped frames
 	n_frames *= 4;
-	//printf("trying for loopback buffer size of %ld\n", n_frames);
 	e = snd_pcm_hw_params_set_buffer_size_near(loopback_play_handle, hwparams, &n_frames);
 	if (e < 0) {
 		    fprintf(stderr, "*Error setting loopback playback buffersize.\n");
 		    return(-1);
 	}
-
-	//printf("loopback playback buffer size is set to %d\n", n_frames);
 
 	if (snd_pcm_hw_params(loopback_play_handle, hwparams) < 0) {
 		fprintf(stderr, "*Error setting loopback playback HW params.\n");
@@ -589,7 +578,6 @@ int sound_loop(){
 			//printf(" we have %d in qloop, writing now\n", q_length(&qloop));
 			// if don't we have enough to last two iterations loop back...
 			if (q_length(&qloop) < pcmreturn){
-//				puts(" skipping");
 				continue;
 			}
 	
@@ -624,16 +612,7 @@ int sound_loop(){
 			data_out[j++] = output_q[i++];
 		}
 
-/*
-	// This is the original pcm play write routine, now commented out.
-    while ((pcmreturn = snd_pcm_writei(pcm_play_handle, 
-			data_out, frames)) < 0) {
-       snd_pcm_prepare(pcm_play_handle);
-    }
-*/
-
 	// This is the new pcm play write routine
-
 	int framesize = ret_card;
 	int offset = 0;
 		
@@ -643,7 +622,6 @@ int sound_loop(){
 		if((pcmreturn < 0) && (pcmreturn != -11))	// also ignore "temporarily unavailable" errors
 		{
 			// Handle an error condition from the snd_pcm_writei function
-//			printf("Play PCM Write Error: %s  count = %d\n",snd_strerror(pcmreturn), play_write_error++);
 			snd_pcm_prepare(pcm_play_handle);		
 		}
 		
@@ -658,7 +636,6 @@ int sound_loop(){
 	}
 	// End of new pcm play write routine
 
-
 	//decimate the line out to half, ie from 96000 to 48000
 	//play the received data (from left channel) to both of line out
 		
@@ -672,16 +649,6 @@ int sound_loop(){
 		ii += 2;	// Skip a pair of samples to account for the 96K sample to 48K sample rate change.
 	}
 
-/*
-	// This is the original pcm loopback write routine, now commented out.
-    while((pcmreturn = snd_pcm_writei(loopback_play_handle, 
-			 line_out, jj)) < 0){
-			 //printf("loopback rx error: %s\n", snd_strerror(pcmreturn));
-       snd_pcm_prepare(loopback_play_handle);
-			//puts("preparing loopback");
-    }
-*/    
-
 	// This is the new pcm loopback write routine
 	framesize = (ret_card + 1) /2;		// only writing half the number of samples because of the slower channel rate
 	offset = 0;
@@ -691,8 +658,6 @@ int sound_loop(){
 		pcmreturn = snd_pcm_writei(loopback_play_handle, line_out + offset, framesize);
 		if(pcmreturn < 0)
 		{
-//			printf("Loopback PCM Write Error: %s  count = %d\n",snd_strerror(pcmreturn), loopback_write_error++);
-			// Handle an error condition from the snd_pcm_writei function
 			snd_pcm_prepare(loopback_play_handle);
 		}
 		
@@ -706,15 +671,10 @@ int sound_loop(){
 		}
 	}
 	// End of new pcm loopback write routine	
-	
-    
-		//played_samples += pcmreturn;
   }
-	//fclose(pf);
   printf("********Ending sound thread\n");
   return 0;
 }
-
 
 int loopback_loop(){
 	int32_t		*data_in; 
@@ -735,7 +695,6 @@ int loopback_loop(){
 
 		while ((pcmreturn = snd_pcm_readi(loopback_capture_handle, data_in, frames/2)) < 0){
 			snd_pcm_prepare(loopback_capture_handle);
-			//putchar('=');
 		}
 		j = 0;
 
@@ -751,7 +710,6 @@ int loopback_loop(){
 		clock_gettime(CLOCK_MONOTONIC, &gettime_now);
 		if (gettime_now.tv_sec != last_sec){
 			if(use_virtual_cable)
-//			printf("######sampling rate %d/%d\n", played_samples, nsamples);
 			last_sec = gettime_now.tv_sec;
 			nsamples = 0;
 			played_samples = 0;
@@ -798,10 +756,6 @@ void *sound_thread_function(void *ptr){
 	}
 	sound_thread_continue = 1;
 
-    pthread_mutex_lock(&suspend_mutex);
-    pthread_cond_signal(&resume_condition);
-    pthread_mutex_unlock(&suspend_mutex);
-
 	sound_loop();
 	sound_stop();
 	return NULL;
@@ -820,10 +774,6 @@ void *loopback_thread_function(void *ptr){
 	sch.sched_priority = sched_get_priority_max(SCHED_FIFO);
 	pthread_setschedparam(loopback_thread, SCHED_FIFO, &sch);
 
-    pthread_mutex_lock(&suspend_mutex);
-    pthread_cond_wait(&resume_condition, &suspend_mutex);
-    pthread_mutex_unlock(&suspend_mutex);
-
 	sound_thread_continue = 1;
 	loopback_loop();
 	sound_stop();
@@ -834,8 +784,6 @@ void sound_thread_start(char *device){
 	q_init(&qloop, 10240);
  	qloop.stall = 1;
 
-    pthread_mutex_init(&suspend_mutex, NULL);
-    pthread_cond_init(&resume_condition, NULL);
 	pthread_create( &sound_thread, NULL, sound_thread_function, device);
 	pthread_create( &loopback_thread, NULL, loopback_thread_function, device);
 }
