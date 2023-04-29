@@ -410,6 +410,7 @@ int	data_delay = 700;
 
 int spectrum_span = 48000;
 extern int spectrum_plot[];
+extern int fwdpower, vswr;
 
 void do_cmd(char *cmd);
 void cmd_exec(char *cmd);
@@ -554,8 +555,8 @@ struct field main_controls[] = {
     "", 0,10000,1},
   { "#vswr", NULL, 1000, -1000, 50, 50, "REF", 40, "300", FIELD_NUMBER, FONT_FIELD_VALUE,
     "", 0,10000, 1},
-	{"#ft8_auto", NULL, 1000, -1000, 50, 50, "FT8_AUTO", 40, "ON", FIELD_TOGGLE, FONT_FIELD_VALUE, 
-		"ON/OFF/", 0,0,0},
+  { "bridge", NULL, 1000, -1000, 50, 50, "BRIDGE", 40, "60", FIELD_NUMBER, FONT_FIELD_VALUE,
+    "", 10,100, 1},
 
 	//FT8 should be 4000 Hz
   {"#bw_voice", NULL, 1000, -1000, 50, 50, "BW_VOICE", 40, "2200", FIELD_NUMBER, FONT_FIELD_VALUE,
@@ -565,6 +566,14 @@ struct field main_controls[] = {
   {"#bw_digital", NULL, 1000, -1000, 50, 50, "BW_DIGITAL", 40, "3000", FIELD_NUMBER, FONT_FIELD_VALUE,
     "", 300, 3000, 50},
 
+	//FT8 controls
+	{"#ft8_auto", NULL, 1000, -1000, 50, 50, "FT8_AUTO", 40, "ON", FIELD_TOGGLE, FONT_FIELD_VALUE, 
+		"ON/OFF/", 0,0,0},
+	{"#ft8_tx1st", NULL, 1000, -1000, 50, 50, "FT8_TX1ST", 40, "ON", FIELD_TOGGLE, FONT_FIELD_VALUE, 
+		"ON/OFF/", 0,0,0},
+  { "#ft8_repeat", NULL, 1000, -1000, 50, 50, "FT8_REPEAT", 40, "5", FIELD_NUMBER, FONT_FIELD_VALUE,
+    "", 0, 10, 1},
+	
 
 	{"#passkey", NULL, 1000, -1000, 400, 149, "PASSKEY", 70, "123", FIELD_TEXT, FONT_SMALL, 
 		"", 0,32,1},
@@ -707,6 +716,14 @@ struct field *get_field_by_label(char *label){
 
 int get_field_value(char *cmd, char *value){
 	struct field *f = get_field(cmd);
+	if (!f)
+		return -1;
+	strcpy(value, f->value);
+	return 0;
+}
+
+int get_field_value_by_label(char *label, char *value){
+	struct field *f = get_field_by_label(label);
 	if (!f)
 		return -1;
 	strcpy(value, f->value);
@@ -924,6 +941,14 @@ int console_init_next_line(){
 	return console_current_line;
 }
 
+void write_to_remote_app(int style, char *text){
+	if (style == FONT_FLDIGI_RX)
+		return; //this is temporary
+	remote_write("{");
+	remote_write(text);
+	remote_write("}");
+}
+
 void write_console(int style, char *text){
 	char directory[200];	//dangerous, find the MAX_PATH and replace 200 with it
 	char *path = getenv("HOME");
@@ -963,8 +988,8 @@ void write_console(int style, char *text){
 	//write to the scroll
 	fwrite(text, strlen(text), 1, pf);
 	fclose(pf);
-
-	remote_write(text);
+	
+	write_to_remote_app(style, text);
 
 	while(*text){
 		char c = *text;
@@ -2662,7 +2687,6 @@ void tx_off(){
 		update_field(get_field("r1:freq"));
 	}
 	sound_input(0); //it is a low overhead call, might as well be sure
-	printf("TX off\n");
 }
 
 
@@ -3442,7 +3466,14 @@ gboolean ui_tick(gpointer gook){
 		char response[6], cmd[10];
 		cmd[0] = 1;
 
-		query_swr();
+		if(in_tx){
+			char buff[10];
+
+			sprintf(buff,"%d", fwdpower);
+			set_field("#fwdpower", buff);		
+			sprintf(buff, "%d", vswr);
+			set_field("#vswr", buff);
+		}
 
 		struct field *f = get_field("spectrum");
 		update_field(f);	//move this each time the spectrum watefall index is moved
@@ -3735,6 +3766,24 @@ void utc_set(char *args, int update_rtc){
 	printf("time_delta = %ld\n", time_delta);
 }
 
+
+
+void meter_calibrate(){
+	//we change to 40 meters, cw
+	printf("starting meter calibration\n"
+	"1. Attach a power meter and a dummy load to the antenna\n"
+	"2. Adjust the drive until you see 40 watts on the power meter\n"
+	"3. Press the tuning knob to confirm.\n");
+
+	set_field("r1:freq", "7035000");
+	set_mode("CW");	
+	struct field *f_bridge = get_field("bridge");
+	set_field("bridge", "100");
+	set_field("tx_power", "100");
+	
+	focus_field(f_bridge);
+}
+
 void do_cmd(char *cmd){	
 	char request[1000], response[1000], buff[100];
 	
@@ -3926,10 +3975,17 @@ void cmd_exec(char *cmd){
 		sprintf(response, "\n[Your callsign is set to %s]\n", get_field("#mycallsign")->value);
 		write_console(FONT_LOG, response);
 	}
+	else if (!strcmp(exec, "metercal")){
+		meter_calibrate();
+	}
 	else if (!strcmp(exec, "abort"))
 		abort_tx();
 	else if (!strcmp(exec, "rtc"))
 		rtc_read();
+	else if (!strcmp(exec, "txcal")){
+		char response[10];
+		sdr_request("txcal=", response);
+	}
 	else if (!strcmp(exec, "grid")){	
 		set_field("#mygrid", args);
 		sprintf(response, "\n[Your grid is set to %s]\n", get_field("#mygrid")->value);
@@ -4197,7 +4253,7 @@ void cmd_exec(char *cmd){
 						sprintf(buff, "set to %s, permitted values are : %s\n", f->value, f->selection);
 						break;
 				case FIELD_TEXT:					
-						sprintf(buff, "set to [%s], permissible length is from %d to %d\n", f->min, f->max);
+						sprintf(buff, "set to [%s], permissible length is from %d to %d\n", f->value, f->min, f->max);
 				}
 				write_console(FONT_LOG, buff);
 			}	
