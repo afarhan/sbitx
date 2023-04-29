@@ -97,7 +97,7 @@ How it works
 
 */
 void si570_freq(unsigned long f){
-  unsigned int i, j, hs, n1;
+  unsigned int hs, n1;
   float f_dco;
 
 //	printf("si570: %ld\n", f);
@@ -123,7 +123,7 @@ void si570_freq(unsigned long f){
 				//fill up the registers
 				dco_reg[7] 	= (selected_hs - 4) << 5;
 				dco_reg[7] 	= dco_reg[7] | ((selected_n1 - 1) >> 2);
-				dco_reg[8] 	= ((selected_n1 - 1) & 0x3) << 6 | (selected_rf >> 32) & RFREQ_37_32_MASK;
+				dco_reg[8] 	= ((selected_n1 - 1) & 0x3) << 6 | ((selected_rf >> 32) & RFREQ_37_32_MASK);
 				dco_reg[9] 	= (selected_rf >> 24) & 0xff;
 				dco_reg[10] =	(selected_rf >> 16) & 0xff;
 				dco_reg[11] = (selected_rf >> 8) & 0xff;

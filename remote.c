@@ -18,16 +18,12 @@
 
 static int welcome_socket = -1, data_socket = -1;
 #define MAX_DATA 1000
-static char incoming_data[MAX_DATA];
 static int incoming_ptr;
 
 #define MAX_LINE 30
 
 void remote_start(){
-  char buffer[MAX_DATA];
   struct sockaddr_in serverAddr;
-  struct sockaddr_storage serverStorage;
-  socklen_t addr_size;
 
   welcome_socket = socket(PF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
   

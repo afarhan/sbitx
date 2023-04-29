@@ -101,7 +101,7 @@ void send_response(char *response){
 int in_tx = 0;
 void send_freq(){
   char response[20];
-  sprintf(response, "%d\n", get_freq());
+  sprintf(response, "%ld\n", get_freq());
   send_response(response);
 }
 
@@ -195,10 +195,7 @@ void hamlib_handler(char *data, int len){
 }
 
 void hamlib_start(){
-  char buffer[MAX_DATA];
   struct sockaddr_in serverAddr;
-  struct sockaddr_storage serverStorage;
-  socklen_t addr_size;
 
   welcome_socket = socket(PF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
   

@@ -71,7 +71,7 @@ static void do_login(struct mg_connection *c, char *key){
 	}
 	
 	sprintf(session_cookie, "%x", rand());
-	char response[100];
+	char response[106];
 	sprintf(response, "login %s", session_cookie);
 	web_respond(c, response);	
 	get_updates(c, 1);
@@ -99,11 +99,9 @@ static void get_audio(struct mg_connection *c){
 
 static void get_logs(struct mg_connection *c, char *args){
 	char logbook_path[200];
-	char row_response[1000], row[1000];
-	char query[100];
+	char row_response[1004], row[1000];
 	int	row_id;
 
-	query[0] = 0;
 	row_id = atoi(strtok(args, " "));
 	logbook_query(strtok(NULL, " \t\n"), row_id, logbook_path);
 	FILE *pf = fopen(logbook_path, "r");
@@ -225,6 +223,7 @@ static void fn(struct mg_connection *c, int ev, void *ev_data, void *fn_data) {
 }
 
 void *webserver_thread_function(void *server){
+	(void) server;
   mg_mgr_init(&mgr);  // Initialise event manager
   mg_http_listen(&mgr, s_listen_on, fn, NULL);  // Create HTTP listener
   for (;;) mg_mgr_poll(&mgr, 1000);             // Infinite event loop
@@ -238,7 +237,6 @@ void webserver_stop(){
 static pthread_t webserver_thread;
 
 void webserver_start(){
-	char directory[200];	//dangerous, find the MAX_PATH and replace 200 with it
 	char *path = getenv("HOME");
 	strcpy(s_web_root, path);
 	strcat(s_web_root, "/sbitx/web");

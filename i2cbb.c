@@ -296,7 +296,7 @@ int32_t i2cbb_write_i2c_block_data(uint8_t i2c_address, uint8_t command, uint8_t
 
 // This executes the SMBus “block read” protocol, returning negative errno else the number
 // of data bytes in the slave's response.
-int32_t i2cbb_read_i2c_block_data(uint8_t i2c_address, uint8_t command, uint8_t length,
+int32_t i2cbb_read_i2c_block_data(uint8_t i2c_address, uint8_t length,
         uint8_t* values) {
 	uint8_t address = (i2c_address << 1) | 0;
 /*
@@ -323,11 +323,11 @@ int32_t i2cbb_read_i2c_block_data(uint8_t i2c_address, uint8_t command, uint8_t 
 
 	//static uint8_t i2c_read_byte(int nack, int send_stop) 
 	uint8_t i = 0;
-  for (i = 0; i < length - 1; i++) 
+  for (i = 0; i < length - 1; i++){ // TODO confirm
   	values[i] = i2c_read_byte(0,0);
 	values[i] = i2c_read_byte(1,1);
-
 	i2c_stop_cond();
+  }
   return length;
 }
 

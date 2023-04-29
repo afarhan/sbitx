@@ -37,7 +37,7 @@ int q_length(struct Queue *p){
 
 int q_write(struct Queue *p, int32_t w){
 
-  if (p->head + 1 == p->tail || p->tail == 0 && p->head == p->max_q-1){
+  if ((p->head + 1 == p->tail) || ((p->tail == 0) && (p->head == p->max_q-1))){
     p->overflow++;
     return -1;
   }

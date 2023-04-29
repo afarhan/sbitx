@@ -17,7 +17,7 @@ demodulates it and writes out to the speaker/audio output.
 sound_mixer(). search for this function to know how to work this.
 
 */
-int sound_thread_start(char *device);
+void sound_thread_start(char *device);
 void sound_process(
 	int32_t *input_rx, int32_t *input_mic, 
 	int32_t *output_speaker, int32_t *output_tx, 

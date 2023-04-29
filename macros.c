@@ -19,8 +19,6 @@ struct macro {
 };
 
 static struct macro macro_table[MACRO_MAX];
-static int serial = 1;
-static char macro_v_str[10];
 static char is_running = 0; 
 
 void macro_get_keys(char *output){
@@ -83,7 +81,7 @@ void macro_label(int fn_key, char *label){
 	}
 }
 
-int  macro_load(char *filename, char *output){
+int  macro_load(char *filename){
 	char macro_line[255];
 	char full_path[200];	//dangerous, find the MAX_PATH and replace 200 with it
 
@@ -200,8 +198,6 @@ int macro_exec(int key, char *dest){
 		return -1;
 
 	//now we have a candidate macro
-	char macro_name[10];
-
 	char *q = dest;
 	char *p = m->text;
 	char var[20];
