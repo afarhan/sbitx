@@ -691,11 +691,10 @@ void tgc(struct rx *r){
 void read_power(){
 	uint8_t response[4];
 	int16_t vfwd, vref;
-	char buff[20];
 
 	if (!in_tx)
 		return;
-	if(i2cbb_read_i2c_block_data(0x8, 0, 4, response) == -1)
+	if(i2cbb_read_i2c_block_data(0x8, 4, response) == -1)
 		return;
 
 	vfwd = vref = 0;
@@ -1005,7 +1004,6 @@ void calibrate_band_power(struct power_settings *b){
 }
 
 static void save_hw_settings(){
-	static int last_save_at = 0;
 	char file_path[200];	//dangerous, find the MAX_PATH and replace 200 with it
 
 	char *path = getenv("HOME");
@@ -1020,7 +1018,7 @@ static void save_hw_settings(){
 
 	fprintf(f, "bfo_freq=%d\n\n", bfo_freq);
 	//now save the band stack
-	for (int i = 0; i < sizeof(band_power)/sizeof(struct power_settings); i++){
+	for (size_t i = 0; i < sizeof(band_power)/sizeof(struct power_settings); i++){
 		fprintf(f, "[tx_band]\nf_start=%d\nf_stop=%d\nscale=%g\n\n", 
 			band_power[i].f_start, band_power[i].f_stop, band_power[i].scale);
 
@@ -1036,7 +1034,8 @@ void *calibration_thread_function(void *server){
 	int old_freq = freq_hdr;
 	int old_mode = tx_list->mode;
 	int	old_tx_drive = tx_drive;
-	for (int i = 0; i < sizeof(band_power)/sizeof(struct power_settings); i++){
+	(void) server;
+	for (size_t i = 0; i < sizeof(band_power)/sizeof(struct power_settings); i++){
 		calibrate_band_power(band_power + i);
 	}
 
@@ -1045,6 +1044,7 @@ void *calibration_thread_function(void *server){
 	tx_drive = old_tx_drive;
 	save_hw_settings();
 	printf("*Finished band power calibrations\n");
+	return NULL;
 }
 
 void tx_cal(){

@@ -551,9 +551,9 @@ struct field main_controls[] = {
   { "#fwdpower", NULL, 1000, -1000, 50, 50, "POWER", 40, "300", FIELD_NUMBER, FONT_FIELD_VALUE,
     "", 0,10000,1,0,0},
   { "#vswr", NULL, 1000, -1000, 50, 50, "REF", 40, "300", FIELD_NUMBER, FONT_FIELD_VALUE,
-    "", 0,10000, 1},
+    "", 0,10000, 1,0,0},
   { "bridge", NULL, 1000, -1000, 50, 50, "BRIDGE", 40, "60", FIELD_NUMBER, FONT_FIELD_VALUE,
-    "", 10,100, 1},
+    "", 10,100, 1,0,0},
 
 	//FT8 should be 4000 Hz
   {"#bw_voice", NULL, 1000, -1000, 50, 50, "BW_VOICE", 40, "2200", FIELD_NUMBER, FONT_FIELD_VALUE,
@@ -565,11 +565,11 @@ struct field main_controls[] = {
 
 	//FT8 controls
 	{"#ft8_auto", NULL, 1000, -1000, 50, 50, "FT8_AUTO", 40, "ON", FIELD_TOGGLE, FONT_FIELD_VALUE, 
-		"ON/OFF/", 0,0,0},
+		"ON/OFF/", 0,0,0,0,0},
 	{"#ft8_tx1st", NULL, 1000, -1000, 50, 50, "FT8_TX1ST", 40, "ON", FIELD_TOGGLE, FONT_FIELD_VALUE, 
-		"ON/OFF/", 0,0,0},
+		"ON/OFF/", 0,0,0,0,0},
   { "#ft8_repeat", NULL, 1000, -1000, 50, 50, "FT8_REPEAT", 40, "5", FIELD_NUMBER, FONT_FIELD_VALUE,
-    "", 0, 10, 1},
+    "", 0, 10, 1,0,0},
 	
 
 	{"#passkey", NULL, 1000, -1000, 400, 149, "PASSKEY", 70, "123", FIELD_TEXT, FONT_SMALL, 
@@ -3451,9 +3451,6 @@ gboolean ui_tick(gpointer gook){
 
 	if (ticks == 100){
 
-		char response[6], cmd[10];
-		cmd[0] = 1;
-
 		if(in_tx){
 			char buff[10];
 
@@ -4237,7 +4234,7 @@ void cmd_exec(char *cmd){
 						sprintf(buff, "set to %s, permitted values are : %s\n", f->value, f->selection);
 						break;
 				case FIELD_TEXT:					
-						sprintf(buff, "set to [%s], permissible length is from %d to %d\n", f->value, f->min, f->max);
+						sprintf(buff, "set to [%s], permissible length is from %ld to %ld\n", f->value, f->min, f->max);
 				}
 				write_console(FONT_LOG, buff);
 			}	
