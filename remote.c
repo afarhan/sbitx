@@ -28,7 +28,7 @@ void remote_start(){
   welcome_socket = socket(PF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
   
   serverAddr.sin_family = AF_INET;
-  serverAddr.sin_port = htons(7000);
+  serverAddr.sin_port = htons(8081);
   serverAddr.sin_addr.s_addr = INADDR_ANY;
   memset(serverAddr.sin_zero, '\0', sizeof serverAddr.sin_zero);  
 
@@ -39,7 +39,7 @@ void remote_start(){
   if(listen(welcome_socket,5)!=0)
     printf("telnet listen() Error\n");
   incoming_ptr = 0;
-	puts("Telnet is listening");
+	puts("#Remote is listening");
 }
 
 void remote_send(char *m){
@@ -56,6 +56,21 @@ void remote_init(){
 	remote_send("\033[25;1r");
 
 	remote_send(VER_STR);
+	remote_send("\r\n");
+}
+
+void remote_write(char *message){
+	
+	if (data_socket < 0)
+		return;
+
+//	remote_send("\0337");
+	int e = send(data_socket, message, strlen(message), 0);
+//	remote_send("\0338");
+	if (e >= 0)
+		return;
+	close(data_socket);
+	data_socket = -1;
 }
 
 void remote_slice(){
@@ -82,6 +97,16 @@ void remote_slice(){
     if (len > 0){
       buffer[len] = 0;
 			printf("Received on remote : [%s]\n", buffer);
+			//strip of the last \r or \n
+			buffer[strcspn(buffer, "\r\n")] = 0;
+			if (buffer[0] == '?'){
+				char response[2000];
+				get_field_value_by_label(buffer+1, response);
+				strcat(response, "\n");
+				remote_write(response);
+			}	
+			else if(strlen(buffer))	
+				remote_execute(buffer);
     }
     else {
       //e = errno();
@@ -95,16 +120,3 @@ void remote_slice(){
   } 
 }
 
-void remote_write(char *message){
-	
-	if (data_socket < 0)
-		return;
-
-	remote_send("\0337");
-	int e = send(data_socket, message, strlen(message), 0);
-	remote_send("\0338");
-	if (e >= 0)
-		return;
-	close(data_socket);
-	data_socket = -1;
-}
