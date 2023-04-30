@@ -4361,7 +4361,7 @@ int main( int argc, char* argv[] ) {
 	//rtc_read();
 	printf("done!\n");
 
-//	open_url("http://127.0.0.1:8080");
+	open_url("http://127.0.0.1:8080");
 //	execute_app("chromium-browser --log-leve=3 "
 //	"--enable-features=OverlayScrollbar http://127.0.0.1:8080"
 //	"  &>/dev/null &");
