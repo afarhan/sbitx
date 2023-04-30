@@ -2666,9 +2666,9 @@ void tx_on(int trigger){
 		struct field *freq = get_field("r1:freq");
 		set_operating_freq(atoi(freq->value), response);
 		update_field(get_field("r1:freq"));
+		printf("TX on\n");
 	}
 
-	printf("TX on\n");
 	tx_start_time = millis();
 }
 
@@ -2685,6 +2685,7 @@ void tx_off(){
 		struct field *freq = get_field("r1:freq");
 		set_operating_freq(atoi(freq->value), response);
 		update_field(get_field("r1:freq"));
+		printf("TX off\n");
 	}
 	sound_input(0); //it is a low overhead call, might as well be sure
 }
@@ -3952,6 +3953,7 @@ void cmd_exec(char *cmd){
 
   args[0] = 0;
 
+	write_console(FONT_LOG, cmd);
 	//copy the exec
 	for (i = 0; *cmd > ' ' && i < sizeof(exec) - 1; i++)
 		exec[i] = *cmd++;
@@ -4359,7 +4361,7 @@ int main( int argc, char* argv[] ) {
 	//rtc_read();
 	printf("done!\n");
 
-	open_url("http://127.0.0.1:8080");
+//	open_url("http://127.0.0.1:8080");
 //	execute_app("chromium-browser --log-leve=3 "
 //	"--enable-features=OverlayScrollbar http://127.0.0.1:8080"
 //	"  &>/dev/null &");
