@@ -127,7 +127,6 @@ void sound_mixer(char *card_name, char *element, int make_on)
 unsigned int rate = 96000; /* Sample rate */
 static snd_pcm_uframes_t buff_size = 8192; /* Periodsize (bytes) */
 static int n_periods_per_buffer = 2;       /* Number of periods */
-//static int n_periods_per_buffer = 1024;       /* Number of periods */
 
 static snd_pcm_t *pcm_play_handle=0;   	//handle for the pcm device
 static snd_pcm_t *pcm_capture_handle=0;   	//handle for the pcm device
@@ -143,7 +142,9 @@ static snd_pcm_hw_params_t *hloop_params;
 static snd_pcm_sw_params_t *sloop_params;
 static unsigned int exact_rate;   /* Sample rate returned by */
 static int	sound_thread_continue = 0;
-pthread_t sound_thread, loopback_thread;
+static pthread_t sound_thread, loopback_thread;
+static pthread_mutex_t sound_mutex;
+static pthread_cond_t sound_cond_var;
 
 #define LOOPBACK_LEVEL_DIVISOR 8				// Constant used to reduce audio level to the loopback channel (FLDIGI)
 // Note: Error messages appear when the sbitx program is started from the command line
@@ -686,6 +687,10 @@ int loopback_loop(){
   frames = buff_size / 8;
   snd_pcm_prepare(loopback_capture_handle);
 
+  pthread_mutex_lock(&sound_mutex);
+  pthread_cond_signal(&sound_cond_var);
+  pthread_mutex_unlock(&sound_mutex);
+
   while(sound_thread_continue) {
 
 		//restart the pcm capture if there is an error reading the samples
@@ -729,15 +734,12 @@ void *sound_thread_function(void *ptr){
 	char *device = (char *)ptr;
 	struct sched_param sch;
 
-	int i = 0;
-	for (i = 0; i < 10; i++){
-		if (!sound_start_play(device))
-			break;
-		delay(1000); //wait for the sound system to bootup
-		printf("Retrying the sound system %d\n", i);
-	}
-	if (i == 10){
-	 fprintf(stderr, "*Error opening play device");
+ 	pthread_mutex_lock(&sound_mutex);
+ 	pthread_cond_wait(&sound_cond_var, &sound_mutex);
+ 	pthread_mutex_unlock(&sound_mutex);
+
+	if (sound_start_play(device)) {
+		fprintf(stderr, "*Error opening play device");
 		return NULL;
 	}
 
@@ -784,6 +786,8 @@ void sound_thread_start(char *device){
 	q_init(&qloop, 10240);
  	qloop.stall = 1;
 
+	pthread_mutex_init(&sound_mutex, NULL);
+	pthread_cond_init(&sound_cond_var, NULL);
 	pthread_create( &sound_thread, NULL, sound_thread_function, device);
 	pthread_create( &loopback_thread, NULL, loopback_thread_function, device);
 }
