@@ -73,6 +73,8 @@ static double alc_level = 1.0;
 static int tr_relay = 0;
 static int rx_pitch = 700; //used only to offset the lo for CW,CWR
 static int bridge_compensation = 60;
+static double voice_clip_level = 0.022;
+static int in_calibration = 1; // this turns off alc, clipping et al
 
 #define MUTE_MAX 6 
 static int mute_count = 50;
@@ -80,6 +82,7 @@ static int mute_count = 50;
 FILE *pf_record;
 int16_t record_buffer[1024];
 int32_t modulation_buff[MAX_BINS];
+
 
 /* the power gain of the tx varies widely from 
 band to band. these data structures help in flattening 
@@ -93,14 +96,14 @@ struct power_settings {
 };
 
 struct power_settings band_power[] ={
-	{ 3500000,  4000000, 35, 0.0025},
-	{ 7000000,  7300000, 40, 0.02},
-	{10000000, 10200000, 35, 0.008},
-	{14000000, 14300000, 35, 0.022},
-	{18000000, 18200000, 20, 0.03},
-	{21000000, 21450000, 23, 0.05},
-	{24800000, 25000000, 20, 0.1},
-	{28000000, 29700000, 20, 0.1}  
+	{ 3500000,  4000000, 37, 0.002},
+	{ 7000000,  7300009, 40, 0.0015},
+	{10000000, 10200000, 35, 0.0019},
+	{14000000, 14300000, 35, 0.0025},
+	{18000000, 18200000, 20, 0.0023},
+	{21000000, 21450000, 20, 0.003},
+	{24800000, 25000000, 20, 0.0034},
+	{28000000, 29700000, 20, 0.0037}  
 };
 
 #define CMD_TX (2)
@@ -660,34 +663,6 @@ void rx_process(int32_t *input_rx,
 	modem_rx(rx_list->mode, output_speaker, MAX_BINS/2);
 }
 
-
-void tgc(struct rx *r){
-	int i;
-	double min = -100.0;
-
-	double clipped_max = -100.0;
-	double clipped_min = 100.0;
-
-	for (i= 0; i < MAX_BINS/2; i++){
-		double s = creal(r->fft_time[i+(MAX_BINS/2)]);
-		if (min > s)
-			min = s;
-/*
-		if (max < s)
-			max = s;
-		if (s < -10.0)
-			s = -10;
-		else if (s > 10.0)
-			s = 10;
-*/
-		s = 0;
-		if (clipped_min > s)
-			clipped_min = s;
-		if (clipped_max < s)
-			clipped_max = s;
-	}
-}
-
 void read_power(){
 	uint8_t response[4];
 	int16_t vfwd, vref;
@@ -705,15 +680,24 @@ void read_power(){
 		vswr = 100;
 	else
 		vswr = (10*(vfwd + vref))/(vfwd-vref);
-//	printf("fwd:%d ref:%d tx_amp:%g volume:%g ", vfwd, vref, tx_amp, volume);
-	fwdpower =  (vfwd * 40)/bridge_compensation;
-/*	if (fwdpower > 400){
-		alc_level = 380.0/(fwdpower * 1.0);
-		printf("alc %g", alc_level);
-		printf(" to %g\n", tx_amp);
+
+	//here '400' is the scaling factor as our ref power output is 40 watts
+	//this calculates the power as 1/10th of a watt, 400 = 40 watts
+	int fwdvoltage =  (vfwd * 40)/bridge_compensation;
+	fwdpower = (fwdvoltage * fwdvoltage)/400;
+
+	int rf_v_p2p = (fwdvoltage * 126)/400;
+//	printf("rf volts: %d, alc %g, %d watts ", rf_v_p2p, alc_level, fwdpower/10);	
+	if (rf_v_p2p > 126 && !in_calibration){
+		alc_level *= 120.0 / (1.0 * rf_v_p2p);
+		printf("ALC tripped, to %d percent\n", (int)(100 * alc_level));
 	}
-*/ 
-//	printf("power : %d\n", fwdpower);
+/*	else if (alc_level < 0.95){
+		printf("alc releasing to ");
+		alc_level *= 1.02;
+	}
+*/
+//	printf("alc: %g\n", alc_level);
 }
 
 void tx_process(
@@ -726,7 +710,6 @@ void tx_process(
 
 	struct rx *r = tx_list;
 
-
 	if (mute_count && (r->mode == MODE_USB || r->mode == MODE_LSB)){
 		memset(input_mic, 0, n_samples * sizeof(int32_t));
 		mute_count--;
@@ -738,6 +721,7 @@ void tx_process(
 	int m = 0;
 	int j = 0;
 
+	double max = -10.0, min = 10.0;
 	//gather the samples into a time domain array 
 	for (i= MAX_BINS/2; i < MAX_BINS; i++){
 
@@ -748,9 +732,23 @@ void tx_process(
 			i_sample = (1.0 * (vfo_read(&tone_a))) / 25000000000.0;
 		else if (r->mode == MODE_CW || r->mode == MODE_CWR || r->mode == MODE_FT8)
 			i_sample = modem_next_sample(r->mode) / 3;
-		else 
+		else {
 	  	i_sample = (1.0 * input_mic[j]) / 2000000000.0;
-	
+		}
+		//clip the overdrive to prevent damage up the processing chain, PA
+		if (r->mode == MODE_USB || r->mode == MODE_LSB){
+			if (i_sample < (-1.0 * voice_clip_level))
+				i_sample = -1.0 * voice_clip_level;
+			else if (i_sample > voice_clip_level)
+				i_sample = voice_clip_level;
+		}
+/*
+		//to measure the voice peaks, used to measure voice_clip_level 
+		if (max < i_sample)
+			max = i_sample;
+		if (min > i_sample)
+			min = i_sample;
+*/
 		//don't echo the voice modes
 		if (r->mode == MODE_USB || r->mode == MODE_LSB || r->mode == MODE_AM 
 			|| r->mode == MODE_NBFM)
@@ -820,15 +818,11 @@ void tx_process(
 	fftw_execute(r->plan_rev);
 
 	float scale = volume;
-/*
-	if ((r->mode == MODE_USB || r->mode == MODE_LSB || r->mode == MODE_2TONE) 
-		&& tx_compress > 10)
-		tgc(r);
-	*/
 	for (i= 0; i < MAX_BINS/2; i++){
 			double s = creal(r->fft_time[i+(MAX_BINS/2)]);
 			output_tx[i] = s * scale * tx_amp * alc_level;
 	}
+//	printf("min %g, max %g\n", min, max);
 
 	read_power();
 	sdr_modulation_update(output_tx, MAX_BINS/2, tx_amp);	
@@ -956,7 +950,7 @@ void set_tx_power_levels(){
 			tx_amp = (1.0 * tx_drive * band_power[i].scale);  
 		}	
 	}
-	//printf("tx_gain_compensation is set to %g for %d watts\n", tx_amp, tx_drive);
+//	printf("tx_amp is set to %g for %d drive\n", tx_amp, tx_drive);
 	//we keep the audio card output 'volume' constant'
 	sound_mixer(audio_card, "Master", 95);
 	sound_mixer(audio_card, "Capture", tx_gain);
@@ -966,24 +960,26 @@ void set_tx_power_levels(){
 /* calibrate power on all bands */
 
 void calibrate_band_power(struct power_settings *b){
-
+	
 	set_rx1(b->f_start + 35000);
+	printf("*calibrating for %d\n", freq_hdr);
 	tx_list->mode = MODE_CALIBRATE;
 	tx_drive = 100;
 
 	int i, j;
 
-	double scale_delta = b->scale / 25;
-	double scale = b->scale / 4;
-	b->scale = scale;
+//	double scale_delta = b->scale / 25;
+	double scaling_factor = 0.0001;
+	b->scale = scaling_factor;
  	set_tx_power_levels();
 	delay(50);
 
 	tr_switch(1);
 	delay(100);
 
-	for (i = 0; i < 200; i++){
-		b->scale = scale + (scale_delta * i);
+	for (i = 0; i < 200 && b->scale < 0.015; i++){
+		scaling_factor *= 1.1;
+		b->scale = scaling_factor;
  		set_tx_power_levels();
 		delay(50); //let the new power levels take hold		
 
@@ -992,14 +988,15 @@ void calibrate_band_power(struct power_settings *b){
 		for (j = 0; j < 10; j++){
 			delay(20);
 			avg += fwdpower /10; //fwdpower in 1/10th of a watt
+//			printf("  avg %d, fwd %d scale %g\n", avg, fwdpower, b->scale);
 		}
 		avg /= 10;
+		printf("*%d, f %d : avg %d, max = %d\n", i, b->f_start, avg, b->max_watts);
 		if (avg >= b->max_watts)
 				break;
 	}
 	tr_switch(0);
-	printf("***************** drive for %d is set to %g\n", 
-		b->f_start, b->scale);
+	printf("*tx scale for %d is set to %g\n", b->f_start, b->scale);
 	delay(100);	
 }
 
@@ -1021,12 +1018,11 @@ static void save_hw_settings(){
 	for (size_t i = 0; i < sizeof(band_power)/sizeof(struct power_settings); i++){
 		fprintf(f, "[tx_band]\nf_start=%d\nf_stop=%d\nscale=%g\n\n", 
 			band_power[i].f_start, band_power[i].f_stop, band_power[i].scale);
-
-
 	}
 
 	fclose(f);
 }
+
 pthread_t calibration_thread;
 
 void *calibration_thread_function(void *server){
@@ -1035,9 +1031,11 @@ void *calibration_thread_function(void *server){
 	int old_mode = tx_list->mode;
 	int	old_tx_drive = tx_drive;
 	(void) server;
+	in_calibration = 1;
 	for (size_t i = 0; i < sizeof(band_power)/sizeof(struct power_settings); i++){
 		calibrate_band_power(band_power + i);
 	}
+	in_calibration = 0;
 
 	set_rx1(old_freq);
 	tx_list->mode = old_mode;
@@ -1056,7 +1054,6 @@ void tx_cal(){
 
 void tr_switch(int tx_on){
 		if (tx_on){
-			in_tx = 1;
 			//mute it all and hang on for a millisecond
 			sound_mixer(audio_card, "Master", 0);
 			sound_mixer(audio_card, "Capture", 0);
@@ -1064,21 +1061,21 @@ void tr_switch(int tx_on){
 
 			//now switch of the signal back
 			//now ramp up after 5 msecs
+			delay(2);
 			digitalWrite(TX_LINE, HIGH);
 			mute_count = 20;
       fft_reset_m_bins();
 			//give time for the reed relay to switch
       delay(2);
 			set_tx_power_levels();
+			in_tx = 1;
 			//finally ramp up the power 
 			if (tr_relay){
 				set_lpf_40mhz(freq_hdr);
 				delay(10); //debounce the lpf relays
 			}
 			digitalWrite(TX_POWER, HIGH);
-			//strcpy(response, "ok");
 			spectrum_reset();
-		//	rx_tx_ramp = 1;
 		}
 		else {
 			in_tx = 0;
@@ -1144,9 +1141,8 @@ void setup(){
 	add_rx(MODE_LSB, -3000, -300);
 	add_tx(MODE_LSB, -3000, -300);
 	rx_list->tuned_bin = 512;
-  tx_list->tuned_bin = 512;
-	tx_init(-3000, -300);
-
+    tx_list->tuned_bin = 512;
+	tx_init(7000000, MODE_LSB, -3000, -150);
 
 	setup_audio_codec();
 	sound_thread_start("plughw:0,0");
