@@ -1290,7 +1290,7 @@ void sdr_modulation_update(int32_t *samples, int count, double scale_up){
 	double min=0, max=0;
 
 	for (int i = 0; i < count; i++){
-		if (i % 48 == 0){
+		if (i % 48 == 0 && i > 0){
 			if (mod_display_index >= MOD_MAX)
 				mod_display_index = 0;
 			mod_display[mod_display_index++] = (min / 40000000.0) / scale_up;
@@ -3380,20 +3380,23 @@ void web_get_spectrum(char *buff){
 	int starting_bin = (3 *MAX_BINS)/4 - n_bins/2;
 	int ending_bin = starting_bin + n_bins; 
 
-	int j = 0;
-	if (in_tx)
+	int j = 3;
+	if (in_tx){
 		strcpy(buff, "TX ");
-	else
+		for (int i = 0; i < MOD_MAX; i++)
+			buff[j++] = (2 * mod_display[i]) + 64;
+	}
+	else{
 		strcpy(buff, "RX ");
-	j += 3;//move the pointer forward
-	for (int i = starting_bin; i <= ending_bin; i++){
-		int y = spectrum_plot[i] + waterfall_offset;
-		if (y > 96)
-			buff[j++] = 127;
-		else if(y > 0 && y < 96)
-			buff[j++] = y + 32;
-		else
-			buff[j++] = ' ';
+		for (int i = starting_bin; i <= ending_bin; i++){
+			int y = spectrum_plot[i] + waterfall_offset;
+			if (y > 96)
+				buff[j++] = 127;
+			else if(y > 0 && y < 96)
+				buff[j++] = y + 32;
+			else
+				buff[j++] = ' ';
+		}
 	}
 
 	buff[j++] = 0;
