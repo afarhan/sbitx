@@ -3779,9 +3779,7 @@ void meter_calibrate(){
 	set_field("r1:freq", "7035000");
 	set_mode("CW");	
 	struct field *f_bridge = get_field("bridge");
-	set_field("bridge", "100");
-	set_field("tx_power", "100");
-	
+	set_field("bridge", "100");	
 	focus_field(f_bridge);
 }
 
