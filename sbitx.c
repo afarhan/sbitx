@@ -837,7 +837,6 @@ void sound_process(
 	int32_t *output_speaker, int32_t *output_tx, 
 	int n_samples)
 {
-
 	if (in_tx)
 		tx_process(input_mic, output_speaker, output_tx, n_samples);
 	else
@@ -1124,16 +1123,16 @@ void setup(){
 	pinMode(LPF_B, OUTPUT);
 	pinMode(LPF_C, OUTPUT);
 	pinMode(LPF_D, OUTPUT);
-  digitalWrite(LPF_A, LOW);
-  digitalWrite(LPF_B, LOW);
-  digitalWrite(LPF_C, LOW);
-  digitalWrite(LPF_D, LOW);
-	digitalWrite(TX_LINE, LOW);
-	digitalWrite(TX_POWER, LOW);
+  	digitalWrite(LPF_A, LOW);
+  	digitalWrite(LPF_B, LOW);
+  	digitalWrite(LPF_C, LOW);
+  	digitalWrite(LPF_D, LOW);
+  	digitalWrite(TX_LINE, LOW);
+  	digitalWrite(TX_POWER, LOW);
 
 	fft_init();
 	vfo_init_phase_table();
-  setup_oscillators();
+  	setup_oscillators();
 	q_init(&qremote, 8000);
 
 	modem_init();
@@ -1141,13 +1140,11 @@ void setup(){
 	add_rx(7000000, MODE_LSB, -3000, -300);
 	add_tx(7000000, MODE_LSB, -3000, -300);
 	rx_list->tuned_bin = 512;
-  	tx_list->tuned_bin = 512;
-	tx_init(-3000, -150);
+  tx_list->tuned_bin = 512;
+	tx_init(MODE_LSB, -3000, -150);
 
 	setup_audio_codec();
 	sound_thread_start("plughw:0,0");
-
-	sleep(1); //why? to allow the aloop to initialize?
 
 	vfo_start(&tone_a, 700, 0);
 	vfo_start(&tone_b, 1900, 0);
