@@ -327,7 +327,7 @@ int32_t	out_i[MAX_BINS];
 int32_t out_q[MAX_BINS];
 short is_ready = 0;
 
-void tx_init(int bpf_low, int bpf_high){
+void tx_init(int frequency, short mode, int bpf_low, int bpf_high){
 
 	//we assume that there are 96000 samples / sec, giving us a 48khz slice
 	//the tuning can go up and down only by 22 KHz from the center_freq
@@ -336,7 +336,7 @@ void tx_init(int bpf_low, int bpf_high){
 	filter_tune(tx_filter, (1.0 * bpf_low)/96000.0, (1.0 * bpf_high)/96000.0 , 5);
 }
 
-void add_tx(short mode, int bpf_low, int bpf_high){
+struct rx *add_tx(int frequency, short mode, int bpf_low, int bpf_high){
 
 	//we assume that there are 96000 samples / sec, giving us a 48khz slice
 	//the tuning can go up and down only by 22 KHz from the center_freq
@@ -376,7 +376,7 @@ void add_tx(short mode, int bpf_low, int bpf_high){
   tx_list = r;
 }
 
-void add_rx(short mode, int bpf_low, int bpf_high){
+void add_rx(int frequency, short mode, int bpf_low, int bpf_high){
 
 	//we assume that there are 96000 samples / sec, giving us a 48khz slice
 	//the tuning can go up and down only by 22 KHz from the center_freq
@@ -721,7 +721,7 @@ void tx_process(
 	int m = 0;
 	int j = 0;
 
-	double max = -10.0, min = 10.0;
+	// double max = -10.0, min = 10.0;
 	//gather the samples into a time domain array 
 	for (i= MAX_BINS/2; i < MAX_BINS; i++){
 
@@ -1138,8 +1138,8 @@ void setup(){
 
 	modem_init();
 
-	add_rx(MODE_LSB, -3000, -300);
-	add_tx(MODE_LSB, -3000, -300);
+	add_rx(7000000, MODE_LSB, -3000, -300);
+	add_tx(7000000, MODE_LSB, -3000, -300);
 	rx_list->tuned_bin = 512;
     tx_list->tuned_bin = 512;
 	tx_init(7000000, MODE_LSB, -3000, -150);
