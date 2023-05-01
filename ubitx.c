@@ -232,7 +232,7 @@ int32_t	out_i[MAX_BINS];
 int32_t out_q[MAX_BINS];
 short is_ready = 0;
 
-void tx_init(int frequency, short mode, int bpf_low, int bpf_high){
+static void tx_init(short mode, int bpf_low, int bpf_high){
 
 	//we assume that there are 96000 samples / sec, giving us a 48khz slice
 	//the tuning can go up and down only by 22 KHz from the center_freq
@@ -241,7 +241,7 @@ void tx_init(int frequency, short mode, int bpf_low, int bpf_high){
 	filter_tune(tx_filter, (1.0 * bpf_low)/96000.0, (1.0 * bpf_high)/96000.0 , 5);
 }
 
-struct rx *add_rx(int frequency, short mode, int bpf_low, int bpf_high){
+static void add_rx(short mode, int bpf_low, int bpf_high){
 
 	//we assume that there are 96000 samples / sec, giving us a 48khz slice
 	//the tuning can go up and down only by 22 KHz from the center_freq
@@ -278,7 +278,7 @@ struct rx *add_rx(int frequency, short mode, int bpf_low, int bpf_high){
 	rx_list = r;
 }
 
-int count = 0;
+static int count = 0;
 
 double agc(struct rx *r){
 	int i;
@@ -670,9 +670,9 @@ void setup(){
 
 	vfo_init_phase_table();
 
-	add_rx(7000000, MODE_LSB, -3000, -300);
+	add_rx(MODE_LSB, -3000, -300);
 	rx_list->tuned_bin = 512;
-	tx_init(7000000, MODE_LSB, -3000, -300);
+	tx_init(MODE_LSB, -3000, -300);
 
 	sound_thread_start("hw:0,0");
 	setup_audio_codec();

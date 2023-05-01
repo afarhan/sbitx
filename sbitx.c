@@ -327,7 +327,7 @@ int32_t	out_i[MAX_BINS];
 int32_t out_q[MAX_BINS];
 short is_ready = 0;
 
-void tx_init(int frequency, short mode, int bpf_low, int bpf_high){
+static void tx_init(int bpf_low, int bpf_high){
 
 	//we assume that there are 96000 samples / sec, giving us a 48khz slice
 	//the tuning can go up and down only by 22 KHz from the center_freq
@@ -336,7 +336,7 @@ void tx_init(int frequency, short mode, int bpf_low, int bpf_high){
 	filter_tune(tx_filter, (1.0 * bpf_low)/96000.0, (1.0 * bpf_high)/96000.0 , 5);
 }
 
-struct rx *add_tx(int frequency, short mode, int bpf_low, int bpf_high){
+static void add_tx(short mode, int bpf_low, int bpf_high){
 
 	//we assume that there are 96000 samples / sec, giving us a 48khz slice
 	//the tuning can go up and down only by 22 KHz from the center_freq
@@ -1141,8 +1141,8 @@ void setup(){
 	add_rx(7000000, MODE_LSB, -3000, -300);
 	add_tx(7000000, MODE_LSB, -3000, -300);
 	rx_list->tuned_bin = 512;
-    tx_list->tuned_bin = 512;
-	tx_init(7000000, MODE_LSB, -3000, -150);
+  	tx_list->tuned_bin = 512;
+	tx_init(-3000, -150);
 
 	setup_audio_codec();
 	sound_thread_start("plughw:0,0");
@@ -1153,7 +1153,6 @@ void setup(){
 	vfo_start(&tone_b, 1900, 0);
 
 	delay(2000);	
-
 }
 
 void sdr_request(char *request, char *response){
