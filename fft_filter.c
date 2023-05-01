@@ -12,7 +12,7 @@
 #include "sdr.h"
 
 // Modified Bessel function of the 0th kind, used by the Kaiser window
-const float i0(float const z){
+static float i0(float const z){
   const float t = (z*z)/4;
   float sum = 1 + t;
   float term = t;
@@ -23,21 +23,6 @@ const float i0(float const z){
       break;
   }
   return sum;
-}
-
-// Modified Bessel function of first kind
-const float i1(float const z){
-  const float t = (z*z)/4;
-  float term = 1;
-  float sum = term;
-
-  for(int k=1; k<40; k++){
-    term *= t / (k*(k+1));
-    sum += term;
-    if(term < 1e-12 * sum)
-      break;
-  }
-  return 0.5 * z * sum;
 }
 
 // Compute an entire Kaiser window
@@ -53,7 +38,7 @@ int make_kaiser(float * const window,unsigned int const M,float const beta){
 
   // The window is symmetrical, so compute only half of it and mirror
   // this won't compute the middle value in an odd-length sequence
-  for(int n = 0; n < M/2; n++){
+  for(unsigned int n = 0; n < M/2; n++){
     float const p = pc * n  - 1;
     window[M-1-n] = window[n] = i0(numc * sqrtf(1-p*p)) * inv_denom;
   }
@@ -64,11 +49,11 @@ int make_kaiser(float * const window,unsigned int const M,float const beta){
   return 0;
 }
 
-const static float hann(int const n,int const M){
+static float hann(int const n,int const M){
     return 0.5 - 0.5 * cos(2*M_PI*n/(M-1));
 }
 
-int make_hann_window(float *window, int max_count){
+void make_hann_window(float *window, int max_count){
 	//apply to the entire fft (MAX_BINS)
 	for (int i = 0; i < max_count; i++)
 		window[i] = hann(i, max_count);	 

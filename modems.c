@@ -49,6 +49,7 @@ extern char contact_grid[];
 
 int qso_state = QSO_STATE_ZOMBIE;
 
+const int dest_length = 256; // TODO
 /*
 	This file implements modems for :
 	1. Fldigi: We use fldigi as a proxy for all the modems that it implements
@@ -97,7 +98,7 @@ static unsigned long millis_now = 0;
 
 
 #define FT8_MAX_BUFF (12000 * 18) 
-unsigned int wallclock = 0;
+time_t wallclock = 0;
 int32_t ft8_rx_buff[FT8_MAX_BUFF];
 float ft8_rx_buffer[FT8_MAX_BUFF];
 float ft8_tx_buff[FT8_MAX_BUFF];
@@ -133,10 +134,9 @@ void ft8_setmode(int config){
 int sbitx_ft8_encode(char *message, int32_t freq,  float *signal, bool is_ft4);
 
 void ft8_tx(char *message, int freq){
-	char cmd[200], buff[1000];
-	FILE	*pf;
+	char buff[1000];
 
-	for (int i = 0; i < strlen(message); i++)
+	for (size_t i = 0; i < strlen(message); i++)
 		message[i] = toupper(message[i]);
 
 	//timestamp the packets for display log
@@ -156,9 +156,7 @@ void ft8_tx(char *message, int freq){
 int sbitx_ft8_decode(float *signal, int num_samples, bool is_ft8);
 
 void *ft8_thread_function(void *ptr){
-	FILE *pf;
-	char buff[1000], mycallsign_upper[20]; //there are many ways to crash sbitx, bufferoverflow of callsigns is 1
-
+	(void) ptr;
 	//wake up every 100 msec to see if there is anything to decode
 	while(1){
 		usleep(1000);
@@ -189,7 +187,7 @@ void ft8_rx(int32_t *samples, int count){
 		//ft8_rx_buff[ft8_rx_buff_index++] = samples[i];
 		ft8_rx_buffer[ft8_rx_buff_index++] = samples[i] / 200000000.0f;
 
-	int now = time_sbitx();
+	time_t now = time_sbitx();
 	if (now != wallclock)	
 		wallclock = now;
 	else 
@@ -273,8 +271,7 @@ static struct vfo cw_tone, cw_env;
 static int keydown_count=0;			//counts down the pause afer a keydown is finished
 static int keyup_count = 0;			//counts down to how long a key is held down
 static float cw_envelope = 1;
-static int cw_tx_until = 0;
-static int data_tx_until = 0;
+static unsigned int cw_tx_until = 0;
 
 char cw_text[] = " cq cq dx de vu2ese A k";
 static char *symbol_next = NULL;
@@ -290,11 +287,7 @@ static char cw_get_next_kbd_symbol(){
 		}
 		symbol_next = morse_table->code; // point to the first symbol, by default
 
-		char b[2];
-		b[0]= c;
-		b[1] = 0;
-
-		for (int i = 0; i < sizeof(morse_table)/sizeof(struct morse); i++)
+		for (size_t i = 0; i < sizeof(morse_table)/sizeof(struct morse); i++)
 			if (morse_table[i].c == tolower(c))
 				symbol_next = morse_table[i].code;
 	}
@@ -458,7 +451,7 @@ float cw_get_sample(){
 		}
 		else if (last_symbol == '/'){
 			//search for the letter match in cw table and emit it
-			for (int i = 0; i < sizeof(morse_table)/sizeof(struct morse); i++)
+			for (size_t i = 0; i < sizeof(morse_table)/sizeof(struct morse); i++)
 				if (strlen(cw_key_letter) && !strcmp(morse_table[i].code, cw_key_letter)){
 					char buff[2];
 					buff[0] = morse_table[i].c;
@@ -698,12 +691,12 @@ char b64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 /* decodeblock - decode 4 '6-bit' characters into 3 8-bit binary bytes */
 void decodeblock(unsigned char in[], char *clrstr) {
-  unsigned char out[4];
+  char out[4];
   out[0] = in[0] << 2 | in[1] >> 4;
   out[1] = in[1] << 4 | in[2] >> 2;
   out[2] = in[2] << 6 | in[3] >> 0;
   out[3] = '\0';
-  strncat(clrstr, out, sizeof(out));
+  strncat(clrstr, out, dest_length);
 }
 
 void b64_decode(char *b64src, char *clrdst) {
@@ -734,14 +727,14 @@ void b64_decode(char *b64src, char *clrdst) {
 
 /* encodeblock - encode 3 8-bit binary bytes as 4 '6-bit' characters */
 void encodeblock( unsigned char in[], char b64str[], int len ) {
-    unsigned char out[5];
+    char out[5];
     out[0] = b64[ in[0] >> 2 ];
     out[1] = b64[ ((in[0] & 0x03) << 4) | ((in[1] & 0xf0) >> 4) ];
     out[2] = (unsigned char) (len > 1 ? b64[ ((in[1] & 0x0f) << 2) |
              ((in[2] & 0xc0) >> 6) ] : '=');
     out[3] = (unsigned char) (len > 2 ? b64[ in[2] & 0x3f ] : '=');
     out[4] = '\0';
-    strncat(b64str, out, sizeof(out));
+    strncat(b64str, out, len);
 }
 
 /* encode - base64 encode a stream, adding padding if needed */
@@ -774,21 +767,19 @@ An almost trivial xml, just enough to work fldigi
 */
 
 char fldigi_mode[100];
-long fldigi_retry_at = 0;
+unsigned long fldigi_retry_at = 0;
 /*
 An almost trivial xml, just enough to work fldigi
 */
 
 int fldigi_call_i(char *action, int param, char *result){
-  char buffer[10000], q[10000], xml[1000];
+  char q[10000], xml[1000];
   struct sockaddr_in serverAddr;
-  struct sockaddr_storage serverStorage;
-  socklen_t addr_size;
 
   serverAddr.sin_family = AF_INET;
   serverAddr.sin_port = htons(7362);
   serverAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
-  memset(serverAddr.sin_zero, '\0', sizeof serverAddr.sin_zero);  
+  memset(serverAddr.sin_zero, 0, sizeof serverAddr.sin_zero);  
 	
 	int fldigi_socket = socket(AF_INET, SOCK_STREAM, 0);
   if (connect(fldigi_socket, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0) {
@@ -848,10 +839,8 @@ int fldigi_call_i(char *action, int param, char *result){
 }
 
 int fldigi_call(char *action, char *param, char *result){
-  char buffer[10000], q[10000], xml[1000];
+  char q[10000], xml[1000];
   struct sockaddr_in serverAddr;
-  struct sockaddr_storage serverStorage;
-  socklen_t addr_size;
 
   serverAddr.sin_family = AF_INET;
   serverAddr.sin_port = htons(7362);
@@ -909,7 +898,7 @@ int fldigi_call(char *action, char *param, char *result){
 		}
 	}
 	//maybe it is not base64 encoded
-	else if (p = strstr(buff, "<value>")){
+	else if ((p = strstr(buff, "<value>")) != NULL){
 		p += strlen("<value>");
 		char *r = strchr(p, '<');
 		if (r){
@@ -929,9 +918,6 @@ int fldigi_call(char *action, char *param, char *result){
 **********      Modem dispatch routines          *******
 ********************************************************/
 int fldigi_in_tx = 0;
-static int rx_poll_count = 0;
-static int sps, deci, s_timer ;
-
 
 void fldigi_read(){
 	char buffer[10000];
@@ -982,16 +968,10 @@ void modem_set_pitch(int pitch){
 
 int last_pitch = 0;
 void modem_rx(int mode, int32_t *samples, int count){
-	int i, j, k, l;
-	int32_t *s;
-	FILE *pf;
-	char buff[10000];
-
 	if (get_pitch() != last_pitch  
 		&& (mode == MODE_CW || mode == MODE_CWR || MODE_RTTY || MODE_PSK31))
 		modem_set_pitch(get_pitch());
 
-	s = samples;
 	switch(mode){
 	case MODE_FT8:
 		ft8_rx(samples, count);
@@ -1056,10 +1036,10 @@ void modem_poll(int mode){
 		abort_tx();
 
 		if (current_mode == MODE_FT8)
-			macro_load("ft8", NULL);
+			macro_load("ft8");
 		else if (current_mode == MODE_RTTY || current_mode == MODE_PSK31 ||
 			MODE_CWR || MODE_CW){
-			macro_load("cw1", NULL);	
+			macro_load("cw1");	
 			modem_set_pitch(get_pitch());
 		}
 

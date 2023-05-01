@@ -34,9 +34,9 @@ static sqlite3 *db;
 
 /* writes the output to data/result_rows.txt */
 
-int logbook_query(char *query, int from_id, char *result_file){
+void logbook_query(char *query, int from_id, char *result_file){
 	sqlite3_stmt *stmt;
-	char statement[200], json[10000], param[2000];
+	char statement[200], param[2000];
 
 	if (from_id == -1)
 		from_id = 1000000000; //set it very high
@@ -53,7 +53,6 @@ int logbook_query(char *query, int from_id, char *result_file){
 	
 	FILE *pf = fopen(output_path, "w");
 
-	int rec = 0;
 	while (sqlite3_step(stmt) == SQLITE_ROW) {
 		int i;
 		int num_cols = sqlite3_column_count(stmt);
@@ -61,7 +60,7 @@ int logbook_query(char *query, int from_id, char *result_file){
 			switch (sqlite3_column_type(stmt, i))
 			{
 			case (SQLITE3_TEXT):
-				strcpy(param, sqlite3_column_text(stmt, i));
+				strcpy(param, (const char *)sqlite3_column_text(stmt, i));
 				break;
 			case (SQLITE_INTEGER):
 				sprintf(param, "%d", sqlite3_column_int(stmt, i));
@@ -93,7 +92,7 @@ void logbook_open(){
 
 void logbook_add(char *contact_callsign, char *rst_sent, char *exchange_sent, 
 	char *rst_recv, char *exchange_recv){
-	char statement[1000], *err_msg, date_str[10], time_str[10];
+	char statement[1000], *err_msg, date_str[36], time_str[10];
 	char freq[12], log_freq[12], mode[10], mycallsign[10];
 
 	time_t log_time = time_sbitx();

@@ -62,7 +62,6 @@ static int tx_gain = 100;
 static int tx_compress = 0;
 static double spectrum_speed = 0.1;
 static int in_tx = 0;
-static int rx_tx_ramp = 0;
 static int sidetone = 2000000000;
 struct vfo tone_a, tone_b; //these are audio tone generators
 static int tx_use_line = 0;
@@ -126,12 +125,8 @@ void radio_tune_to(u_int32_t f){
 }
 
 void fft_init(){
-	int mem_needed;
-
 	//printf("initializing the fft\n");
 	fflush(stdout);
-
-	mem_needed = sizeof(fftw_complex) * MAX_BINS;
 
 	fft_m = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * MAX_BINS/2);
 	fft_in = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * MAX_BINS);
@@ -304,7 +299,6 @@ FILE *wav_start_writing(const char* path)
 
 void wav_record(int32_t *samples, int count){
 	int16_t *w;
-	int32_t *s;
 	int i = 0, j = 0;
 	int decimation_factor = 96000 / 12000; 
 
@@ -333,7 +327,7 @@ int32_t	out_i[MAX_BINS];
 int32_t out_q[MAX_BINS];
 short is_ready = 0;
 
-void tx_init(int frequency, short mode, int bpf_low, int bpf_high){
+static void tx_init(int bpf_low, int bpf_high){
 
 	//we assume that there are 96000 samples / sec, giving us a 48khz slice
 	//the tuning can go up and down only by 22 KHz from the center_freq
@@ -342,7 +336,7 @@ void tx_init(int frequency, short mode, int bpf_low, int bpf_high){
 	filter_tune(tx_filter, (1.0 * bpf_low)/96000.0, (1.0 * bpf_high)/96000.0 , 5);
 }
 
-struct rx *add_tx(int frequency, short mode, int bpf_low, int bpf_high){
+static void add_tx(short mode, int bpf_low, int bpf_high){
 
 	//we assume that there are 96000 samples / sec, giving us a 48khz slice
 	//the tuning can go up and down only by 22 KHz from the center_freq
@@ -382,7 +376,7 @@ struct rx *add_tx(int frequency, short mode, int bpf_low, int bpf_high){
   tx_list = r;
 }
 
-struct rx *add_rx(int frequency, short mode, int bpf_low, int bpf_high){
+void add_rx(int frequency, short mode, int bpf_low, int bpf_high){
 
 	//we assume that there are 96000 samples / sec, giving us a 48khz slice
 	//the tuning can go up and down only by 22 KHz from the center_freq
@@ -552,8 +546,8 @@ void my_fftw_execute(fftw_plan f){
 
 
 //TODO : optimize the memory copy and moves to use the memcpy
-void rx_process(int32_t *input_rx,  int32_t *input_mic, 
-	int32_t *output_speaker, int32_t *output_tx, int n_samples)
+void rx_process(int32_t *input_rx, 
+	int32_t *output_speaker, int32_t *output_tx)
 {
 	int i, j = 0;
 	double i_sample, q_sample;
@@ -645,8 +639,6 @@ void rx_process(int32_t *input_rx,  int32_t *input_mic,
 	agc2(r);
 	
 	//STEP 9: send the output back to where it needs to go
-	int is_digital = 0;
-
 	if (rx_list->output == 0){
 		for (i= 0; i < MAX_BINS/2; i++){
 			int32_t sample;
@@ -674,11 +666,10 @@ void rx_process(int32_t *input_rx,  int32_t *input_mic,
 void read_power(){
 	uint8_t response[4];
 	int16_t vfwd, vref;
-	char buff[20];
 
 	if (!in_tx)
 		return;
-	if(i2cbb_read_i2c_block_data(0x8, 0, 4, response) == -1)
+	if(i2cbb_read_i2c_block_data(0x8, 4, response) == -1)
 		return;
 
 	vfwd = vref = 0;
@@ -710,7 +701,7 @@ void read_power(){
 }
 
 void tx_process(
-	int32_t *input_rx, int32_t *input_mic, 
+	int32_t *input_mic, 
 	int32_t *output_speaker, int32_t *output_tx, 
 	int n_samples)
 {
@@ -730,7 +721,7 @@ void tx_process(
 	int m = 0;
 	int j = 0;
 
-	double max = -10.0, min = 10.0;
+	// double max = -10.0, min = 10.0;
 	//gather the samples into a time domain array 
 	for (i= MAX_BINS/2; i < MAX_BINS; i++){
 
@@ -846,11 +837,10 @@ void sound_process(
 	int32_t *output_speaker, int32_t *output_tx, 
 	int n_samples)
 {
-
 	if (in_tx)
-		tx_process(input_rx, input_mic, output_speaker, output_tx, n_samples);
+		tx_process(input_mic, output_speaker, output_tx, n_samples);
 	else
-		rx_process(input_rx, input_mic, output_speaker, output_tx, n_samples);
+		rx_process(input_rx, output_speaker, output_tx);
 
 	if (pf_record)
 		wav_record(in_tx == 0 ? output_speaker : input_mic, n_samples);
@@ -879,6 +869,7 @@ void loop(){
 }
 
 void signal_handler(int signum){
+	(void) signum;
 	digitalWrite(TX_LINE, LOW);
 }
 
@@ -917,10 +908,8 @@ static int hw_init_index = 0;
 static int hw_settings_handler(void* user, const char* section, 
             const char* name, const char* value)
 {
-  char cmd[1000];
-  char new_value[200];
-		
-
+	(void) user;
+	(void) section;
 	if (!strcmp(name, "f_start"))
 		band_power[hw_init_index].f_start = atoi(value);
 	if (!strcmp(name, "f_stop"))
@@ -930,6 +919,7 @@ static int hw_settings_handler(void* user, const char* section,
 
 	if (!strcmp(name, "bfo_freq"))
 		bfo_freq = atoi(value);
+	return 0;
 }
 
 static void read_hw_ini(){
@@ -952,7 +942,7 @@ void set_tx_power_levels(){
 	//int tx_power_gain = 0;
 
 	//search for power in the approved bands
-	for (int i = 0; i < sizeof(band_power)/sizeof(struct power_settings); i++){
+	for (size_t i = 0; i < sizeof(band_power)/sizeof(struct power_settings); i++){
 		if (band_power[i].f_start <= freq_hdr && freq_hdr <= band_power[i].f_stop){
 		
 			//next we do a decimal coversion of the power reduction needed
@@ -1010,7 +1000,6 @@ void calibrate_band_power(struct power_settings *b){
 }
 
 static void save_hw_settings(){
-	static int last_save_at = 0;
 	char file_path[200];	//dangerous, find the MAX_PATH and replace 200 with it
 
 	char *path = getenv("HOME");
@@ -1025,7 +1014,7 @@ static void save_hw_settings(){
 
 	fprintf(f, "bfo_freq=%d\n\n", bfo_freq);
 	//now save the band stack
-	for (int i = 0; i < sizeof(band_power)/sizeof(struct power_settings); i++){
+	for (size_t i = 0; i < sizeof(band_power)/sizeof(struct power_settings); i++){
 		fprintf(f, "[tx_band]\nf_start=%d\nf_stop=%d\nscale=%g\n\n", 
 			band_power[i].f_start, band_power[i].f_stop, band_power[i].scale);
 	}
@@ -1040,9 +1029,9 @@ void *calibration_thread_function(void *server){
 	int old_freq = freq_hdr;
 	int old_mode = tx_list->mode;
 	int	old_tx_drive = tx_drive;
-
+	(void) server;
 	in_calibration = 1;
-	for (int i = 0; i < sizeof(band_power)/sizeof(struct power_settings); i++){
+	for (size_t i = 0; i < sizeof(band_power)/sizeof(struct power_settings); i++){
 		calibrate_band_power(band_power + i);
 	}
 	in_calibration = 0;
@@ -1052,6 +1041,7 @@ void *calibration_thread_function(void *server){
 	tx_drive = old_tx_drive;
 	save_hw_settings();
 	printf("*Finished band power calibrations\n");
+	return NULL;
 }
 
 void tx_cal(){
@@ -1133,16 +1123,16 @@ void setup(){
 	pinMode(LPF_B, OUTPUT);
 	pinMode(LPF_C, OUTPUT);
 	pinMode(LPF_D, OUTPUT);
-  digitalWrite(LPF_A, LOW);
-  digitalWrite(LPF_B, LOW);
-  digitalWrite(LPF_C, LOW);
-  digitalWrite(LPF_D, LOW);
-	digitalWrite(TX_LINE, LOW);
-	digitalWrite(TX_POWER, LOW);
+  	digitalWrite(LPF_A, LOW);
+  	digitalWrite(LPF_B, LOW);
+  	digitalWrite(LPF_C, LOW);
+  	digitalWrite(LPF_D, LOW);
+  	digitalWrite(TX_LINE, LOW);
+  	digitalWrite(TX_POWER, LOW);
 
 	fft_init();
 	vfo_init_phase_table();
-  setup_oscillators();
+  	setup_oscillators();
 	q_init(&qremote, 8000);
 
 	modem_init();
@@ -1151,19 +1141,15 @@ void setup(){
 	add_tx(7000000, MODE_LSB, -3000, -300);
 	rx_list->tuned_bin = 512;
   tx_list->tuned_bin = 512;
-	tx_init(7000000, MODE_LSB, -3000, -150);
-
+	tx_init(MODE_LSB, -3000, -150);
 
 	setup_audio_codec();
 	sound_thread_start("plughw:0,0");
-
-	sleep(1); //why? to allow the aloop to initialize?
 
 	vfo_start(&tone_a, 700, 0);
 	vfo_start(&tone_b, 1900, 0);
 
 	delay(2000);	
-
 }
 
 void sdr_request(char *request, char *response){

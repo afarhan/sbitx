@@ -172,28 +172,6 @@ static float hann_i(int i, int N)
     return x * x;
 }
 
-static float hamming_i(int i, int N)
-{
-    const float a0 = (float)25 / 46;
-    const float a1 = 1 - a0;
-
-    float x1 = cosf(2 * (float)M_PI * i / N);
-    return a0 - a1 * x1;
-}
-
-static float blackman_i(int i, int N)
-{
-    const float alpha = 0.16f; // or 2860/18608
-    const float a0 = (1 - alpha) / 2;
-    const float a1 = 1.0f / 2;
-    const float a2 = alpha / 2;
-
-    float x1 = cosf(2 * (float)M_PI * i / N);
-    float x2 = 2 * x1 * x1 - 1; // Use double angle formula
-
-    return a0 - a1 * x1 + a2 * x2;
-}
-
 void waterfall_init(waterfall_t* me, int max_blocks, int num_bins, int time_osr, int freq_osr)
 {
     size_t mag_size = max_blocks * time_osr * freq_osr * num_bins * sizeof(me->mag[0]);
@@ -376,11 +354,11 @@ int sbitx_ft8_decode(float *signal, int num_samples, bool is_ft8)
 
 		//timestamp the packets
 		time_t	rawtime = time_sbitx();
-		char time_str[20], response[100];
+		char time_str[20];
 		struct tm *t = gmtime(&rawtime);
 		sprintf(time_str, "%02d%02d%02d", t->tm_hour, t->tm_min, t->tm_sec);
 
-		int i;
+		size_t i;
 		char mycallsign_upper[20];
 		char mycallsign[20];
 		get_field_value("#mycallsign", mycallsign);
@@ -427,12 +405,15 @@ int sbitx_ft8_decode(float *signal, int num_samples, bool is_ft8)
         decode_status_t status;
         if (!ft8_decode(&mon.wf, cand, &message, kLDPC_iterations, &status)){
             // printf("000000 %3d %+4.2f %4.0f ~  ---\n", cand->score, time_sec, freq_hz);
-            if (status.ldpc_errors > 0)
+            if (status.ldpc_errors > 0) {
                 LOG(LOG_DEBUG, "LDPC decode: %d errors\n", status.ldpc_errors);
-            else if (status.crc_calculated != status.crc_extracted)
+            }
+            else if (status.crc_calculated != status.crc_extracted) {
                 LOG(LOG_DEBUG, "CRC mismatch!\n");
-            else if (status.unpack_status != 0)
+            }
+            else if (status.unpack_status != 0) {
                 LOG(LOG_DEBUG, "Error while unpacking!\n");
+            }
             continue;
         }
 

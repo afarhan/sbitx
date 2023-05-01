@@ -23,7 +23,7 @@ else
   VERSION=`grep VER sdr_ui.h|awk 'FNR==1{print $4}'|sed -e 's/"//g'`
   echo "compiling $F version $VERSION in $WORKING_DIRECTORY"
 fi
-gcc -g -o $F \
+gcc -Wall -Wextra -O2 -march=armv8-a -mfloat-abi=hard -mfpu=neon-fp-armv8 -g -o $F \
 	 vfo.c si570.c sbitx_sound.c fft_filter.c  sbitx_gtk.c sbitx_utils.c \
     i2cbb.c si5351v2.c ini.c hamlib.c queue.c modems.c logbook.c \
 		telnet.c macros.c modem_ft8.c remote.c mongoose.c webserver.c $F.c  \

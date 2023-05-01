@@ -20,7 +20,7 @@
 #include "sdr_ui.h"
 
 void telnet_open(char *server);
-int telnet_write(char *text);
+void telnet_write(char *text);
 void telnet_close();
 
 static int telnet_sock = -1;
@@ -77,16 +77,15 @@ long get_address(char *host)
 	return *((long *)(pent->h_addr));
 }
 
-void *telnet_thread_function(void *server){
-  struct sockaddr_storage serverStorage;
-  socklen_t addr_size;
+void *telnet_thread_function(void *server_param){
 	struct sockaddr_in serverAddr;
 	char buff[200], host[100], port[7];
+	char *server = server_param;
 
 	if (strlen(server) > sizeof(host) - 1)
 		return NULL;
 
-	int i;
+	size_t i;
 	char *p = server;
 	char *q = host;
 	for(i = 0; *p && *p != ':' && i < sizeof(host)-1; i++)
@@ -179,12 +178,13 @@ void *telnet_thread_function(void *server){
 		}
 	}
 	close(telnet_sock);
-	telnet_sock = -1;	
+	telnet_sock = -1;
+	return 0;	
 }
 
-int telnet_write(char *text){
+void telnet_write(char *text){
 	if (telnet_sock < 0){
-		return -1;
+		return;
 	}
 	char nl[] = "\n";
 	send (telnet_sock, text, strlen(text), 0);
