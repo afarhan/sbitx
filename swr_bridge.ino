@@ -32,7 +32,7 @@ void setup() {
 }
 
 void loop() {
-  delay(100);
+  delay(2);
   fwd = analogRead(A2);
   ref = analogRead(A3);
   message[0] = fwd & 0xff;

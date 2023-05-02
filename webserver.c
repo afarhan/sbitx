@@ -17,13 +17,6 @@ static char session_cookie[100];
 static struct mg_mgr mgr;  // Event manager
 
 int set_field(char *id, char *value);
-extern int spectrum_plot[];
-extern void remote_execute(char *command);
-extern int remote_update_field(int i, char *text);
-extern void web_get_spectrum(char *buff);
-extern int web_get_console(char *buff, int max);
-extern int remote_audio_output(int16_t *samples);
-extern int is_in_tx();
 
 static void web_respond(struct mg_connection *c, char *message){
 	mg_ws_send(c, message, strlen(message), WEBSOCKET_OP_TEXT);
@@ -38,6 +31,7 @@ static void get_console(struct mg_connection *c){
 	mg_ws_send(c, buff, strlen(buff), WEBSOCKET_OP_TEXT);
 }
 
+
 static void get_updates(struct mg_connection *c, int all){
 	//send the settings of all the fields to the client
 	char buff[2000];
@@ -45,12 +39,14 @@ static void get_updates(struct mg_connection *c, int all){
 
 	get_console(c);
 
+
 	while(1){
 		int update = remote_update_field(i, buff);
 		// return of -1 indicates the eof fields
 		if (update == -1)
 			return;
-		if (all || update)
+	//send the status anyway
+		if (all || update )
 			mg_ws_send(c, buff, strlen(buff), WEBSOCKET_OP_TEXT); 
 		i++;
 	}

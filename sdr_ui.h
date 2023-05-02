@@ -5,6 +5,14 @@ void redraw();
 void key_pressed(char c);
 int set_field(char *id, char *value);
 int get_field_value(char *id, char *value);
+int get_field_value_by_label(char *label, char *value);
+extern int spectrum_plot[];
+void remote_execute(char *command);
+int remote_update_field(int i, char *text);
+void web_get_spectrum(char *buff);
+int web_get_console(char *buff, int max);
+int remote_audio_output(int16_t *samples);
+int is_in_tx();
 void abort_tx();
 extern int display_freq;
 

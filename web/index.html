@@ -158,7 +158,6 @@
 					<p>Released under General Public Licens v3.0.<br/>
 					(c) Ashhar Farhan, 2023
 					</p>
-					<a href="#" onclick="location.reload();">Reload</a>
 				</div>
   		</div><!-- end of login -->
 			<div id="extra-controls">
@@ -257,12 +256,35 @@
 				</ol>
 			</div>
 			<div id="FT8-control-panel">
-					<input type="checkbox"  class="sbitx-toggle" id="toggle_FT8_AUTO" value="on"/ > Auto
-					<button id="ft8-call-cq">Call CQ</button> 
+					<input type="checkbox"  class="sbitx-toggle" id="toggle_FT8_AUTO" value="on"/ > Auto |
 					RX Freq <input size="4" readonly="readonly" type="number" min="0" max="4000" id="FT8-rx-freq" /> |
 					TX Freq
 					<input type="range" class="sbitx-slider" id="TX_PITCH" max="4000" min="0" step="50" value="2200" /> 
-					<span id="TX_PITCH_reading"></span>Hz  
+					<span id="TX_PITCH_reading"></span>Hz<br/>  
+					<button id="ft8-call-cq">Call </button> 
+					<select class="sbitx-selection" id="ft8_cq_kindof">
+						<option value="CQ">CQ</option>
+						<option value="CQ DX">CQ DX</option>
+						<option value="CQ GRID">CW GRID</option>
+						<option value="CQ POTA">CW POTA</option>
+						<option value="CQ SOTA">CW SOTA</option>
+						<option value="CQ VOTA">CQ VOTA</option>
+					</select>
+					| Repeat:
+					<select class="sbitx-selection" id="ft8_repeat">
+						<option value="1">No</option>
+						<option value="2">2</option>
+						<option value="3">3</option>
+						<option value="4">4</option>
+						<option value="5">5</option>
+						<option value="6">6</option>
+						<option value="7">7</option>
+						<option value="8">8</option>
+						<option value="9">9</option>
+						<option value="10">10</option>
+					</select>
+					<input type="range" class="sbitx-slider" id="FT8_repoeat" max="10" min="" step="1" value="6" /> |
+					<input type="checkbox" class="sbitx-toggle" id="ft8-tx-1st"> Tx even/1st
 			</div>
 		</div>
 <!- cw pane -->
@@ -1137,6 +1159,7 @@ function filter_set(event){
 	var low = 300;
 	var high = 3000;
 
+/*
 	if (mode == "FT8" || mode == "FT4" || mode == "DIGITAL"){
 		low = 0;
 		high = id;
@@ -1155,6 +1178,8 @@ function filter_set(event){
 	log("setting filter from " + low + " to " + high);	
 	websocket_send("LOW " + low); 
 	websocket_send("HIGH " + high);
+*/
+	websocket_send("bandwidth " + id);
 }
 
 /* audio stuff (this needs to work with webrtc data packets rather than websockets */
@@ -2168,9 +2193,10 @@ function response_handler(response){
 			switch_to_tx();
 		else if (response.substring(0,2) == "RX" && in_tx == true)
 			switch_to_rx();
-		
+	
 		spectrum_update(response);
-		waterfall_update(response);
+		if (in_tx == false)
+			waterfall_update(response);
 		return;
 	}
 
@@ -2234,7 +2260,8 @@ function response_handler(response){
 		default:
 			e = el(cmd);
 			if (e){
-//				log("setting " + cmd + " : " + args);
+				if(cmd != 'STATUS')
+					log("setting " + cmd + " : " + args);
 				if (e.value != args){
 					e.value = args;
 //					log("changing from " + e.value + " to " + args);
@@ -2244,7 +2271,6 @@ function response_handler(response){
 						sbitx_toggle_update(e);
 					else if (cmd == "MYCALLSIGN" && args== "NOBODY")
 						open_settings("settings_panel");
-
 					if (cmd == "REC"){
 						if (args == "ON")
 							record_started  = Math.round(Date.now()/1000);
@@ -2253,6 +2279,7 @@ function response_handler(response){
 						update_recorder();
 					}
 				}
+
 			}
 			else
 				log("unhandled " + cmd + " : " + args);

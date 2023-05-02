@@ -13,9 +13,12 @@
 #include <stdint.h>
 #include <time.h>
 #include <signal.h>
+#include <pthread.h>
+#include <errno.h>
 #include "sdr.h"
 #include "sdr_ui.h"
 #include "sound.h"
+#include "i2cbb.h"
 #include "si5351.h"
 #include "ini.h"
 
@@ -35,13 +38,14 @@ FILE *pf_debug = NULL;
 #define LPF_C 10
 #define LPF_D 11
 
+int fwdpower, vswr;
 float fft_bins[MAX_BINS]; // spectrum ampltiudes  
 int spectrum_plot[MAX_BINS];
 fftw_complex *fft_spectrum;
 fftw_plan plan_spectrum;
 float spectrum_window[MAX_BINS];
-void calibrate();
 void set_rx1(int frequency);
+void tr_switch(int tx_on);
 
 fftw_complex *fft_out;		// holds the incoming samples in freq domain (for rx as well as tx)
 fftw_complex *fft_in;			// holds the incoming samples in time domain (for rx as well as tx) 
@@ -66,8 +70,12 @@ struct rx *rx_list = NULL;
 struct rx *tx_list = NULL;
 struct filter *tx_filter;	//convolution filter
 static double tx_amp = 0.0;
+static double alc_level = 1.0;
 static int tr_relay = 0;
 static int rx_pitch = 700; //used only to offset the lo for CW,CWR
+static int bridge_compensation = 100;
+static double voice_clip_level = 0.022;
+static int in_calibration = 1; // this turns off alc, clipping et al
 
 #define MUTE_MAX 6 
 static int mute_count = 50;
@@ -76,6 +84,28 @@ FILE *pf_record;
 int16_t record_buffer[1024];
 int32_t modulation_buff[MAX_BINS];
 
+
+/* the power gain of the tx varies widely from 
+band to band. these data structures help in flattening 
+the gain */
+
+struct power_settings {
+	int f_start;
+	int f_stop;
+	int	max_watts;
+	double scale;
+};
+
+struct power_settings band_power[] ={
+	{ 3500000,  4000000, 37, 0.002},
+	{ 7000000,  7300009, 40, 0.0015},
+	{10000000, 10200000, 35, 0.0019},
+	{14000000, 14300000, 35, 0.0025},
+	{18000000, 18200000, 20, 0.0023},
+	{21000000, 21450000, 20, 0.003},
+	{24800000, 25000000, 20, 0.0034},
+	{28000000, 29700000, 20, 0.0037}  
+};
 
 #define CMD_TX (2)
 #define CMD_RX (3)
@@ -151,46 +181,6 @@ int mag2db(double mag){
 	return c;
 }
 
-//experiment to measure the passband noise shape
-int calibration = 0;
-int baseline[MAX_BINS];
-
-void calibrate(){
-	if (calibrate == 0)
-		return;
-
-	if (calibration == 1)
-		memset(baseline, 0, sizeof(baseline));
-	if (calibration > 0  && calibration < 1000){
-		for (int i = 0; i < MAX_BINS; i++)
-			baseline[i] += spectrum_plot[i]; 
-//		printf("Calibrate %d\n", calibration);
-		calibration++;
-	}
-	if (calibration == 1000){
-		for (int i = 0; i < MAX_BINS; i++)
-			baseline[i] /= 1000;
-		//turn it off
-		calibration = 0;
-
-		//dump it all
-		FILE *pf = fopen("baseline.csv", "w");
-		for (int i = 0; i < MAX_BINS; i++){
-//			printf("%d, %d\n ", i, baseline[i]);
-			fprintf(pf, "%d,%d\n", baseline[i]);
-		}
-		fclose(pf);
-		printf("\ncalibration done\n");
- }
-}
-
-void calibration_start(){
-	set_rx1(25200000);	
-	sound_mixer(audio_card, "Capture", 100);
-	delay(50);
-	calibration = 1;
-}
-
 void set_spectrum_speed(int speed){
 	spectrum_speed = speed;
 	for (int i = 0; i < MAX_BINS; i++)
@@ -201,8 +191,6 @@ void spectrum_reset(){
 	for (int i = 0; i < MAX_BINS; i++)
 		fft_bins[i] = 0;
 }
-
-
 
 void spectrum_update(){
 	//we are only using the lower half of the bins, so this copies twice as many bins, 
@@ -220,7 +208,6 @@ void spectrum_update(){
 		int y = power2dB(cnrmf(fft_bins[i])); 
 		spectrum_plot[i] = y;
 	}
-	//calibrate();
 }
 
 int remote_audio_output(int16_t *samples){
@@ -684,33 +671,42 @@ void rx_process(int32_t *input_rx,  int32_t *input_mic,
 	modem_rx(rx_list->mode, output_speaker, MAX_BINS/2);
 }
 
+void read_power(){
+	uint8_t response[4];
+	int16_t vfwd, vref;
+	char buff[20];
 
-double tgc(struct rx *r){
-	int i;
-	double max = -100.0;
-	double min = 100.0;
+	if (!in_tx)
+		return;
+	if(i2cbb_read_i2c_block_data(0x8, 0, 4, response) == -1)
+		return;
 
-	double clipped_max = -100.0;
-	double clipped_min = 100.0;
+	vfwd = vref = 0;
 
-	for (i= 0; i < MAX_BINS/2; i++){
-		double s = creal(r->fft_time[i+(MAX_BINS/2)]);
-		if (min > s)
-			min = s;
-/*
-		if (max < s)
-			max = s;
-		if (s < -10.0)
-			s = -10;
-		else if (s > 10.0)
-			s = 10;
-*/
-		s = 0;
-		if (clipped_min > s)
-			clipped_min = s;
-		if (clipped_max < s)
-			clipped_max = s;
+	memcpy(&vfwd, response, 2);
+	memcpy(&vref, response+2, 2);
+	if (vref >= vfwd)
+		vswr = 100;
+	else
+		vswr = (10*(vfwd + vref))/(vfwd-vref);
+
+	//here '400' is the scaling factor as our ref power output is 40 watts
+	//this calculates the power as 1/10th of a watt, 400 = 40 watts
+	int fwdvoltage =  (vfwd * 40)/bridge_compensation;
+	fwdpower = (fwdvoltage * fwdvoltage)/400;
+
+	int rf_v_p2p = (fwdvoltage * 126)/400;
+//	printf("rf volts: %d, alc %g, %d watts ", rf_v_p2p, alc_level, fwdpower/10);	
+	if (rf_v_p2p > 135 && !in_calibration){
+		alc_level *= 135.0 / (1.0 * rf_v_p2p);
+		printf("ALC tripped, to %d percent\n", (int)(100 * alc_level));
 	}
+/*	else if (alc_level < 0.95){
+		printf("alc releasing to ");
+		alc_level *= 1.02;
+	}
+*/
+//	printf("alc: %g\n", alc_level);
 }
 
 void tx_process(
@@ -723,7 +719,6 @@ void tx_process(
 
 	struct rx *r = tx_list;
 
-
 	if (mute_count && (r->mode == MODE_USB || r->mode == MODE_LSB)){
 		memset(input_mic, 0, n_samples * sizeof(int32_t));
 		mute_count--;
@@ -734,21 +729,35 @@ void tx_process(
 
 	int m = 0;
 	int j = 0;
-	double max = -100.0;
-	double min = 100.0;
 
-
+	double max = -10.0, min = 10.0;
 	//gather the samples into a time domain array 
 	for (i= MAX_BINS/2; i < MAX_BINS; i++){
 
 		if (r->mode == MODE_2TONE)
 			i_sample = (1.0 * (vfo_read(&tone_a) 
 										+ vfo_read(&tone_b))) / 50000000000.0;
+		else if (r->mode == MODE_CALIBRATE)
+			i_sample = (1.0 * (vfo_read(&tone_a))) / 25000000000.0;
 		else if (r->mode == MODE_CW || r->mode == MODE_CWR || r->mode == MODE_FT8)
 			i_sample = modem_next_sample(r->mode) / 3;
-		else 
+		else {
 	  	i_sample = (1.0 * input_mic[j]) / 2000000000.0;
-	
+		}
+		//clip the overdrive to prevent damage up the processing chain, PA
+		if (r->mode == MODE_USB || r->mode == MODE_LSB){
+			if (i_sample < (-1.0 * voice_clip_level))
+				i_sample = -1.0 * voice_clip_level;
+			else if (i_sample > voice_clip_level)
+				i_sample = voice_clip_level;
+		}
+/*
+		//to measure the voice peaks, used to measure voice_clip_level 
+		if (max < i_sample)
+			max = i_sample;
+		if (min > i_sample)
+			min = i_sample;
+*/
 		//don't echo the voice modes
 		if (r->mode == MODE_USB || r->mode == MODE_LSB || r->mode == MODE_AM 
 			|| r->mode == MODE_NBFM)
@@ -818,16 +827,13 @@ void tx_process(
 	fftw_execute(r->plan_rev);
 
 	float scale = volume;
-/*
-	if ((r->mode == MODE_USB || r->mode == MODE_LSB || r->mode == MODE_2TONE) 
-		&& tx_compress > 10)
-		tgc(r);
-	*/
 	for (i= 0; i < MAX_BINS/2; i++){
 			double s = creal(r->fft_time[i+(MAX_BINS/2)]);
-			output_tx[i] = s * scale * tx_amp;
+			output_tx[i] = s * scale * tx_amp * alc_level;
 	}
+//	printf("min %g, max %g\n", min, max);
 
+	read_power();
 	sdr_modulation_update(output_tx, MAX_BINS/2, tx_amp);	
 }
 
@@ -906,25 +912,6 @@ void setup_oscillators(){
   si5351_reset();
 }
 
-struct power_settings {
-	int f_start;
-	int f_stop;
-	int	max_watts;
-	double scale;
-};
-
-
-struct power_settings band_power[] ={
-	{ 3500000,  4000000, 40, 0.0025},
-//	{ 7000000,  7300000, 40, 0.006},
-	{ 7000000,  7300000, 40, 0.02},
-	{10000000, 10200000, 30, 0.008},
-	{14000000, 14300000, 30, 0.022},
-	{18000000, 18200000, 25, 0.03},
-	{21000000, 21450000, 20, 0.05},
-	{24800000, 25000000, 10, 0.1},
-	{28000000, 29700000,  10, 0.1}  
-};
 
 static int hw_init_index = 0;
 static int hw_settings_handler(void* user, const char* section, 
@@ -972,15 +959,110 @@ void set_tx_power_levels(){
 			tx_amp = (1.0 * tx_drive * band_power[i].scale);  
 		}	
 	}
-	//printf("tx_gain_compensation is set to %g for %d watts\n", tx_amp, tx_drive);
+//	printf("tx_amp is set to %g for %d drive\n", tx_amp, tx_drive);
 	//we keep the audio card output 'volume' constant'
 	sound_mixer(audio_card, "Master", 95);
 	sound_mixer(audio_card, "Capture", tx_gain);
+	alc_level = 1.0;
 }
+
+/* calibrate power on all bands */
+
+void calibrate_band_power(struct power_settings *b){
+	
+	set_rx1(b->f_start + 35000);
+	printf("*calibrating for %d\n", freq_hdr);
+	tx_list->mode = MODE_CALIBRATE;
+	tx_drive = 100;
+
+	int i, j;
+
+//	double scale_delta = b->scale / 25;
+	double scaling_factor = 0.0001;
+	b->scale = scaling_factor;
+ 	set_tx_power_levels();
+	delay(50);
+
+	tr_switch(1);
+	delay(100);
+
+	for (i = 0; i < 200 && b->scale < 0.015; i++){
+		scaling_factor *= 1.1;
+		b->scale = scaling_factor;
+ 		set_tx_power_levels();
+		delay(50); //let the new power levels take hold		
+
+		int avg = 0;
+		//take many readings to get a peak
+		for (j = 0; j < 10; j++){
+			delay(20);
+			avg += fwdpower /10; //fwdpower in 1/10th of a watt
+//			printf("  avg %d, fwd %d scale %g\n", avg, fwdpower, b->scale);
+		}
+		avg /= 10;
+		printf("*%d, f %d : avg %d, max = %d\n", i, b->f_start, avg, b->max_watts);
+		if (avg >= b->max_watts)
+				break;
+	}
+	tr_switch(0);
+	printf("*tx scale for %d is set to %g\n", b->f_start, b->scale);
+	delay(100);	
+}
+
+static void save_hw_settings(){
+	static int last_save_at = 0;
+	char file_path[200];	//dangerous, find the MAX_PATH and replace 200 with it
+
+	char *path = getenv("HOME");
+	strcpy(file_path, path);
+	strcat(file_path, "/sbitx/data/hw_settings.ini");
+
+	FILE *f = fopen(file_path, "w");
+	if (!f){
+		printf("Unable to save %s : %s\n", file_path, strerror(errno));
+		return;
+	}
+
+	fprintf(f, "bfo_freq=%d\n\n", bfo_freq);
+	//now save the band stack
+	for (int i = 0; i < sizeof(band_power)/sizeof(struct power_settings); i++){
+		fprintf(f, "[tx_band]\nf_start=%d\nf_stop=%d\nscale=%g\n\n", 
+			band_power[i].f_start, band_power[i].f_stop, band_power[i].scale);
+	}
+
+	fclose(f);
+}
+
+pthread_t calibration_thread;
+
+void *calibration_thread_function(void *server){
+
+	int old_freq = freq_hdr;
+	int old_mode = tx_list->mode;
+	int	old_tx_drive = tx_drive;
+
+	in_calibration = 1;
+	for (int i = 0; i < sizeof(band_power)/sizeof(struct power_settings); i++){
+		calibrate_band_power(band_power + i);
+	}
+	in_calibration = 0;
+
+	set_rx1(old_freq);
+	tx_list->mode = old_mode;
+	tx_drive = old_tx_drive;
+	save_hw_settings();
+	printf("*Finished band power calibrations\n");
+}
+
+void tx_cal(){
+	printf("*Starting tx calibration, with dummy load connected\n");
+ 	pthread_create( &calibration_thread, NULL, calibration_thread_function, 
+		(void*)NULL);
+}
+
 
 void tr_switch(int tx_on){
 		if (tx_on){
-			in_tx = 1;
 			//mute it all and hang on for a millisecond
 			sound_mixer(audio_card, "Master", 0);
 			sound_mixer(audio_card, "Capture", 0);
@@ -988,21 +1070,21 @@ void tr_switch(int tx_on){
 
 			//now switch of the signal back
 			//now ramp up after 5 msecs
+			delay(2);
 			digitalWrite(TX_LINE, HIGH);
 			mute_count = 20;
       fft_reset_m_bins();
 			//give time for the reed relay to switch
       delay(2);
 			set_tx_power_levels();
+			in_tx = 1;
 			//finally ramp up the power 
 			if (tr_relay){
 				set_lpf_40mhz(freq_hdr);
 				delay(10); //debounce the lpf relays
 			}
 			digitalWrite(TX_POWER, HIGH);
-			//strcpy(response, "ok");
 			spectrum_reset();
-		//	rx_tx_ramp = 1;
 		}
 		else {
 			in_tx = 0;
@@ -1036,6 +1118,7 @@ void tr_switch(int tx_on){
 		}
 }
 
+
 /* 
 This is the one-time initialization code 
 */
@@ -1068,7 +1151,7 @@ void setup(){
 	add_tx(7000000, MODE_LSB, -3000, -300);
 	rx_list->tuned_bin = 512;
   tx_list->tuned_bin = 512;
-	tx_init(7000000, MODE_LSB, -3000, -300);
+	tx_init(7000000, MODE_LSB, -3000, -150);
 
 
 	setup_audio_codec();
@@ -1081,9 +1164,6 @@ void setup(){
 
 	delay(2000);	
 
-	//calibration_start();
-	//while(calibration != 0)
-	//	delay(10);
 }
 
 void sdr_request(char *request, char *response){
@@ -1209,6 +1289,10 @@ void sdr_request(char *request, char *response){
 		if(in_tx)
 			set_tx_power_levels();	
 	}
+	else if (!strcmp(cmd, "bridge")){
+    bridge_compensation = atoi(value);
+		printf("bridge compesation = %d\n", bridge_compensation);
+	}
 	else if(!strcmp(cmd, "r1:gain")){
 		rx_gain = atoi(value);
 		if(!in_tx)
@@ -1248,6 +1332,8 @@ void sdr_request(char *request, char *response){
     else if (!strcmp(value, "LINE"))
       tx_use_line = 1;
   }
+	else if (!strcmp(cmd, "txcal"))
+		tx_cal();
 	else if (!strcmp(cmd, "tx_compress"))
 		tx_compress = atoi(value); 
   /* else
