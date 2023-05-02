@@ -555,7 +555,7 @@ struct field main_controls[] = {
     "", 0,10000,1},
   { "#vswr", NULL, 1000, -1000, 50, 50, "REF", 40, "300", FIELD_NUMBER, FONT_FIELD_VALUE,
     "", 0,10000, 1},
-  { "bridge", NULL, 1000, -1000, 50, 50, "BRIDGE", 40, "60", FIELD_NUMBER, FONT_FIELD_VALUE,
+  { "bridge", NULL, 1000, -1000, 50, 50, "BRIDGE", 40, "100", FIELD_NUMBER, FONT_FIELD_VALUE,
     "", 10,100, 1},
 
 	//FT8 should be 4000 Hz
@@ -3465,6 +3465,10 @@ gboolean ui_tick(gpointer gook){
 	}
 
 
+	if (ticks % 20 == 0){
+  	modem_poll(mode_id(get_field("r1:mode")->value));
+	}
+
 	if (ticks == 100){
 
 		char response[6], cmd[10];
@@ -3533,7 +3537,6 @@ gboolean ui_tick(gpointer gook){
 
 		ticks = 0;
   }
-  modem_poll(mode_id(get_field("r1:mode")->value));
 	//update_field(get_field("#text_in")); //modem might have extracted some text
 
   hamlib_slice();
@@ -4359,7 +4362,7 @@ int main( int argc, char* argv[] ) {
 	remote_start();
 
 	printf("Reading rtc...");
-	//rtc_read();
+	rtc_read();
 	printf("done!\n");
 
 	open_url("http://127.0.0.1:8080");
