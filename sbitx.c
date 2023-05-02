@@ -73,7 +73,7 @@ static double tx_amp = 0.0;
 static double alc_level = 1.0;
 static int tr_relay = 0;
 static int rx_pitch = 700; //used only to offset the lo for CW,CWR
-static int bridge_compensation = 60;
+static int bridge_compensation = 100;
 static double voice_clip_level = 0.022;
 static int in_calibration = 1; // this turns off alc, clipping et al
 

@@ -158,7 +158,6 @@
 					<p>Released under General Public Licens v3.0.<br/>
 					(c) Ashhar Farhan, 2023
 					</p>
-					<a href="#" onclick="location.reload();">Reload</a>
 				</div>
   		</div><!-- end of login -->
 			<div id="extra-controls">
@@ -2194,9 +2193,10 @@ function response_handler(response){
 			switch_to_tx();
 		else if (response.substring(0,2) == "RX" && in_tx == true)
 			switch_to_rx();
-		
+	
 		spectrum_update(response);
-		waterfall_update(response);
+		if (in_tx == false)
+			waterfall_update(response);
 		return;
 	}
 

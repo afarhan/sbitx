@@ -555,7 +555,7 @@ struct field main_controls[] = {
     "", 0,10000,1},
   { "#vswr", NULL, 1000, -1000, 50, 50, "REF", 40, "300", FIELD_NUMBER, FONT_FIELD_VALUE,
     "", 0,10000, 1},
-  { "bridge", NULL, 1000, -1000, 50, 50, "BRIDGE", 40, "60", FIELD_NUMBER, FONT_FIELD_VALUE,
+  { "bridge", NULL, 1000, -1000, 50, 50, "BRIDGE", 40, "100", FIELD_NUMBER, FONT_FIELD_VALUE,
     "", 10,100, 1},
 
 	//FT8 should be 4000 Hz
@@ -1290,7 +1290,7 @@ void sdr_modulation_update(int32_t *samples, int count, double scale_up){
 	double min=0, max=0;
 
 	for (int i = 0; i < count; i++){
-		if (i % 48 == 0){
+		if (i % 48 == 0 && i > 0){
 			if (mod_display_index >= MOD_MAX)
 				mod_display_index = 0;
 			mod_display[mod_display_index++] = (min / 40000000.0) / scale_up;
@@ -3374,30 +3374,40 @@ int  web_get_console(char *buff, int max){
 
 void web_get_spectrum(char *buff){
 
-	int n_bins = (int)((1.0 * spectrum_span) / 46.875);
-	//the center frequency is at the center of the lower sideband,
-	//i.e, three-fourth way up the bins.
-	int starting_bin = (3 *MAX_BINS)/4 - n_bins/2;
-	int ending_bin = starting_bin + n_bins; 
+  int n_bins = (int)((1.0 * spectrum_span) / 46.875);
+  //the center frequency is at the center of the lower sideband,
+  //i.e, three-fourth way up the bins.
+  int starting_bin = (3 *MAX_BINS)/4 - n_bins/2;
+  int ending_bin = starting_bin + n_bins;
 
-	int j = 0;
-	if (in_tx)
-		strcpy(buff, "TX ");
-	else
-		strcpy(buff, "RX ");
-	j += 3;//move the pointer forward
-	for (int i = starting_bin; i <= ending_bin; i++){
-		int y = spectrum_plot[i] + waterfall_offset;
-		if (y > 96)
-			buff[j++] = 127;
-		else if(y > 0 && y < 96)
-			buff[j++] = y + 32;
-		else
-			buff[j++] = ' ';
-	}
+  int j = 3;
+  if (in_tx){
+    strcpy(buff, "TX ");
+    for (int i = 0; i < MOD_MAX; i++){
+      int y = (2 * mod_display[i]) + 32;
+      if (y > 95)
+        buff[j++] = 127;
+      else if(y > 0 && y <= 95)
+        buff[j++] = y + 32;
+      else
+        buff[j++] = ' ';
+    }
+  }
+  else{
+    strcpy(buff, "RX ");
+    for (int i = starting_bin; i <= ending_bin; i++){
+      int y = spectrum_plot[i] + waterfall_offset;
+      if (y > 95)
+        buff[j++] = 127;
+      else if(y > 0 && y <= 95)
+        buff[j++] = y + 48;
+      else
+        buff[j++] = ' ';
+    }
+  }
 
-	buff[j++] = 0;
-	return;
+  buff[j++] = 0;
+  return;
 }
 
 gboolean ui_tick(gpointer gook){
@@ -3461,6 +3471,10 @@ gboolean ui_tick(gpointer gook){
     //write_console(FONT_LOG, message);
 	}
 
+
+	if (ticks % 20 == 0){
+  	modem_poll(mode_id(get_field("r1:mode")->value));
+	}
 
 	if (ticks == 100){
 
@@ -3530,7 +3544,6 @@ gboolean ui_tick(gpointer gook){
 
 		ticks = 0;
   }
-  modem_poll(mode_id(get_field("r1:mode")->value));
 	//update_field(get_field("#text_in")); //modem might have extracted some text
 
   hamlib_slice();
@@ -4356,7 +4369,7 @@ int main( int argc, char* argv[] ) {
 	remote_start();
 
 	printf("Reading rtc...");
-	//rtc_read();
+	rtc_read();
 	printf("done!\n");
 
 	open_url("http://127.0.0.1:8080");
