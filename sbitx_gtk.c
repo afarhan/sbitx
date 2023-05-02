@@ -3390,9 +3390,9 @@ void web_get_spectrum(char *buff){
 		strcpy(buff, "RX ");
 		for (int i = starting_bin; i <= ending_bin; i++){
 			int y = spectrum_plot[i] + waterfall_offset;
-			if (y > 96)
+			if (y > 95)
 				buff[j++] = 127;
-			else if(y > 0 && y < 96)
+			else if(y > 0 && y <= 95)
 				buff[j++] = y + 32;
 			else
 				buff[j++] = ' ';
