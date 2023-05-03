@@ -3385,7 +3385,7 @@ void web_get_spectrum(char *buff){
     strcpy(buff, "TX ");
     for (int i = 0; i < MOD_MAX; i++){
       int y = (2 * mod_display[i]) + 32;
-      if (y > 95)
+      if (y > 127)
         buff[j++] = 127;
       else if(y > 0 && y <= 95)
         buff[j++] = y + 32;
@@ -3397,10 +3397,10 @@ void web_get_spectrum(char *buff){
     strcpy(buff, "RX ");
     for (int i = starting_bin; i <= ending_bin; i++){
       int y = spectrum_plot[i] + waterfall_offset;
-      if (y > 95)
+      if (y > 96)
         buff[j++] = 127;
-      else if(y > 0 && y <= 95)
-        buff[j++] = y + 48;
+      else if(y >= 0 )
+        buff[j++] = y + 32;
       else
         buff[j++] = ' ';
     }
