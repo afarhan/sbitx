@@ -30,6 +30,7 @@ extern int display_freq;
 #define FONT_FLDIGI_RX 11
 #define FONT_FLDIGI_TX 12
 #define FONT_TELNET 13
+#define FONT_FT8_QUEUED 14
 
 void write_console(int style, char *text);
 int macro_load(char *filename, char *output);

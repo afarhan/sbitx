@@ -154,6 +154,7 @@ struct font_style font_table[] = {
 	{FONT_FLDIGI_RX, 0, 1, 0, "Mono", 12, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
 	{FONT_FLDIGI_TX, 1, 0.6, 0, "Mono", 12, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
 	{FONT_TELNET, 0, 1, 0, "Mono", 12, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
+	{FONT_FT8_QUEUED, 1, 0.6, 0, "Mono", 12, CAIRO_FONT_WEIGHT_NORMAL, CAIRO_FONT_SLANT_NORMAL},
 };
 
 struct encoder enc_a, enc_b;
@@ -572,11 +573,11 @@ struct field main_controls[] = {
 
 	//FT8 controls
 	{"#ft8_auto", NULL, 1000, -1000, 50, 50, "FT8_AUTO", 40, "ON", FIELD_TOGGLE, FONT_FIELD_VALUE, 
-		"ON/OFF/", 0,0,0},
+		"ON/OFF", 0,0,0},
 	{"#ft8_tx1st", NULL, 1000, -1000, 50, 50, "FT8_TX1ST", 40, "ON", FIELD_TOGGLE, FONT_FIELD_VALUE, 
-		"ON/OFF/", 0,0,0},
+		"ON/OFF", 0,0,0},
   { "#ft8_repeat", NULL, 1000, -1000, 50, 50, "FT8_REPEAT", 40, "5", FIELD_NUMBER, FONT_FIELD_VALUE,
-    "", 0, 10, 1},
+    "", 1, 10, 1},
 	
 
 	{"#passkey", NULL, 1000, -1000, 400, 149, "PASSKEY", 70, "123", FIELD_TEXT, FONT_SMALL, 
@@ -872,6 +873,9 @@ void  web_write(int style, char *data){
 			break;
 		case FONT_FT8_TX:
 			strcpy(tag, "WSJTX-TX");
+			break;
+		case FONT_FT8_QUEUED:
+			strcpy(tag, "WSJTX-Q");
 			break;
 		case FONT_FLDIGI_TX:
 			strcpy(tag, "FLDIGI-TX");
@@ -4299,7 +4303,7 @@ int main( int argc, char* argv[] ) {
 	puts(VER_STR);
 	active_layout = main_controls;
 
-	ensure_single_instance();
+//	ensure_single_instance();
 
 	//unlink any pending ft8 transmission
 	unlink("/home/pi/sbitx/ft8tx_float.raw");
