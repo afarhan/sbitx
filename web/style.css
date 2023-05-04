@@ -644,12 +644,12 @@ select, select option, input {
 
 .wsjtx-new-continent {color: #ab263a;}
 .wsjtx-new-continent-on-band {color: #9a5a64;}
-.wsjtx-cq-in-message {background-color: #5b9e5a; color:black;}
+.wsjtx-cq-in-message {color: #5b9e5a;background-color: #444;}
 .wsjtx-transmit-message {color: orange;}
 .wsjtx-message-for-me {color: orange;}
 .wsjtx-message-queued {color: blue;}
-.wsjtx-mycallsign{background-color: yellow; color:black;}
-.wsjtx-selected-message {background-color: #67b3db; color:black;} 
+.wsjtx-mycallsign{background-color: #222; color:yellow;}
+.wsjtx-selected-message {background-color: #222; color:yellow;} 
 
 .sbitx-list-container {
 	display: inline-block;
