@@ -939,7 +939,10 @@ static void read_hw_ini(){
 	strcpy(directory, path);
 	strcat(directory, "/sbitx/data/hw_settings.ini");
   if (ini_parse(directory, hw_settings_handler, NULL)<0){
-    printf("Unable to load ~/sbitx/data/hw_settings.ini\n");
+    printf("Unable to load ~/sbitx/data/hw_settings.ini\nLoading default_hw_settings.ini instead\n");
+		strcpy(directory, path);
+		strcat(directory, "/sbitx/data/default_hw_settings.ini");
+  	ini_parse(directory, hw_settings_handler, NULL);
   }
 }
 

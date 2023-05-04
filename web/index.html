@@ -1362,6 +1362,9 @@ function switch_to_rx(){
 
 /* wsjtx functionality */
 
+var ft8_tx_count = 0;
+var ft8_tx_on_even = true;
+var ft8_tx_message = "";
 
 function FT8_stylize_message(text){
 	//tokenize the message
@@ -1428,9 +1431,26 @@ function FT8_process_message(text, start_call=false){
 	var confidence_score = token_list[1];
 	var signal_strength = token_list[2];
 	var rx_frequency = token_list[3];
-	var contact_callsign = token_list[5]; 
-	var sender_callsign = token_list[6]; 
-	var message = token_list[7];
+	var contact_callsign = token_list[5];
+	var sender_callsign = "";
+	var messsage = "";
+
+	if (token_list[5] == 'CQ'){
+		if (token_list.length == 9){
+			sender_callsign = token_list[7];
+			message = token_list[8];
+		}
+		else {
+			sender_callsign = token_list[6];
+			message = token_list[7];
+		}
+		contact_callsign == 'CQ';
+	}
+	else{ 
+		contact_callsign = token_list[5];
+	 	sender_callsign = token_list[6]; 
+		message = token_list[7];
+	}
 	var mycallsign = $("#MYCALLSIGN").val().toUpperCase();
 	var mygrid = $("#MYGRID").val().substring(0,4).toUpperCase();
 
@@ -1544,15 +1564,14 @@ function FT8_message_chosen(event){
 	var confidence_score = token_list[1];
 	var signal_strength = token_list[2];
 	var rx_frequency = token_list[3];
-	var contact_callsign = token_list[5]; 
-	var sender_callsign = token_list[6]; 
-	var message = token_list[7];
 	var mycallsign = $("#MYCALLSIGN").val().toUpperCase();
-	var mygrid = $("#MYGRID").val().substring(0,4).toUpperCase();
 
-	//this maybe you resending a lost mesage
-	if (sender_callsign == mycallsign){
-		FT8_transmit(contact_callsign + "  " + sender_callsign + " " + message);
+	var contact_callsign = "";
+	var sender_callsign = ""
+	//a message that I sent out, retransmit this
+	if (token_list[6] == mycallsign){ 
+		contact_callsign = token_list[5];
+		FT8_transmit(message_text);
 		return;
 	}
 
