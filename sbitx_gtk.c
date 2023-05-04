@@ -26,6 +26,10 @@ The initial sync between the gui values, the core radio values, settings, et al 
 #include <arpa/inet.h>
 #include <errno.h>
 #include <cairo.h>
+#include <sys/file.h>
+#include <errno.h>
+#include <sys/file.h>
+#include <errno.h>
 #include <wiringPi.h>
 #include <wiringSerial.h>
 #include "sdr.h"
@@ -2172,9 +2176,12 @@ int do_status(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 }
 
 void execute_app(char *app){
+	char buff[1000];
+
+	sprintf(buff, "%s 0> /dev/null", app); 
 	int pid = fork();
 	if (!pid){
-		system(app);
+		system(buff);
 		exit(0);	
 	}
 }
@@ -2512,7 +2519,7 @@ void open_url(char *url){
 
 	sprintf(temp_line, "chromium-browser --log-leve=3 "
 	"--enable-features=OverlayScrollbar %s"
-	"  &>/dev/null &", url);
+	"  >/dev/null 2> /dev/null &", url);
 	execute_app(temp_line);
 }
 
@@ -4275,11 +4282,24 @@ void cmd_exec(char *cmd){
 	save_user_settings(0);
 }
 
+// From https://stackoverflow.com/questions/5339200/how-to-create-a-single-instance-application-in-c-or-c
+void ensure_single_instance(){
+	int pid_file = open("/tmp/sbitx.pid", O_CREAT | O_RDWR, 0666);
+	int rc = flock(pid_file, LOCK_EX | LOCK_NB);
+	if(rc) {
+    if(EWOULDBLOCK == errno){
+			printf("Another instance of sbitx is already running\n");
+			exit(0);
+		}	
+	}
+}
 
 int main( int argc, char* argv[] ) {
 
 	puts(VER_STR);
 	active_layout = main_controls;
+
+	ensure_single_instance();
 
 	//unlink any pending ft8 transmission
 	unlink("/home/pi/sbitx/ft8tx_float.raw");
