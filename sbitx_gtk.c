@@ -3381,33 +3381,40 @@ int  web_get_console(char *buff, int max){
 
 void web_get_spectrum(char *buff){
 
-	int n_bins = (int)((1.0 * spectrum_span) / 46.875);
-	//the center frequency is at the center of the lower sideband,
-	//i.e, three-fourth way up the bins.
-	int starting_bin = (3 *MAX_BINS)/4 - n_bins/2;
-	int ending_bin = starting_bin + n_bins; 
+  int n_bins = (int)((1.0 * spectrum_span) / 46.875);
+  //the center frequency is at the center of the lower sideband,
+  //i.e, three-fourth way up the bins.
+  int starting_bin = (3 *MAX_BINS)/4 - n_bins/2;
+  int ending_bin = starting_bin + n_bins;
 
-	int j = 3;
-	if (in_tx){
-		strcpy(buff, "TX ");
-		for (int i = 0; i < MOD_MAX; i++)
-			buff[j++] = (2 * mod_display[i]) + 64;
-	}
-	else{
-		strcpy(buff, "RX ");
-		for (int i = starting_bin; i <= ending_bin; i++){
-			int y = spectrum_plot[i] + waterfall_offset;
-			if (y > 95)
-				buff[j++] = 127;
-			else if(y > 0 && y <= 95)
-				buff[j++] = y + 32;
-			else
-				buff[j++] = ' ';
-		}
-	}
+  int j = 3;
+  if (in_tx){
+    strcpy(buff, "TX ");
+    for (int i = 0; i < MOD_MAX; i++){
+      int y = (2 * mod_display[i]) + 32;
+      if (y > 127)
+        buff[j++] = 127;
+      else if(y > 0 && y <= 95)
+        buff[j++] = y + 32;
+      else
+        buff[j++] = ' ';
+    }
+  }
+  else{
+    strcpy(buff, "RX ");
+    for (int i = starting_bin; i <= ending_bin; i++){
+      int y = spectrum_plot[i] + waterfall_offset;
+      if (y > 96)
+        buff[j++] = 127;
+      else if(y >= 0 )
+        buff[j++] = y + 32;
+      else
+        buff[j++] = ' ';
+    }
+  }
 
-	buff[j++] = 0;
-	return;
+  buff[j++] = 0;
+  return;
 }
 
 gboolean ui_tick(gpointer gook){
