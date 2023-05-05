@@ -45,7 +45,8 @@
 		<input type="hidden" id="POWER" value="0"/>
 		<input type="hidden" id="REF" value="1"/>
 		<input type="hidden" id="MACRO" value =""/>
-		<input type="hidden" id="FT8_AUTO" value ="ON"/>
+		<input type="hidden" id="FT8_AUTO" value ="OFF" class="sbitx-update-toggle"/>
+		<input type="hidden" id="FT8_TX1ST" value ="OFF" class="sbitx-update-toggle"/>
 		<input type="hidden" id="STATUS" value="---" />
 		<input type="hidden" id="SPLIT"  class="sbitx-update-toggle" value="OFF" /> 
 		<input type="hidden" id="RIT" class="sbitx-update-toggle" value="OFF" /> 
@@ -271,7 +272,7 @@
 						<option value="CQ VOTA">CQ VOTA</option>
 					</select>
 					| Repeat:
-					<select class="sbitx-selection" id="ft8_repeat">
+					<select class="sbitx-selection" id="FT8_REPEAT">
 						<option value="1">No</option>
 						<option value="2">2</option>
 						<option value="3">3</option>
@@ -284,7 +285,7 @@
 						<option value="10">10</option>
 					</select>
 					<input type="range" class="sbitx-slider" id="FT8_repoeat" max="10" min="" step="1" value="6" /> |
-					<input type="checkbox" class="sbitx-toggle" id="ft8-tx-1st"> Tx even/1st
+					<input type="checkbox" class="sbitx-toggle" id="toggle_FT8_TX1ST"> Tx even/1st
 			</div>
 		</div>
 <!- cw pane -->
@@ -1366,7 +1367,7 @@ var ft8_tx_count = 0;
 var ft8_tx_on_even = true;
 var ft8_tx_message = "";
 
-function FT8_stylize_message(text){
+function FT8_stylize_message(text, style){
 	//tokenize the message
 	var token_list = text.match(/\S+/g);
 	if (token_list.length < 8 || token_list[4] != '~' || token_list.length > 9){
@@ -1384,6 +1385,8 @@ function FT8_stylize_message(text){
 	var mycallsign = $("#MYCALLSIGN").val().toUpperCase();
 	var mygrid = $("#MYGRID").val().substring(0,4).toUpperCase();
 
+	if(style == 'Q')
+		return "sbitx-list-item wsjtx-message-queued";
 	if (contact_callsign == mycallsign)
 		return "sbitx-list-item wsjtx-message-for-me";
 	else if (sender_callsign == mycallsign)
@@ -1394,7 +1397,7 @@ function FT8_stylize_message(text){
 		return "sbitx-list-item";
 }
 
-function FT8_list_append(list_id, text){
+function FT8_list_append(list_id, text, style){
 
 	var label_position = text.search("~");
 	var label = text.substring(0,label_position);
@@ -1404,7 +1407,7 @@ function FT8_list_append(list_id, text){
 	var item = document.createElement("li");
 	item.innerHTML = '<span class="ft8-label">' + label 
 		+ '</span><span class="ft8-message">' + message + '</span>';
-	item.className =  FT8_stylize_message(text);
+	item.className =  FT8_stylize_message(text, style);
 	item.id = text;
 	item.addEventListener("click", FT8_message_chosen);
 	el(list_id).children[0].appendChild(item);
@@ -1434,6 +1437,18 @@ function FT8_process_message(text, start_call=false){
 	var contact_callsign = token_list[5];
 	var sender_callsign = "";
 	var messsage = "";
+	var message_slot_1st = true;
+
+	//what we receive on 0 or 30th was actually started on 45th or 15th
+	//so the time stamp of last digit being zero is actually an odd slot
+	//we have to respond on the even slot
+	if (isNaN(parseInt(token_list[0])) == false){
+		if (parseInt(token_list[0]) % 1 == 1)
+			message_slot_1st = true;
+		else
+			message_slot_1st = false;
+	}
+		
 
 	if (token_list[5] == 'CQ'){
 		if (token_list.length == 9){
@@ -1456,7 +1471,7 @@ function FT8_process_message(text, start_call=false){
 
 	//there are six kinds of messages we can receive
 
-	//First three are for S & P
+	//First four are for S & P
 	//1. Replying to a CQ (new call)
 	if (start_call == true && contact_callsign == "CQ"
 		&& sender_callsign != mycallsign
@@ -1466,7 +1481,14 @@ function FT8_process_message(text, start_call=false){
 		$("#logger-rst-sent").val(signal_strength);
 		$("#logger-exchange-received").val(message); 
 		$("#logger-exchange-sent").val(mygrid);
+
 		//transmit a call to the CQer
+		//send in the alternate slot
+		if (message_slot_1st == true)
+			websocket_send("FT8_TX1ST OFF");
+		else
+			websocket_send("FT8_TX1ST ON");
+			
 		FT8_transmit(sender_callsign + " " + mycallsign + ' ' + mygrid);
 	}
 	else if (contact_callsign == "CQ"){ //strip off other CQs on my all
@@ -1485,7 +1507,12 @@ function FT8_process_message(text, start_call=false){
 		$("#logger-rst-sent").val(signal_strength);
 		$("#logger-exchange-received").val(message); 
 		$("#logger-exchange-sent").val(mygrid);
-
+/*
+		if (message_slot_1st == true)
+			websocket_send("FT8_TX1ST OFF");
+		else
+			websocket_send("FT8_TX1ST ON");
+*/
 		FT8_transmit(sender_callsign + " " + mycallsign + " " + signal_strength);
 	}  
 	//for all the remaining messages, the contact's callsign, grid and signal report
@@ -1496,6 +1523,10 @@ function FT8_process_message(text, start_call=false){
 	//2. the Runner contact has responded to us with our numeric signal report
 	else if (contact_callsign == mycallsign && message != '73' && !isNaN(parseInt(message))){
 		$("#logger-rst-received").val(message);
+		if (message_slot_1st == true)
+			websocket_send("FT8_TX1ST OFF");
+		else
+			websocket_send("FT8_TX1ST ON");
 		FT8_transmit(sender_callsign + " " + mycallsign + " R" + signal_strength);
 	}
 	//3. now, the runner has gotten their report and say byebye
@@ -1504,9 +1535,14 @@ function FT8_process_message(text, start_call=false){
 			&& $("#logger-exchange-received").val().length == 4){
 
 		log("qso to be logged");
+		if (message_slot_1st == true)
+			websocket_send("FT8_TX1ST OFF");
+		else
+			websocket_send("FT8_TX1ST ON");
 		FT8_transmit(sender_callsign + " " + mycallsign + " 73");
 		logger_enter_qso();
 		logger_wipe();
+		logger_abort();
 	}		
 
 	//We are running and someone called	
@@ -1524,7 +1560,7 @@ function FT8_process_message(text, start_call=false){
 			$("#logger-rst-received").val(parseInt(message.substring(1)));
 
 		FT8_transmit(sender_callsign + " " + mycallsign + " RRR");
-	} 
+	}
 	//the station has said 73, nothing more to be done now
 	else if (message == "73"  
 		&& $("#logger-rst-received").val().length > 1  
@@ -1532,15 +1568,32 @@ function FT8_process_message(text, start_call=false){
 		//log and wipe the call
 		logger_enter_qso();
 		logger_wipe();
+		logger_abort();
+	}
+	// if someone has called us back with grid location, we can start a call with them
+	else if (contact_callsign == mycallsign && message.length == 4 && message.charCodeAt(0) > 64
+		&& (el("FT8_AUTO").value == "ON" || start_call == true)){
+		$("#FT8-rx-freq").val(rx_frequency);
+		$("#logger-callsign").val(sender_callsign);
+		$("#logger-rst-sent").val(signal_strength);
+		$("#logger-exchange-sent").val(mygrid);
+		/*
+		if (message_slot_1st == true)
+			websocket_send("FT8_TX1ST OFF");
+		else
+			websocket_send("FT8_TX1ST ON");
+		*/	
+		FT8_transmit(sender_callsign + " " + mycallsign + " " + signal_strength);
 	}
 }
 
 function FT8_cq(event){
 	logger_wipe();
-	FT8_transmit("CQ " + el("MYCALLSIGN").value.toUpperCase() 
+	logger_abort();
+	var cq_type = el("ft8_cq_kindof").value;
+	FT8_transmit(cq_type + " "  + el("MYCALLSIGN").value.toUpperCase() 
 			+ " " + el("MYGRID").value.substring(0,4).toUpperCase());
 }
-
 
 //you can choose messages that are:
 // 1. reply to your cq
@@ -1577,17 +1630,18 @@ function FT8_message_chosen(event){
 
 	//this is the start of a new call
 	logger_wipe();
+	logger_abort();
 	FT8_list_append("wsjtx-rx", message_text);
 	FT8_process_message(message_text, true);
 }
 
-function FT8_new_message(text){
+function FT8_new_message(text, style){
 	log("ft8:" + text);
 	var words = text.split(' ');
-	FT8_list_append("wsjtx-activity", text) ;
+	FT8_list_append("wsjtx-activity", text, style) ;
 	var mycallsign = $("#MYCALLSIGN").val().toUpperCase();
 	if (words[4] == $("#FT8-rx-freq").val() || text.search(mycallsign) >= 0)
-		FT8_list_append("wsjtx-rx", text);
+		FT8_list_append("wsjtx-rx", text, style);
 	//now we process the message for a response if any
 	FT8_process_message(text, false);
 }
@@ -2084,14 +2138,21 @@ function update_data(text){
 		if (wsjtx)
 			for (var i = 0; i < wsjtx.length; i++)
 				if (wsjtx[i].innerHTML.length > 30)
-					FT8_new_message(wsjtx[i].innerHTML);
+					FT8_new_message(wsjtx[i].innerHTML, "RX");
 
 		//read the QSO specific ones too
 		wsjtx = xml.getElementsByTagName("WSJTX-TX");
 		if (wsjtx)
 			for (var i = 0; i < wsjtx.length; i++)
 				if (wsjtx[i].innerHTML.length > 30)
-					FT8_new_message(wsjtx[i].innerHTML);
+					FT8_new_message(wsjtx[i].innerHTML, "TX");
+
+		//read tx message in the Q 
+		wsjtx = xml.getElementsByTagName("WSJTX-Q");
+		if (wsjtx)
+			for (var i = 0; i < wsjtx.length; i++)
+				if (wsjtx[i].innerHTML.length > 30)
+					FT8_new_message(wsjtx[i].innerHTML, "Q");
 
 		var data = xml.getElementsByTagName("TELNET");
 		if (data && in_tx == false)
@@ -2279,7 +2340,7 @@ function response_handler(response){
 		default:
 			e = el(cmd);
 			if (e){
-				if(cmd != 'STATUS')
+				if(cmd.search("FT8") == '0')
 					log("setting " + cmd + " : " + args);
 				if (e.value != args){
 					e.value = args;

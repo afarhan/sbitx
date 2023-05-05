@@ -110,6 +110,8 @@ int	ft8_do_tx = 0;
 int	ft8_pitch = 0;
 int	ft8_mode = FT8_SEMI;
 pthread_t ft8_thread;
+int ft8_tx1st = 1;
+int ft8_repeat = 5;
 
 int sbitx_ft8_encode(char *message, int32_t freq,  float *signal, bool is_ft4);
 
@@ -132,25 +134,52 @@ void ft8_setmode(int config){
 
 int sbitx_ft8_encode(char *message, int32_t freq,  float *signal, bool is_ft4);
 
-void ft8_tx(char *message, int freq){
-	char cmd[200], buff[1000];
-	FILE	*pf;
-
-	for (int i = 0; i < strlen(message); i++)
-		message[i] = toupper(message[i]);
-
+void ft8_queue_tx(){
+	char buff[1000];
 	//timestamp the packets for display log
 	time_t	rawtime = time_sbitx();
 	struct tm *t = gmtime(&rawtime);
 
-  sprintf(buff, "%02d%02d%02d 99 +00 %04d ~ %s\n", t->tm_hour, t->tm_min, t->tm_sec, get_cw_tx_pitch(), message);
+  sprintf(buff, "%02d%02d%02d 99 +00 %04d ~ %s\n", t->tm_hour, t->tm_min, t->tm_sec, ft8_pitch, ft8_tx_text);
 	write_console(FONT_FT8_TX, buff);
 
-	ft8_pitch = freq;
-
-	ft8_tx_nsamples = sbitx_ft8_encode(message, ft8_pitch, ft8_tx_buff, false); 
-	
+	printf("ft8 encoding : [%s]\n", ft8_tx_text);
+	ft8_tx_nsamples = sbitx_ft8_encode(ft8_tx_text, ft8_pitch, ft8_tx_buff, false); 
 	ft8_tx_buff_index = 0;
+}
+
+void ft8_tx(char *message, int freq){
+	char cmd[200], buff[1000];
+	FILE	*pf;
+	time_t	rawtime = time_sbitx();
+	struct tm *t = gmtime(&rawtime);
+
+	for (int i = 0; i < strlen(message); i++)
+		message[i] = toupper(message[i]);
+	strcpy(ft8_tx_text, message);
+
+	ft8_pitch = freq;
+  sprintf(buff, "%02d%02d%02d 99 +00 %04d ~ %s\n", t->tm_hour, t->tm_min, t->tm_sec, ft8_pitch, ft8_tx_text);
+	write_console(FONT_FT8_QUEUED, buff);
+//	ft8_queue_tx(message, freq);
+
+	//also set the times of transmission
+	char str_tx1st[10], str_repeat[10];
+	get_field_value_by_label("FT8_TX1ST", str_tx1st);
+	get_field_value_by_label("FT8_REPEAT", str_repeat);
+	if (!strcmp(str_tx1st, "ON"))
+		ft8_tx1st = 1;
+	else
+		ft8_tx1st = 0;
+
+	//no repeat for '73'
+	int msg_length = strlen(message);
+	if (msg_length > 3 && !strcmp(message + msg_length - 3, " 73")){
+		printf("Sending a single 73 [%s]\n", message);
+		ft8_repeat = 1;
+	} 
+	else
+		ft8_repeat = atoi(str_repeat);
 }
 
 int sbitx_ft8_decode(float *signal, int num_samples, bool is_ft8);
@@ -204,7 +233,31 @@ void ft8_rx(int32_t *samples, int count){
 
 }
 
+void ft8_poll(int seconds, int tx_is_on){
 
+	if (tx_is_on){
+		//tx off should nto abort repeats, when called from here
+		int ft8_repeat_save = ft8_repeat;
+		if (ft8_tx_nsamples == 0){
+			tx_off();
+			ft8_repeat = ft8_repeat_save;
+		}
+		return;
+	}
+
+	if (seconds != 45 && seconds != 15 && seconds != 0 && seconds != 30)
+		return;	
+
+	if (ft8_repeat > 0){
+		if (((seconds == 45 || seconds == 15) && !ft8_tx1st)
+		|| (seconds == 0 || seconds == 30) && ft8_tx1st){
+			printf("Ft8 transmiting with tx1st:%d at %d seconds\n", ft8_tx1st, seconds);
+			tx_on(TX_SOFT);
+			ft8_queue_tx();
+			ft8_repeat--;
+		}
+	} 
+}
 /*******************************************************
 **********           CW routines                 *******
 ********************************************************/
@@ -907,13 +960,7 @@ void modem_poll(int mode){
 	switch(mode){
 	case MODE_FT8:
 		t = time_sbitx();
-		if ((t % 15) == 0){
-			if(ft8_tx_nsamples > 0 && !tx_is_on){
-				tx_on(TX_SOFT);	
-			}
-			if (tx_is_on && ft8_tx_nsamples == 0)
-				tx_off();
-		}
+		ft8_poll(t % 60, tx_is_on);
 	break;
 	case MODE_CW:
 	case MODE_CWR:	
@@ -984,4 +1031,5 @@ float modem_next_sample(int mode){
 
 void modem_abort(){
 	ft8_tx_nsamples = 0;
+	ft8_repeat = 0;
 }

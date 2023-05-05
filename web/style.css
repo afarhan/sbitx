@@ -647,6 +647,7 @@ select, select option, input {
 .wsjtx-cq-in-message {background-color: #5b9e5a; color:black;}
 .wsjtx-transmit-message {color: orange;}
 .wsjtx-message-for-me {color: orange;}
+.wsjtx-message-queued {color: blue;}
 .wsjtx-mycallsign{background-color: yellow; color:black;}
 .wsjtx-selected-message {background-color: #67b3db; color:black;} 
 
@@ -664,7 +665,7 @@ select, select option, input {
 	font-size: 7pt;
 	display: inline-block;
 	width: 120px;
-	color: #888;
+	color: white;
 }
 
 .ft8-message {
