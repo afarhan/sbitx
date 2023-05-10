@@ -284,7 +284,6 @@
 						<option value="9">9</option>
 						<option value="10">10</option>
 					</select>
-					<input type="range" class="sbitx-slider" id="FT8_repoeat" max="10" min="" step="1" value="6" /> |
 					<input type="checkbox" class="sbitx-toggle" id="toggle_FT8_TX1ST"> Tx even/1st
 			</div>
 		</div>
@@ -1443,10 +1442,12 @@ function FT8_process_message(text, start_call=false){
 	//so the time stamp of last digit being zero is actually an odd slot
 	//we have to respond on the even slot
 	if (isNaN(parseInt(token_list[0])) == false){
-		if (parseInt(token_list[0]) % 1 == 1)
-			message_slot_1st = true;
-		else
+		//if it ended on 45th or 15th, then start the reply 
+		//on 15th of 45th, not the 1st or even (0/30)
+		if (parseInt(token_list[0]) & 1 == 1)
 			message_slot_1st = false;
+		else
+			message_slot_1st = true;
 	}
 		
 
@@ -1485,9 +1486,9 @@ function FT8_process_message(text, start_call=false){
 		//transmit a call to the CQer
 		//send in the alternate slot
 		if (message_slot_1st == true)
-			websocket_send("FT8_TX1ST OFF");
-		else
 			websocket_send("FT8_TX1ST ON");
+		else
+			websocket_send("FT8_TX1ST OFF");
 			
 		FT8_transmit(sender_callsign + " " + mycallsign + ' ' + mygrid);
 	}
