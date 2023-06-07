@@ -38,6 +38,10 @@ FILE *pf_debug = NULL;
 #define LPF_C 10
 #define LPF_D 11
 
+#define SBITX_DE (0)
+#define SBITX_V2 (1)
+
+int sbitx_version = SBITX_V2;
 int fwdpower, vswr;
 float fft_bins[MAX_BINS]; // spectrum ampltiudes  
 int spectrum_plot[MAX_BINS];
@@ -161,10 +165,13 @@ void fft_reset_m_bins(){
 	memset(fft_out, 0, sizeof(fftw_complex) * MAX_BINS);
 	memset(fft_m, 0, sizeof(fftw_complex) * MAX_BINS/2);
 	memset(fft_spectrum, 0, sizeof(fftw_complex) * MAX_BINS);
-//	for (int i= 0; i < MAX_BINS/2; i++){
-//		__real__ fft_m[i]  = 0.0;
-//		__imag__ fft_m[i]  = 0.0;
-//	}
+	memset(tx_list->fft_time, 0, sizeof(fftw_complex) * MAX_BINS);
+	memset(tx_list->fft_freq, 0, sizeof(fftw_complex) * MAX_BINS);
+/*	for (int i= 0; i < MAX_BINS/2; i++){
+		__real__ fft_m[i]  = 0.0;
+		__imag__ fft_m[i]  = 0.0;
+	}
+*/
 }
 
 int mag2db(double mag){
@@ -218,8 +225,8 @@ int remote_audio_output(int16_t *samples){
 	return length;
 }
 
+static int prev_lpf = -1;
 void set_lpf_40mhz(int frequency){
-	static int prev_lpf = -1;
 	int lpf = 0;
 
 	if (frequency < 5500000)
@@ -245,7 +252,6 @@ void set_lpf_40mhz(int frequency){
 
   //printf("################ setting %d high\n", lpf);
   digitalWrite(lpf, HIGH); 
-  //digitalWrite(LPF_A, HIGH); 
 	prev_lpf = lpf;
 }
 
@@ -709,6 +715,8 @@ void read_power(){
 //	printf("alc: %g\n", alc_level);
 }
 
+static int tx_process_restart = 0;
+
 void tx_process(
 	int32_t *input_rx, int32_t *input_mic, 
 	int32_t *output_speaker, int32_t *output_tx, 
@@ -718,6 +726,12 @@ void tx_process(
 	double i_sample, q_sample;
 
 	struct rx *r = tx_list;
+
+	//fix the burst at the start of transmission
+	if (tx_process_restart){
+    fft_reset_m_bins();
+		tx_process_restart = 0;
+	} 
 
 	if (mute_count && (r->mode == MODE_USB || r->mode == MODE_LSB)){
 		memset(input_mic, 0, n_samples * sizeof(int32_t));
@@ -830,6 +844,7 @@ void tx_process(
 	for (i= 0; i < MAX_BINS/2; i++){
 			double s = creal(r->fft_time[i+(MAX_BINS/2)]);
 			output_tx[i] = s * scale * tx_amp * alc_level;
+			//output_tx[i] = 0;
 	}
 //	printf("min %g, max %g\n", min, max);
 
@@ -1063,8 +1078,7 @@ void tx_cal(){
 		(void*)NULL);
 }
 
-
-void tr_switch(int tx_on){
+void tr_switch_de(int tx_on){
 		if (tx_on){
 			//mute it all and hang on for a millisecond
 			sound_mixer(audio_card, "Master", 0);
@@ -1076,7 +1090,7 @@ void tr_switch(int tx_on){
 			delay(2);
 			digitalWrite(TX_LINE, HIGH);
 			mute_count = 20;
-      fft_reset_m_bins();
+			tx_process_restart = 1;
 			//give time for the reed relay to switch
       delay(2);
 			set_tx_power_levels();
@@ -1121,6 +1135,67 @@ void tr_switch(int tx_on){
 		}
 }
 
+//v2 t/r switch uses the lpfs to cut the feedback during t/r transitions
+void tr_switch_v2(int tx_on){
+		if (tx_on){
+
+			//first turn off the LPFs, so PA doesnt connect 
+  		digitalWrite(LPF_A, LOW);
+  		digitalWrite(LPF_B, LOW);
+ 	 		digitalWrite(LPF_C, LOW);
+  		digitalWrite(LPF_D, LOW);
+
+			//mute it all and hang on for a millisecond
+			sound_mixer(audio_card, "Master", 0);
+			sound_mixer(audio_card, "Capture", 0);
+			delay(1);
+
+			//now switch of the signal back
+			//now ramp up after 5 msecs
+			delay(2);
+			mute_count = 20;
+			tx_process_restart = 1;
+			digitalWrite(TX_LINE, HIGH);
+      delay(20);
+			set_tx_power_levels();
+			in_tx = 1;
+			prev_lpf = -1; //force this
+			set_lpf_40mhz(freq_hdr);
+			delay(10);
+			spectrum_reset();
+		}
+		else {
+			in_tx = 0;
+			//mute it all and hang on
+			sound_mixer(audio_card, "Master", 0);
+			sound_mixer(audio_card, "Capture", 0);
+			delay(1);
+      fft_reset_m_bins();
+			mute_count = MUTE_MAX;
+
+  		digitalWrite(LPF_A, LOW);
+  		digitalWrite(LPF_B, LOW);
+ 	 		digitalWrite(LPF_C, LOW);
+  		digitalWrite(LPF_D, LOW);
+			prev_lpf = -1; //force the lpf to be re-energized
+			delay(10);
+			//power down the PA chain to null any gain
+			digitalWrite(TX_LINE, LOW);
+			delay(5); 
+			//audio codec is back on
+			sound_mixer(audio_card, "Master", rx_vol);
+			sound_mixer(audio_card, "Capture", rx_gain);
+			spectrum_reset();
+			//rx_tx_ramp = 10;
+		}
+}
+
+void tr_switch(int tx_on){
+	if (sbitx_version == SBITX_DE)
+		tr_switch_de(tx_on);
+	else
+		tr_switch_v2(tx_on);
+}
 
 /* 
 This is the one-time initialization code 
@@ -1156,6 +1231,12 @@ void setup(){
   tx_list->tuned_bin = 512;
 	tx_init(7000000, MODE_LSB, -3000, -150);
 
+	//detect the version of sbitx
+	uint8_t response[4];
+	if(i2cbb_read_i2c_block_data(0x8, 0, 4, response) == -1)
+		sbitx_version = SBITX_DE;
+	else
+		sbitx_version = SBITX_V2;
 
 	setup_audio_codec();
 	sound_thread_start("plughw:0,0");
@@ -1273,9 +1354,9 @@ void sdr_request(char *request, char *response){
 	}
 	else if (!strcmp(cmd, "tx")){
 		if (!strcmp(value, "on"))
-			tr_switch(1);
+			tr_switch_v2(1);
 		else
-			tr_switch(0);
+			tr_switch_v2(0);
 		strcpy(response, "ok");
 	}
 	else if (!strcmp(cmd, "rx_pitch")){
