@@ -77,6 +77,47 @@ long get_address(char *host)
 	return *((long *)(pent->h_addr));
 }
 
+/*
+static int socket_ntp = -1;
+#define NTP_PACKET_SIZE 48
+
+void init_ntp_client(char *server){
+
+  struct sockaddr_storage serverStorage;
+  socklen_t addr_size;
+	struct sockaddr_in serverAddr;
+	char buff[200], host[100], port[7];
+
+
+	sprintf(buff, "Finding NTP server %s\n", server);
+	write_console(FONT_LOG, buff);
+
+  memset(serverAddr.sin_zero, '\0', sizeof serverAddr.sin_zero);  
+  serverAddr.sin_family = AF_INET;
+  serverAddr.sin_port = htons(123);
+  serverAddr.sin_addr.s_addr = get_address(server); 
+
+	socket_ntp = socket(AF_INET, SOCK_DGRAM, 0);
+}
+
+void query_ntp(char *server){
+	char packet[NTP_PACKET_SIZE];
+	
+	packet[0] = 0b11100011;   // LI, Version, Mode
+	packet[1] = 0;     // Stratum, or type of clock
+	packet[2] = 6;     // Polling Interval
+	packet[3] = 0xEC;  // Peer Clock Precision
+	// 8 bytes of zero for Root Delay & Root Dispersion
+	packet[12]  = 49;
+	packet[13]  = 0x4E;
+	packet[14]  = 49;
+	packet[15]  = 52;
+}
+
+// returns the julian date of utc or -1 
+unsigned long poll_ntp(){
+}
+*/
 void *telnet_thread_function(void *server){
   struct sockaddr_storage serverStorage;
   socklen_t addr_size;
@@ -209,6 +250,7 @@ void telnet_open(char *server){
  	pthread_create( &telnet_thread, NULL, telnet_thread_function, 
 		(void*)telnet_server_name);
 }
+
 
 /*
 int main(int argc, char *argv[]){
