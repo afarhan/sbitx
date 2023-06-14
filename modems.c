@@ -321,12 +321,13 @@ struct morse morse_table[] = {
 
 #define FLOAT_SCALE (1073741824.0)
 
-int cw_period;
+static int cw_key_state = 0;
+static int cw_period;
 static struct vfo cw_tone, cw_env;
-static int keydown_count=0;			//counts down the pause afer a keydown is finished
-static int keyup_count = 0;			//counts down to how long a key is held down
-static float cw_envelope = 1;
-static int cw_tx_until = 0;
+static int keydown_count=0;			//counts down pause afer a keydown is finished
+static int keyup_count = 0;			//counts down how long a key is held down
+static float cw_envelope = 1;		//used to shape the envelope
+static int cw_tx_until = 0;			//delay switching to rx, expect more txing
 static int data_tx_until = 0;
 
 static char *symbol_next = NULL;
@@ -443,7 +444,7 @@ static char cw_get_next_symbol(){
 #define CW_MAX_SYMBOLS 12
 char cw_key_letter[CW_MAX_SYMBOLS];
 
-float cw_get_sample(){
+float cw_get_sample_old(){
 	float sample = 0;
 	static char last_symbol = 0;
 
@@ -474,12 +475,12 @@ float cw_get_sample(){
 				keyup_count = cw_period;
 				last_symbol = '-';
 				break;
-			case '/':
+			case '/': //inter-letter space
 				keydown_count = 0;
 				keyup_count = cw_period * 2; // 1 (passed) + 2 
 				last_symbol = '/';
 				break;
-			case ' ':
+			case ' ': //inter word space
 				keydown_count = 0;
 				keyup_count = cw_period * 2; //3 periods already passed 
 				last_symbol = ' ';
@@ -566,6 +567,49 @@ float cw_get_sample(){
 	if (cw_envelope >  0.01 && cw_tx_until < millis_now + keydown_count/96 + keyup_count/96){
 		cw_tx_until = millis_now + get_cw_delay() + 
 			keydown_count/96 + keyup_count/96;
+	}
+	return sample / 8;
+}
+
+int key_poll2(){
+	return cw_key_state;
+}
+
+float cw_get_sample_new(){
+	float sample = 0;
+
+	// for now, updatw time and cw pitch
+	if (!keydown_count && !keyup_count){
+		millis_now = millis();
+		if (cw_tone.freq_hz != get_pitch())
+			vfo_start(&cw_tone, get_pitch(), 0);
+	}
+
+	if (key_poll2()){
+		keydown_count = 2000; //add a few samples, to debounce 
+		keyup_count = 0;
+	}
+	else {
+		keydown_count = 0;
+		keyup_count = 0;
+	}
+		
+	if (keydown_count  > 0){
+		if(cw_envelope < 0.999)
+			cw_envelope = ((vfo_read(&cw_env)/FLOAT_SCALE) + 1)/2; 
+			keydown_count--;
+	}
+	else { //keydown_count is zero
+		if(cw_envelope > 0.001)
+			cw_envelope = ((vfo_read(&cw_env)/FLOAT_SCALE) + 1)/2; 
+		if (keyup_count > 0)
+			keyup_count--;
+	}
+
+	sample = (vfo_read(&cw_tone)/FLOAT_SCALE) * cw_envelope;
+
+	if (keyup_count > 0 || keydown_count > 0){
+		cw_tx_until = millis_now + get_cw_delay(); 
 	}
 	return sample / 8;
 }
@@ -927,7 +971,6 @@ void modem_init(){
 void modem_poll(int mode){
 	int bytes_available = get_tx_data_length();
 	int tx_is_on = is_in_tx();
-	int key_status;
 	time_t t;
 	char buffer[10000];
 
@@ -964,8 +1007,8 @@ void modem_poll(int mode){
 	break;
 	case MODE_CW:
 	case MODE_CWR:	
-		key_status = key_poll();
-		if (!tx_is_on && (bytes_available || key_status || (symbol_next && *symbol_next)) > 0){
+		cw_key_state = key_poll();
+		if (!tx_is_on && (bytes_available || cw_key_state || (symbol_next && *symbol_next)) > 0){
 			tx_on(TX_SOFT);
 			millis_now = millis();
 			cw_tx_until = get_cw_delay() + millis_now;
@@ -1022,7 +1065,7 @@ float modem_next_sample(int mode){
 		break;
 	case MODE_CW:
 	case MODE_CWR:
-		sample = cw_get_sample();
+		sample = cw_get_sample_new();
 		break;
 	}
 	return sample;
