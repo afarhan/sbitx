@@ -1065,7 +1065,7 @@ float modem_next_sample(int mode){
 		break;
 	case MODE_CW:
 	case MODE_CWR:
-		sample = cw_get_sample_new();
+		sample = cw_get_sample_old();
 		break;
 	}
 	return sample;
