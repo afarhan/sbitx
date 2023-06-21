@@ -218,15 +218,24 @@ int get_pitch();
 void do_cmd(char *cmd);
 time_t time_sbitx();
 
-//cw defines
-#define CW_DASH (1)
-#define CW_DOT (2)
+//cw defines, these are bitfields, hence, powers of 2
+#define CW_IDLE (0)
+#define CW_DASH (1) 
+#define CW_DOT (2) 
+#define CW_DOT_DELAY (4)
+#define CW_DASH_DELAY (8) 
+#define CW_WORD_DELAY (16) 
+#define CW_DOWN (32) 
+
 //straight key, iambic, keyboard
 #define CW_STRAIGHT 0
 #define CW_IAMBIC	1
-#define CW_KBD 2
+#define CW_IAMBICB 2	
+#define CW_KBD 3
+
 
 int key_poll();
+int key_poll2();
 int get_cw_delay();
 int	get_data_delay();
 int get_cw_input_method();

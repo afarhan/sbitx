@@ -541,7 +541,7 @@ struct field main_controls[] = {
 	{"#mygrid", NULL, 1000, -1000, 400, 149, "MYGRID", 70, "NOWHERE", FIELD_TEXT, FONT_SMALL, 
 		"", 4,6,1},
   { "#cwinput", NULL, 1000, -1000, 50, 50, "CW_INPUT", 40, "KEYBOARD", FIELD_SELECTION, FONT_FIELD_VALUE,
-		"KEYBOARD/IAMBIC/STRAIGHT", 0,0,0},
+		"KEYBOARD/IAMBIC/IAMBICB/STRAIGHT", 0,0,0},
   { "#cwdelay", NULL, 1000, -1000, 50, 50, "CW_DELAY", 40, "300", FIELD_NUMBER, FONT_FIELD_VALUE,
     "", 50, 1000, 50},
 	{ "#tx_pitch", NULL, 1000, -1000, 50, 50, "TX_PITCH", 40, "600", FIELD_NUMBER, FONT_FIELD_VALUE, 
@@ -2677,7 +2677,7 @@ void tx_on(int trigger){
 		struct field *freq = get_field("r1:freq");
 		set_operating_freq(atoi(freq->value), response);
 		update_field(get_field("r1:freq"));
-		printf("TX on\n");
+		printf("TX\n");
 	}
 
 	tx_start_time = millis();
@@ -2696,7 +2696,7 @@ void tx_off(){
 		struct field *freq = get_field("r1:freq");
 		set_operating_freq(atoi(freq->value), response);
 		update_field(get_field("r1:freq"));
-		printf("TX off\n");
+		printf("RX\n");
 	}
 	sound_input(0); //it is a low overhead call, might as well be sure
 }
@@ -3115,12 +3115,18 @@ void rtc_sync(){
 }
 
 int key_poll(){
-	int key = 0;
-	
-	if (digitalRead(PTT) == LOW)
-		key |= CW_DASH;
-	if (digitalRead(DASH) == LOW)
-		key |= CW_DOT;
+	int key = CW_IDLE;
+	int input_method = get_cw_input_method();
+
+	if (input_method == CW_IAMBIC || input_method == CW_IAMBICB){	
+		if (digitalRead(PTT) == LOW)
+			key |= CW_DASH;
+		if (digitalRead(DASH) == LOW)
+			key |= CW_DOT;
+	}
+	//straight key
+	else if (digitalRead(PTT) == LOW || digitalRead(DASH) == LOW)
+			key = CW_DOWN;
 
 	//printf("key %d\n", key);
 	return key;
@@ -3245,6 +3251,8 @@ int get_cw_input_method(){
 		return CW_KBD;
 	else if (!strcmp(f->value, "IAMBIC"))
 		return CW_IAMBIC;
+	else if (!strcmp(f->value, "IAMBICB"))
+		return CW_IAMBICB;
 	else
 		return CW_STRAIGHT;
 }
