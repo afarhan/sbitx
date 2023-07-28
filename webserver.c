@@ -141,7 +141,6 @@ static void web_despatcher(struct mg_connection *c, struct mg_ws_message *wm){
 	field = strtok(NULL, "=");
 	value = strtok(NULL, "\n");
 
-
 	if (field == NULL || cookie == NULL){
 		printf("Invalid request on websocket\n");
 		web_respond(c, "quit Invalid request on websocket");

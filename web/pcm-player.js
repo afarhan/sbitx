@@ -2,6 +2,19 @@ function PCMPlayer(option) {
     this.init(option);
 }
 
+PCMPlayer.prototype.createContext = function() {
+    this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    // context needs to be resumed on iOS and Safari (or it will stay in "suspended" state)
+    this.audioCtx.resume();
+    this.audioCtx.onstatechange = () => console.log(this.audioCtx.state);   // if you want to see "Running" state in console and be happy about it
+    
+    this.gainNode = this.audioCtx.createGain();	 //we create a gain node 
+    this.gainNode.gain.value = 1;								 //that has a gain of 1
+    this.gainNode.connect(this.audioCtx.destination);	//it is connected to the output of the audiocontext
+    this.startTime = this.audioCtx.currentTime;	 //suppose to start already
+};
+
 PCMPlayer.prototype.init = function(option) {
     var defaults = {
         encoding: '16bitInt',
@@ -9,13 +22,14 @@ PCMPlayer.prototype.init = function(option) {
         sampleRate: 8000,
         flushingTime: 1000
     };
-    this.option = Object.assign({}, defaults, option);
-    this.samples = new Float32Array();
-    this.flush = this.flush.bind(this);
-    this.interval = setInterval(this.flush, this.option.flushingTime);
-    this.maxValue = this.getMaxValue();
-    this.typedArray = this.getTypedArray();
-    this.createContext();
+		
+    this.option = Object.assign({}, defaults, option); 	//we store the options
+    this.samples = new Float32Array();									//we add an empty array with zero elements
+    this.flush = this.flush.bind(this);									//flush will work with this instance
+    this.interval = setInterval(this.flush, this.option.flushingTime); //flush is called every second
+    this.maxValue = this.getMaxValue();									//max value for each sample 
+    this.typedArray = this.getTypedArray();							//?
+    this.createContext();																//calling createContext
 };
 
 PCMPlayer.prototype.getMaxValue = function () {
@@ -40,30 +54,18 @@ PCMPlayer.prototype.getTypedArray = function () {
     return typedArrays[this.option.encoding] ? typedArrays[this.option.encoding] : typedArrays['16bitInt'];
 };
 
-PCMPlayer.prototype.createContext = function() {
-    this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-
-    // context needs to be resumed on iOS and Safari (or it will stay in "suspended" state)
-    this.audioCtx.resume();
-    this.audioCtx.onstatechange = () => console.log(this.audioCtx.state);   // if you want to see "Running" state in console and be happy about it
-    
-    this.gainNode = this.audioCtx.createGain();
-    this.gainNode.gain.value = 1;
-    this.gainNode.connect(this.audioCtx.destination);
-    this.startTime = this.audioCtx.currentTime;
-};
 
 PCMPlayer.prototype.isTypedArray = function(data) {
     return (data.byteLength && data.buffer && data.buffer.constructor == ArrayBuffer);
 };
 
 PCMPlayer.prototype.feed = function(data) {
-    if (!this.isTypedArray(data)) return;
-    data = this.getFormatedValue(data);
-    var tmp = new Float32Array(this.samples.length + data.length);
-    tmp.set(this.samples, 0);
-    tmp.set(data, this.samples.length);
-    this.samples = tmp;
+    if (!this.isTypedArray(data)) return; //we need a typed array alone
+    data = this.getFormatedValue(data);		//this keeps values within +/- 1 and float
+    var tmp = new Float32Array(this.samples.length + data.length); // we create a new array to include current and previous samples
+    tmp.set(this.samples, 0); //copy over the previous samples
+    tmp.set(data, this.samples.length); //then the current samples
+    this.samples = tmp; //swap the old samples array with the new one
 };
 
 PCMPlayer.prototype.getFormatedValue = function(data) {
@@ -90,9 +92,12 @@ PCMPlayer.prototype.destroy = function() {
     this.audioCtx = null;
 };
 
+//this is called once every second
 PCMPlayer.prototype.flush = function() {
+		//if there are no samples to play, return
     if (!this.samples.length) return;
-    var bufferSource = this.audioCtx.createBufferSource(),
+		
+    var bufferSource = this.audioCtx.createBufferSource(),	// creata buffer
         length = this.samples.length / this.option.channels,
         audioBuffer = this.audioCtx.createBuffer(this.option.channels, length, this.option.sampleRate),
         audioData,
@@ -122,7 +127,8 @@ PCMPlayer.prototype.flush = function() {
     if (this.startTime < this.audioCtx.currentTime) {
         this.startTime = this.audioCtx.currentTime;
     }
-    //console.log('start vs current '+this.startTime+' vs '+this.audioCtx.currentTime+' duration: '+audioBuffer.duration);
+    console.log('start vs current '+this.startTime+' vs '+this.audioCtx.currentTime+' duration: '+audioBuffer.duration);
+		console.log("latency: " + this.audioCtx.baseLatency + ", " + this.audioCtx.outputLatency);
     bufferSource.buffer = audioBuffer;
     bufferSource.connect(this.gainNode);
     bufferSource.start(this.startTime);

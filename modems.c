@@ -90,6 +90,7 @@ int qso_state = QSO_STATE_ZOMBIE;
 
 static int current_mode = -1;
 static unsigned long millis_now = 0;
+static int bytes_available = 0;
 
 /*******************************************************
 **********                  FT8                  *******
@@ -321,12 +322,13 @@ struct morse morse_table[] = {
 
 #define FLOAT_SCALE (1073741824.0)
 
-int cw_period;
+static int cw_key_state = 0;
+static int cw_period;
 static struct vfo cw_tone, cw_env;
-static int keydown_count=0;			//counts down the pause afer a keydown is finished
-static int keyup_count = 0;			//counts down to how long a key is held down
-static float cw_envelope = 1;
-static int cw_tx_until = 0;
+static int keydown_count=0;			//counts down pause afer a keydown is finished
+static int keyup_count = 0;			//counts down how long a key is held down
+static float cw_envelope = 1;		//used to shape the envelope
+static int cw_tx_until = 0;			//delay switching to rx, expect more txing
 static int data_tx_until = 0;
 
 static char *symbol_next = NULL;
@@ -335,237 +337,219 @@ pthread_t iambic_thread;
 char iambic_symbol[4];
 char cw_symbol_prev = ' ';
 
-void queue_cw_symbol(char c){
-	iambic_symbol[0] = c;
-	iambic_symbol[1] = 0;
-	symbol_next = iambic_symbol;
-	printf("%ld queued [%c]\n", millis(), c);
-	cw_symbol_prev = c;
-}
+/*
+	HOW MORSE SENDING WORKS
+	The routine cw_get_sample() is called for each audio sample being being
+	transmitted. It has to be quick, without loops and with no device I/O.
+	The cw_get_sample() is also called from the thread that does DSP, so stalling
+	it is dangerous.
 
-void *iambic_thread_function(void *ptr){
-	int paddle;
-	int paddle_prev = 0;
-	char insert = 0;
+	The modem_poll is called about 10 to 20 times a second from the 'user interface'
+	thread. The key is physically read from the GPIO by calling key_poll() through
+	modem_poll and the value is stored as cw_key_state.
 
-	while(1){
-		if (((current_mode != MODE_CW) && (current_mode != MODE_CWR))
-			|| get_cw_input_method() != CW_IAMBIC){
-			usleep(200000); //sleep longer
-			continue;
-		}
-		else
-			usleep(5000); // 5msec
+	The cw_get_sample just reads this cw_key_state instead of polling the GPIO.
+	The logic of the cw keyer is taken from Richard Chapman, KC41FB's paper
+	in QEX of September, 2009.
+
+	the cw_read_key() routine returns the next dash/dot/space/, etc to be sent
+	the word 'symbol' is used to denote a dot, dash, a gaps that are dot, dash or
+	word long. These are defined in sdr.h (they shouldn't be) 
 	
-		paddle = key_poll();
-
-		//if we are starting afresh and the previous symbol has been swallowed up
-		if (!keydown_count && keyup_count < cw_period/4 && symbol_next != iambic_symbol){
-			if (insert){
-				queue_cw_symbol(insert);
-				insert = 0;
-			}
-			//if both are pressed
-			else if ((paddle & CW_DOT) && (paddle & CW_DASH)){
-				//alternate with previous symbol
-				if (cw_symbol_prev == '-'){
-					queue_cw_symbol('.');
-printf("%d iambic\n", __LINE__);
-				}
-				else if (cw_symbol_prev == '.'){
-					queue_cw_symbol('-');
-printf("%d iambic\n", __LINE__);
-				}
-			}
-			else if(paddle & CW_DOT){
-				queue_cw_symbol('.');
-printf("%d iambic\n", __LINE__);
-			}
-			else if (paddle & CW_DASH){
-			queue_cw_symbol('-');
-printf("%d iambic\n", __LINE__);
-			}
-			else if (cw_symbol_prev != '/' && cw_symbol_prev != ' '){
-			queue_cw_symbol('/');
-printf("%d iambic\n", __LINE__);
-			}
-/*			else if (cw_symbol_prev == '/'){
-				queue_cw_symbol(' ');
-printf("%d iambic\n", __LINE__);
-			}
 */
 
-		}
-		// if the paddle went from one press to squeeze
-		if (!insert && paddle == (CW_DASH | CW_DOT) && paddle_prev != paddle){
-			if (!(paddle_prev & CW_DOT)){
-				insert = '.';
-printf("%d iambic\n", __LINE__);
-			}
-			if (!(paddle_prev & CW_DASH)){
-				insert = '-';
-printf("%d iambic\n", __LINE__);
-			}
-		}		
-		paddle_prev = paddle;
-			
-	} // end of while loop
-}
 
-//when symbol_next is NULL, it reads the next letter from the input
-static char cw_get_next_symbol(){
-	char c;
-
-	if (!symbol_next){	
-		if(!get_tx_data_byte(&c)){
-			return 0;
-		}
-		symbol_next = morse_table->code; // point to the first symbol, by default
-
-		char b[2];
-		b[0]= c;
-		b[1] = 0;
-
-		for (int i = 0; i < sizeof(morse_table)/sizeof(struct morse); i++)
-			if (morse_table[i].c == tolower(c))
-				symbol_next = morse_table[i].code;
-	}
-
-	if (!*symbol_next){ 		//send the letter seperator
-		symbol_next = NULL;
-		return '/';
-	}
-	printf("next_symbol [%c]\n", *symbol_next); 
-	return *symbol_next++;
-}
-
+static uint8_t cw_current_symbol = CW_IDLE;
+static uint8_t cw_next_symbol = CW_IDLE;
+static uint8_t cw_last_symbol = CW_IDLE;
+static uint8_t cw_mode = CW_STRAIGHT;
 
 #define CW_MAX_SYMBOLS 12
 char cw_key_letter[CW_MAX_SYMBOLS];
 
-float cw_get_sample(){
-	float sample = 0;
-	static char last_symbol = 0;
+//the of morse code needs to translate into CW_DOT, CW_DASH, etc
+uint8_t cw_get_next_symbol(){
 
-
-	//start new symbol, if any
-	if (!keydown_count && !keyup_count){
-
-		millis_now = millis();
-
-		if (cw_tone.freq_hz != get_pitch())
-			vfo_start(&cw_tone, get_pitch(), 0);
-
-		//first check if there is a character pending in ascii
-		char c = cw_get_next_symbol(); //c holds dot, dash, space, word-space
-		if(c){	
-			printf("got [%c]\n", c);
-			//set the cw speed
-			cw_period = (12 *9600)/ get_wpm(); 		//as dot = 1.2/wpm
-
-			switch(c){
-			case '.':
-				keydown_count = cw_period;
-				keyup_count = cw_period;
-				last_symbol = '.';
-				break;
-			case '-':
-				keydown_count = cw_period * 3;
-				keyup_count = cw_period;
-				last_symbol = '-';
-				break;
-			case '/':
-				keydown_count = 0;
-				keyup_count = cw_period * 2; // 1 (passed) + 2 
-				last_symbol = '/';
-				break;
-			case ' ':
-				keydown_count = 0;
-				keyup_count = cw_period * 2; //3 periods already passed 
-				last_symbol = ' ';
-				break;
-			}
-//			printf("%d: set timing with down %d, up %d\n", __LINE__, keydown_count, keyup_count);
-		}
-		else if (get_cw_input_method() == CW_STRAIGHT){
-			if (key_poll()){
-				keydown_count = 2000; //add a few samples, to debounce 
-				keyup_count = 0;
-			}
-			else {
-				keydown_count = 0;
-				keyup_count = 0;
-			}
-		}
-		
-		//by now we have a dot/dash/etc to send 
-		switch(c){
-			case '.':
-				keydown_count = cw_period;
-				keyup_count = cw_period;
-				last_symbol = '.';
-
-				break;
-			case '-':
-				keydown_count = cw_period * 3;
-				keyup_count = cw_period;
-				last_symbol = '-';
-				break;
-			case '/':
-				keydown_count = 0;
-				keyup_count = cw_period * 2; // 1 (passed) + 2 
-				last_symbol = '/';
-				break;
-			case ' ':
-				keydown_count = 0;
-				keyup_count = cw_period * 2; //3 periods already passed 
-				last_symbol = ' ';
-				break;
-		}
-
-		//decode iambic letters	
-		int len = strlen(cw_key_letter);
-		if (len < CW_MAX_SYMBOLS-1 && (c == '.' || c == '-')){
-			cw_key_letter[len++] = c;
-			cw_key_letter[len] = 0;	
-		}		
-		else if (last_symbol  == ' '){
-			write_console(FONT_CW_TX, " ");
-			cw_key_letter[0] = 0;
-		}
-		else if (last_symbol == '/'){
-			//search for the letter match in cw table and emit it
-			for (int i = 0; i < sizeof(morse_table)/sizeof(struct morse); i++)
-				if (strlen(cw_key_letter) && !strcmp(morse_table[i].code, cw_key_letter)){
-					char buff[2];
-					buff[0] = morse_table[i].c;
-					buff[1] = 0;
-					write_console(FONT_CW_TX, buff);
-				}
-			cw_key_letter[0] = 0;
-		} 
-
-		//printf("%d:%d sending output '%c', last_symbol '%c', down %d, up %d\n", __LINE__, millis_now, 
-		//	c, last_symbol, keydown_count, keyup_count);
-	}
+	if (!symbol_next)
+		return CW_IDLE;
 	
-	if (keydown_count && cw_envelope < 0.999)
-		cw_envelope = ((vfo_read(&cw_env)/FLOAT_SCALE) + 1)/2; 
-	if (keydown_count == 0 && cw_envelope > 0.001)
-		cw_envelope = ((vfo_read(&cw_env)/FLOAT_SCALE) + 1)/2; 
+	uint8_t s = *symbol_next++;
 
-	if (keydown_count > 0)
-		keydown_count--;	
+	switch(s){
+		case '.': 
+			return CW_DOT;
+		case '-': 
+			return  CW_DASH;
+		case 0:
+			symbol_next = NULL; //we are at the end of the string
+			return CW_DASH_DELAY;
+		case '/': 
+			return CW_DASH_DELAY;
+		case ' ': 
+			return  CW_WORD_DELAY;
+	}
+	return CW_IDLE;
+}
 
-	//start the keyup counter only after keydown is finished
-	if (keyup_count > 0 && keydown_count == 0)
-		keyup_count--;
+
+// cw_read_key() routine is called 96000 times a second
+//it can't poll gpio lines or text input, those are done in modem_poll()
+//and we only read the status from the variable updated by modem_poll()
+
+int cw_read_key(){
+	char c;
+
+	//preferance to the keyer activity
+	if (cw_key_state != CW_IDLE) {
+		//return cw_key_state;
+		cw_key_state = key_poll();
+		return cw_key_state;
+	}
+
+	if (cw_current_symbol != CW_IDLE)
+		return CW_IDLE;
+
+	//we are still sending the previously typed character..
+	if (symbol_next){
+		uint8_t s = cw_get_next_symbol();
+		return s;
+	}
+
+	//return if a symbol is being transmitted
+	if (bytes_available == 0)
+		return CW_IDLE;
+
+	get_tx_data_byte(&c);
+
+	symbol_next = morse_table->code; // point to the first symbol, by default
+
+	for (int i = 0; i < sizeof(morse_table)/sizeof(struct morse); i++)
+		if (morse_table[i].c == tolower(c))
+			symbol_next = morse_table[i].code;
+	if (symbol_next)
+		return cw_get_next_symbol(); 
+	else
+		return CW_IDLE;
+}
+
+float cw_get_sample_new(){
+	float sample = 0;
+
+	// for now, updatw time and cw pitch
+	if (!keydown_count && !keyup_count){
+		millis_now = millis();
+		if (cw_tone.freq_hz != get_pitch())
+			(&cw_tone, get_pitch(), 0);
+	}
+
+	uint8_t symbol_now = cw_read_key();
+
+	switch(cw_current_symbol){
+	case CW_IDLE:		//this is the start case 
+		if (symbol_now == CW_DOWN){
+			keydown_count = 2000; //add a few samples, to debounce 
+			keyup_count = 0;
+			cw_current_symbol = CW_DOWN;
+		}
+		else if (symbol_now & CW_DOT){
+			keydown_count = cw_period;
+			keyup_count = cw_period;
+			cw_current_symbol = CW_DOT;
+			cw_last_symbol = CW_IDLE;
+		}
+		else if (symbol_now & CW_DASH){
+			keydown_count = cw_period * 3;
+			keyup_count = cw_period;
+			cw_current_symbol = CW_DASH;
+			cw_last_symbol = CW_IDLE;
+		}
+		else if (symbol_now & CW_DASH_DELAY){
+			keydown_count = 0;
+			keyup_count = cw_period * 3;
+			cw_current_symbol = CW_DOT_DELAY;
+		}
+		else if (symbol_now & CW_WORD_DELAY){
+			keydown_count = 0;
+			keyup_count = cw_period * 6;
+			cw_current_symbol = CW_DOT_DELAY;
+		}
+		//else just continue in CW_IDLE
+		break;
+	case CW_DOWN:		//the straight key
+		if (symbol_now == CW_DOWN){ //continue, keep up the good work
+			keydown_count = 2000;
+			keyup_count = 0;
+		}
+		else{ // ok, break it up
+			keydown_count = 0;
+			keyup_count = 0;
+			cw_current_symbol = CW_IDLE;//go back to idle
+		}
+		break;
+	case CW_DOT:
+		if ((symbol_now & CW_DASH) && cw_next_symbol == CW_IDLE){
+			cw_next_symbol = CW_DASH;	
+		}
+		if (keydown_count == 0){
+			keyup_count = cw_period;
+			cw_last_symbol = CW_DOT;
+			cw_current_symbol = CW_DOT_DELAY;
+		}
+		break;
+	case CW_DASH:
+		if ((symbol_now & CW_DOT) && cw_next_symbol == CW_IDLE){
+			cw_next_symbol = CW_DOT;	
+		}
+		if (keydown_count == 0){
+			keyup_count = cw_period;
+			cw_last_symbol = CW_DASH;
+			cw_current_symbol = CW_DOT_DELAY;
+		}
+		break;
+	case CW_DASH_DELAY:
+	case CW_WORD_DELAY:
+	case CW_DOT_DELAY:
+		if (keyup_count == 0){
+			cw_current_symbol = cw_next_symbol;
+			if (cw_current_symbol == CW_DOT){
+				keydown_count = cw_period;
+				keyup_count = cw_period;
+			}
+			if (cw_current_symbol == CW_DASH){
+				keydown_count = cw_period * 3;
+				keyup_count = cw_period;
+			}
+			cw_last_symbol = CW_DOT_DELAY;
+			cw_next_symbol = CW_IDLE;
+		}
+		if (cw_mode == CW_IAMBICB){
+			if (cw_next_symbol == CW_IDLE && cw_last_symbol == CW_DOT && (symbol_now & CW_DASH)){
+				cw_next_symbol = CW_DASH;
+			}
+			if (cw_next_symbol == CW_IDLE && cw_last_symbol == CW_DASH && (symbol_now & CW_DOT)){
+				cw_next_symbol = CW_DASH;
+			}
+		}
+		break;
+	}
+
+	// shape the cw keying
+	if (keydown_count  > 0){
+		if(cw_envelope < 0.999)
+			cw_envelope = ((vfo_read(&cw_env)/FLOAT_SCALE) + 1)/2; 
+			keydown_count--;
+	}
+	else { //keydown_count is zero
+		if(cw_envelope > 0.001)
+			cw_envelope = ((vfo_read(&cw_env)/FLOAT_SCALE) + 1)/2; 
+		if (keyup_count > 0)
+			keyup_count--;
+	}
 
 	sample = (vfo_read(&cw_tone)/FLOAT_SCALE) * cw_envelope;
 
-	if (cw_envelope >  0.01 && cw_tx_until < millis_now + keydown_count/96 + keyup_count/96){
-		cw_tx_until = millis_now + get_cw_delay() + 
-			keydown_count/96 + keyup_count/96;
+	if (keyup_count > 0 || keydown_count > 0){
+		cw_tx_until = millis_now + get_cw_delay(); 
 	}
 	return sample / 8;
 }
@@ -908,7 +892,7 @@ void modem_init(){
 	ft8_tx_buff_index = 0;
 	ft8_tx_nsamples = 0;
 	pthread_create( &ft8_thread, NULL, ft8_thread_function, (void*)NULL);
-	pthread_create( &iambic_thread, NULL, iambic_thread_function, (void*)NULL);
+//	pthread_create( &iambic_thread, NULL, iambic_thread_function, (void*)NULL);
 	cw_init();
 	strcpy(fldigi_mode, "");
 
@@ -925,13 +909,12 @@ void modem_init(){
 //psk31 will transmit a few spaces after the last character, etc.
 
 void modem_poll(int mode){
-	int bytes_available = get_tx_data_length();
 	int tx_is_on = is_in_tx();
-	int key_status;
 	time_t t;
 	char buffer[10000];
 
 	millis_now = millis();
+	bytes_available = get_tx_data_length();
 
 	if (current_mode != mode){
 		//flush out the past decodes
@@ -964,15 +947,17 @@ void modem_poll(int mode){
 	break;
 	case MODE_CW:
 	case MODE_CWR:	
-		key_status = key_poll();
-		if (!tx_is_on && (bytes_available || key_status || (symbol_next && *symbol_next)) > 0){
+		cw_key_state = key_poll();
+		if (!tx_is_on && (bytes_available || cw_key_state || (symbol_next && *symbol_next)) > 0){
 			tx_on(TX_SOFT);
 			millis_now = millis();
 			cw_tx_until = get_cw_delay() + millis_now;
+			cw_mode = get_cw_input_method();
 		}
 		else if (tx_is_on && cw_tx_until < millis_now){
 				tx_off();
 		}
+		//printf("%d cw current %d\n", __LINE__, cw_current_symbol); 
 	break;
 
 	case MODE_RTTY:
@@ -1022,7 +1007,8 @@ float modem_next_sample(int mode){
 		break;
 	case MODE_CW:
 	case MODE_CWR:
-		sample = cw_get_sample();
+		sample = cw_get_sample_new();
+		cw_period = (12 *9600)/ get_wpm(); 		//as dot = 1.2/wpm
 		break;
 	}
 	return sample;

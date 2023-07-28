@@ -58,9 +58,9 @@ void macro_list(char *output){
 		int len = strlen(p);
 		if (p[len-3] == '.' && p[len-2] == 'm' && p[len-1] == 'c'){
 			p[len-3] = 0;
-			write_console(FONT_LOG, p);
-			write_console(FONT_LOG, "\n");
-     	printf("%s\n", dir->d_name);
+//			write_console(FONT_LOG, p);
+//			write_console(FONT_LOG, "\n");
+//     	printf("%s\n", dir->d_name);
 			if (output){
 				strcat(output, dir->d_name);
 				strcat(output, "|");

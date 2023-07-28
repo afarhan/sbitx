@@ -1186,6 +1186,8 @@ void tr_switch_v2(int tx_on){
 			sound_mixer(audio_card, "Master", rx_vol);
 			sound_mixer(audio_card, "Capture", rx_gain);
 			spectrum_reset();
+			prev_lpf = -1;
+			set_lpf_40mhz(freq_hdr);
 			//rx_tx_ramp = 10;
 		}
 }
