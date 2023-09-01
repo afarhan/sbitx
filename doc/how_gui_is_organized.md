@@ -1,4 +1,4 @@
-***How the GUI works
+# How the GUI works
 
 This is a brief explanation of how the GUI works for now, it may evolve and
 change later. I wrote the GUI for those who don't have the time to sit down
@@ -15,13 +15,13 @@ particular colour and lined with a border colour.
 4. Detect touch/mouse and report where it has clicked,scrolled on the screen.
 5. Read the keyboard strokes like up and down, etc.
 
-These routines are ui_init(), draw_text(), measure_text() (how many pixels 
-wide will a particular string be on the screen for a given font?), rect() and 
-fill_rect().
+These routines are `ui_init()`, `draw_text()`, `measure_text()` (how many pixels 
+wide will a particular string be on the screen for a given font?), `rect()` and 
+`fill_rect()`.
 
 Additionally we provide mouse, keyboard and timer tick events through 
-on_key_press(), on_key_release(), on_scroll() and on_mouse_press() events. 
-The routine to re-draw the entire screen is on_draw_event(). These are the only
+`on_key_press()`, `on_key_release()`, `on_scroll()` and on_mouse_press() events. 
+The routine to re-draw the entire screen is `on_draw_event()`. These are the only
 GUI specific functions. 
 
 Each control is selected by touching it from the display and either turning 
@@ -29,11 +29,12 @@ the function encoder, using up and down keys or the mouse scroll wheel.
 Once of the reasons to build our own GUI was that we needed the GUI to work
 with the encoders on the front-panel.
 
-** A simple GUI **
+## A simple GUI
 
 We make our own GUI with just one kind of control 
 (called widgets by some user interface toolkits) : this is as follows:
- 
+
+```c++
 	struct field {
 	  char  *cmd;
 	  int   x, y, width, height;
@@ -45,51 +46,52 @@ We make our own GUI with just one kind of control
 	  char  selection[1000];
 	  int   min, max, step;
 	};
+```
 
 Each field occupies a rectangle specified by x,y,width and height with 
 reference to top left corner of the window as the 0,0 position. Each field
 can optionally have a label (like "IF Gain") and the current value is stored
 as a string in the value[] field.
 
-The field is drawn by calling the draw_field() function. It uses the the font
-given by the index number font_index from the font_table[] array. 
+The field is drawn by calling the `draw_field()` function. It uses the the font
+given by the index number `font_index` from the `font_table[]` array. 
 This saves having to specify all the font details for each field separately. 
-If you want to change the font for all the controls, edit the font_table[].
+If you want to change the font for all the controls, edit the `font_table[]`.
 
 The field control can be of several types as identified by value_type field: 
 
-	NUMBER: like the frequency, gain, volume, etc. The upper and lower
-	limit for the number field is set by min, max. Step determines how
-	much it changes by with each scroll/up-down keystroke.
+- NUMBER: like the frequency, gain, volume, etc. The upper and lower
+limit for the number field is set by min, max. Step determines how
+much it changes by with each scroll/up-down keystroke.
 
-	SELECTION: This uses a number of strings separated by '/' stored in
-	selection[] field. One of the strings is selected by scroll through 
-	the field's values. Ex: Mode: USB/LSB/CW/CWR/DIGITAL, etc.
+- SELECTION: This uses a number of strings separated by '/' stored in
+selection[] field. One of the strings is selected by scroll through 
+the field's values. Ex: Mode: USB/LSB/CW/CWR/DIGITAL, etc.
 
-	TEXT: This is makes it an editable text field (for instance to enter 
-	your callsign).
+- TEXT: This is makes it an editable text field (for instance to enter 
+your callsign).
 
-	TOGGLE: This kind of button is either ON or OFF (it could very well be
-	done using SELECTION with just two choices)
+- TOGGLE: This kind of button is either ON or OFF (it could very well be
+done using SELECTION with just two choices)
 
-	BUTTON: The button control is used to trigger something on as long 
-	as it is held down and then it switches off again (CW key, PTT, Tune)
+- BUTTON: The button control is used to trigger something on as long 
+as it is held down and then it switches off again (CW key, PTT, Tune)
 	
 Finally, the cmd field is an interesting field and it goes more than what meets
 the eye. Lets imagine that the cmd is set to "freq" and the field type 
 is NUMBER, set to max of 7300,000 and min of 7000,000 with a step of 10. Now,
 this field can be used to tune the radio up and down the 40 meter band in 
-steps of 10 Hz. Each time the value is changed, the function do_cmd() is called
+steps of 10 Hz. Each time the value is changed, the function `do_cmd()` is called
 with both the field name and the value in the same string, separated 
-by an equal ('=') sign. Like do_cmd("freq=7000000"). 
+by an equal ('=') sign. Like `do_cmd("freq=7000000")`. 
 
 We did this so that most of the commands can be directly passed the the core
-sdr by calling sdr_request() in sbitx.c. However, there are certain features 
-that are not in the core sdr like band-switched VFOs, keyer, etc. The cmd[] 
+sdr by calling `sdr_request()` in `sbitx.c`. However, there are certain features 
+that are not in the core sdr like band-switched VFOs, keyer, etc. The `cmd[]` 
 fields for these controls have a '#' character in the cmd field. Like "#wpm=12"
 to set the keyer speed to 12 wpm.
 
-The commands generated by the controls are all filtered through do_cmd() in a 
+The commands generated by the controls are all filtered through `do_cmd()` in a 
 large if-then-else logic, table driven despatch may be efficient but less 
 readable for the beginning programmer.
  
