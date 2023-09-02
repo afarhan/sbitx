@@ -374,8 +374,14 @@ int sbitx_ft8_decode(float *signal, int num_samples, bool is_ft8)
         .protocol = is_ft8 ? PROTO_FT8 : PROTO_FT4
     };
 
+    // subtract seconds to display the cycle start time, not the decode time
+    int cycle_seconds = 15;
+    if (is_ft8 == false) {
+        cycle_seconds = 7;
+    }
+   
 		//timestamp the packets
-		time_t	rawtime = time_sbitx();
+		time_t	rawtime = time_sbitx() - cycle_seconds;
 		char time_str[20], response[100];
 		struct tm *t = gmtime(&rawtime);
 		sprintf(time_str, "%02d%02d%02d", t->tm_hour, t->tm_min, t->tm_sec);
