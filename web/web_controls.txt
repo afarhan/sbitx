@@ -1,0 +1,31 @@
+HOW the web UI works
+
+1. The Web UI establishes a Websockt to the backend running the C program.
+2. The bidirectional text messages are of the form:
+	"CMD values.."
+	"AUDIO 93" (sets the audio to 93)
+	"FREQ 7010000" (sets the frequency to 7010 KHz)
+The command is usually an uppercase single word without spaces.
+The command is followed by a space. Followng the space is a string
+of text (that can include spaces) as the arguments.
+
+
+Knob controls,
+Each kob control is structured like this:
+
+<div class="linear" id="linear_AUDIO">
+      <div class="linear-label">AUDIO</div>
+      <input type="number" id="AUDIO" min="0" max="100" class="linear-value" />
+      <div class="linear-dropdown">
+        <input type="range" class="linear-slider"
+          id="slider_AUDIO" max="100" min="0" step="1" value="13" />
+      </div>
+    </div>
+
+
+When the response_handler() receives a message like "AUDIO 92", it sets
+the html control with "AUDIO" as the id to "92". Note that the control
+is inside the div with class of "linear" 
+
+	sbitxv3_update_slider(e) (this is the 
+

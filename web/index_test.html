@@ -14,6 +14,7 @@
 	understand those.
 
 	SEMANTIC STRUCTURE		
+
   
   The top bar has frequency, volume, mode and icons to restore the web ui,
 	enable/disable the on-screen keyboard, etc.  
@@ -37,178 +38,117 @@
 		<link rel="stylesheet" href="style.css">
   </head>
   <body>
-	<input type="hidden" id="FREQ" value="7040000"/>
-	<input type="hidden" id="VFOA" value="7040000"/>
-	<input type="hidden" id="VFOB" value="7040000"/>
-	<input type="hidden" id="POWER" value="0"/>
-	<input type="hidden" id="REF" value="1"/>
-	<input type="hidden" id="HIGH" value="2200"/>
-	<input type="hidden" id="LOW" value="300"/>
-	<input type="hidden" id="STATUS" value="---" />
-	<input type="hidden" id="REC" value="OFF" /> 
-	<input type="hidden" id="RIT_DELTA" name="RIT_DELTA" value="" /> 
-	<input type="hidden" id="VFO" value="A" />
   <div id="sdr_page">
-	<div id="maincontrols">
-		<div class="sbitxv3-control">
-			<div class="sbitxv3-label">MODE</div>
-			<select class="sbitxv3-selection sbitx-selection" id="MODE">
-				<option value="USB">USB</option>
-				<option value="LSB">LSB</option>
-				<option value="CW">CW</option>
-				<option value="CWR">CWR</option>
-				<option value="FT8">FT8</option>
-				<option value="PSK31">PSK31</option>
-				<option value="RTTY">RTTY</option>
-				<option value="DIGITAL">DIGITAL</option> 
-				<option value="2TONE">2TONE</option>
-			</select>
-		</div><div class="sbitxv3-control" id="dial">
-    	<span id="current_freq">A:00.000.000</span> 
-			<span id="other_freq">B: 00.000.000</span>
-		</div><!-- funny html that breaks the line inside the button tag to 
-		prevent spaces between the elements 
-		--><button class="sbitxv3-btn" id="80M" type="submit">80M</button
-			><button class="sbitxv3-btn" id="40M" type="submit">40M</button
-			><button class="sbitxv3-btn" id="30M" type="submit">30M</button
-			><button class="sbitxv3-btn" id="20M" type="submit">20M</button
-			><button class="sbitxv3-btn" id="17M" type="submit">17M</button
-			><button class="sbitxv3-btn" id="15M" type="submit">15M</button
-			><button class="sbitxv3-btn" id="12M" type="submit">12M</button
-			><button class="sbitxv3-btn" id="10M" type="submit">10M</button
-		><div class="sbitxv3-control rx-control">
-			<div class="sbitxv3-label">AGC </div>
-			<select class="sbitxv3-selection sbitx-selection" id="AGC">
-				<option value="FAST">FAST</option>
-				<option value="MED">MED</option>
-				<option value="SLOW">SLOW</option>
-				<option value="OFF">OFF</option>
-			</select>
-		</div><div class="linear rx-control" id="linear_BW">
-    	<div class="linear-label">BW</div>
-    	<input type="number" id="BW" min="0" max="100" class="linear-value" />
-     	<div class="linear-dropdown">
-      	<input type="range" class="linear-slider"
-        	id="slider_BW" max="5000" min="50" step="50" value="13" />
-			</div>
-		</div><div class="linear rx-control" id="linear_IF">
-    	<div class="linear-label">IF</div>
-    	<input type="number" id="IF" min="0" max="100" class="linear-value" />
-     	<div class="linear-dropdown">
-      	<input type="range" class="linear-slider"
-        	id="slider_IF" max="100" min="0" step="1" value="13" />
-			</div>
-    </div><div class="linear rx-control" id="linear_AUDIO">
-    	<div class="linear-label">AUDIO</div>
-    	<input type="number" id="AUDIO" min="0" max="100" class="linear-value" />
-     	<div class="linear-dropdown">
-      	<input type="range" class="linear-slider"
-        	id="slider_AUDIO" max="100" min="0" step="1" value="13" />
-			</div>
-    </div><br/>
-		<div class="linear" id="linear_DRIVE">
-    	<div class="linear-label">DRIVE</div>
-    	<input type="number" id="DRIVE" min="1" max="100" class="linear-value" />
-     	<div class="linear-dropdown">
-      	<input type="range" class="linear-slider"
-        	id="slider_DRIVE" max="100" min="1" step="1" value="13" />
-			</div>
-		</div><div class="sbitxv3-control">	
-			<div class="sbitxv3-label">STEP</div>
-			<select id="STEP" class="sbitx-selection sbitxv3-selection">
-				<option value="10H">10H</option>
-				<option value="100H">100H</option>
-				<option value="1K">1K</option>
-				<option value="10K">10K</option>
-				<option value="100K">100K</option>
-			</select>
-		</div><div class="sbitxv3-control">
-			<div class="sbitxv3-label">VFO</div>
-			<select class="sbitxv3-selection sbitx-selection" id="VFO">
-				<option value="A">A</option>
-				<option value="B">B</option>
-			</select>
-		</div><div class="sbitxv3-control">
-			<div class="sbitxv3-label">SPLIT</div>
-			<select class="sbitxv3-selection sbitx-selection" id="SPLIT">
-				<option value="OFF">OFF</option>
-				<option value="ON">ON</option>
-			</select>
-		</div><div class="sbitxv3-control">
-			<div class="sbitxv3-label">RIT</div>
-			<select class="sbitxv3-selection sbitx-selection" id="RIT">
-				<option value="OFF">OFF</option>
-				<option value="ON">ON</option>
-			</select>
-		</div><button class="sbitxv3-btn" id="qrz" tabindex=-1>?</button
-		><input type="text" class="logger-input sbitx-text-input sbitx-text-field" 
-			id="CALL" placeholder="Call" size="6" 
-		><input type="text" class="logger-input sbitx-text-input sbitx-text-field" 
-			id="SENT" placeholder="Sent" size="3" 
-		/><input type="text" class="logger-input sbitx-text-input sbitx-text-field" 
-			id="RECV" placeholder="Rcv" size="3" 
-		/><input type="text" class="logger-input sbitx-text-input sbitx-text-field" 
-			id="EXCH" placeholder="Exch" size="2" 
-		/><input type="text" class="logger-input sbitx-text-input sbitx-text-field" 
-			id="NR" placeholder="Nr" size="2" 
-		/><button class="sbitxv3-btn" id="logger-log">OK</button
-		><button class="sbitxv3-btn" id="wipe">WIPE</button
-		><button class="sbitxv3-btn" id="logbook-open">LOG</button
-		><div class="sbitxv3-control">
-			<div class="sbitxv3-label">SPAN</div>
-			<select class="sbitxv3-selection sbitx-selection" id="SPAN">
-				<option value="25K">25K</option>
-				<option value="10K">10K</option>
-				<option value="6K">6K</option>
-				<option value="2.5K">2.5K</option>
-			</select>
-		</div>
-	</div><!-- end of maincontrols -->
+		<input type="hidden" id="FREQ" value="7040000"/>
+		<input type="hidden" id="VFOA" value="7040000"/>
+		<input type="hidden" id="VFOB" value="7040000"/>
+		<input type="hidden" id="POWER" value="0"/>
+		<input type="hidden" id="REF" value="1"/>
+		<input type="hidden" id="MACRO" value =""/>
+		<input type="hidden" id="FT8_AUTO" value ="OFF" class="sbitx-update-toggle"/>
+		<input type="hidden" id="FT8_TX1ST" value ="OFF" class="sbitx-update-toggle"/>
+		<input type="hidden" id="STATUS" value="---" />
+		<input type="hidden" id="SPLIT"  class="sbitx-update-toggle" value="OFF" /> 
+		<input type="hidden" id="RIT" class="sbitx-update-toggle" value="OFF" /> 
+		<input type="hidden" id="REC" value="OFF" /> 
+		<input type="hidden" id="RIT_DELTA" name="RIT_DELTA" value="" /> 
+		<input type="hidden" id="VFO" value="A" />
 		<span id="restore-btn" onclick="toggle_fullscreen();"> &#X21F3; </span>
-	<div id="sidebar"> 
-		<div class="menu-item" id="tuning_knob">
-			<input id="big_tuning_knob"
-				class="knob" data-width="190" 
-				data-height="190" data-displayInput=false 
-				data-cursor=true data-fgColor="#222222" data-thickness=.3 
-				data-step=1 data-max=360 value="0">
-		</div>
-		</div> <!-- end of sidebar -->	
+		<div id="topbar"> 
+			<div class="menu-item" id="dial">
+    		<span id="current_freq">A:00.000.000</span> 
+				<span id="other_freq">B: 00.000.000</span> 
+				<span id="freq_status">RIT ON</span>
+				<div class="dial_details_container">
+					<span class="dial_details" id="bandwidth">BW 2.4KHz &#187;</span>
+					<span class="dial_details" id="agc_reading">AGC Fast</span>
+				</div>
+				<div class="dial_details_container">
+					<span class="dial_details" id="if_reading">IF Gain: 60</span>
+					<span class="dial_details" id="tx_drive_reading">TX Drive: 40</span>
+				</div>
+			</div>
+			<div class="menu-item">
+			</div>
+				<div class="menu-item">
+					MODE 
+					<select class="sbitx-selection" id="MODE">
+						<option value="USB">USB</option>
+						<option value="LSB">LSB</option>
+						<option value="CW">CW</option>
+						<option value="CWR">CWR</option>
+						<option value="FT8">FT8</option>
+						<option value="PSK31">PSK31</option>
+						<option value="RTTY">RTTY</option>
+						<option value="DIGITAL">Digital</option> 
+						<option value="2TONE">2TONE</option>
+					</select>
+			</div>
+			<div id="tx_meters">
+				<div class="menu-item">
+						<span class="slider-label">Watts</span>
+						<meter id="POWER_meter" max="500" min="0" value="0"></meter>
+						<span id="POWER_reading"></span> 
+				</div>
+				<div class="menu-item">
+						<span class="slider-label">SWR</span> 
+						<meter id="REF_meter" max="1000" min="0" value="0"></meter>
+						<span id="REF_reading"/></span>
+				</div>
+			</div>
+			<span id="rx_controls">
+				<div class="menu-item">
+						<span class="slider-label">VOL</span>
+						<input type="range" class="sbitx-slider" id="AUDIO" 
+								max="100" min="0" step="5" value="80" />
+						<span class="sbitx-slider" id="AUDIO_reading"></span>
+				</div>
+				<div class="menu-item">
+					<span class="slider-label">RF</span>
+					<input type="range" class="sbitx-slider" id="IF" 
+						max="100" min="0" step="5" value="80" />
+					<span class="sbitx-slider" id="IF_reading"></span>
+				</div>
+			</span>
+			<div class="menu-item">
+				<input class="knob" data-width="190" data-height="190" data-displayInput=false 
+					data-cursor=true data-fgColor="#222222" data-thickness=.3 
+					data-step=1 data-max=360 value="0">
+			</div>
+			<div class="menu-item">	
+				<div id="step-wrapper">	STEP
+						<select id="STEP" class="sbitx-selection">
+							<option value="10H">10 Hz</option>
+							<option value="100H">100 Hz</option>
+							<option value="1K">1 KHz</option>
+							<option value="10K">10 KHz</option>
+							<option value="100K">100 KHz</option>
+						</select>
+				</div>
+			</div>
+			<div class="menu-item">
+		 			<span class="slider-label">DRIVE</span> 
+					<input type="range" class="sbitx-slider" id="DRIVE" max="100" min="0" step="1" value="80" />
+					<span id="DRIVE_reading"></span>
+				</div>
+			<div class="menu-item">	
+				<button class="topbar-btn" id="keyboard-open">Keyboard</button>
+				<button class="topbar-btn" id="console-open">Console</button>
+				<button class="topbar-btn" id="telnet-open">Telnet</button>
+				<button class="topbar-btn" id="recorder-open">Recorder</button>
+				<button class="topbar-btn" id="settings-open">Settings</button>
+			</div>
+			<div class="menu-item">
+				<a href="https://www.hamqsl.com/solar.html" 
+					title="Click to add Solar-Terrestrial Data to your website!">
+					<img src="https://www.hamqsl.com/solarbc.php">
+				</a>
+			</div>
+		</div> <!-- end of topbar -->	
 		<div id="main">
-<!-- settings panel -->
-	<div id="settings_panel" class="sbitx-panel">
-		<span class="sbitx-panel-title">
-			<button class="sbitx-btn-back" data-for="panel_bar">&#x2716; Close</button>  
-		</span>
-
-		<div class="settings-element">
-			<span class="settings-label">Passkey:</span><input id="PASSKEY" 
-					class="settings_input sbitx-text-input" type="text" size="6" />
-		</div>
-
-		<div class="settings-element">
-			<span class="settings-label">My Callsign:</span><input id="MYCALLSIGN" 
-					class="settings_input sbitx-text-input" type="text" size="6" />
-		</div>
-
-		<div class="settings-element">
-			<span class="settings-label">My Grid:</span><input id="MYGRID" 
-					class="settings_input sbitx-text-input" type="text" size="6" />
-		</div>
-		<div class="settings-element">
-			<span class="settings-label">Telnet Server:</span> 
-			<input type="text" class="settings_input sbitx-text-input" size="17"
-				id="TELNETURL" />
-			(Like : dxc.nc7j.com:7373)
-		</div>
-		<div class="settings-element">
-			<span class="settings-label"></span>
-			<button id="settings_save" class="logger-button">Update</button>		
-		</div>
-	</div><!-- end of help text -->
   		<div id="login_panel">
 				<div class="help_text">
-				<h1>sBitx v3</h1>
+				<h1>sBitx v2</h1>
 					<p>The sBitx is an open-source, hackable, next generation radio.</p>
  			 			<p>Enter passkey to access your sbitx.</p> 
 						<div id="login_error"></div>
@@ -221,64 +161,89 @@
 					</p>
 				</div>
   		</div><!-- end of login -->
-			<!-- it streams automatically, anyway 
 			<div id="extra-controls">
 				<button id="streamaudio" type="submit" onclick="audio_start();">Stream Audio</button> 
 			</div>
-			-->
-	<!-- logbook -->
-	<div id="logbook_panel" class="sbitx-panel">
-			<input class="logger-input sbitx-text-input sbitx-text-field"
-				id="logbook-search" type="text" size="6" placeholder="Search"/>
-			<button class="sbitxv3-btn longer-control" id="btn-logbook-load">More</button> 
-			<button class="sbitxv3-btn longer-control" id="btn-logbook-close">Close</button> 
-		<table id="logbook_table">
-			<thead><tr>
-				<th class="logbook-serial">#</th>
-				<th class="logbook-datestamp">Date-Time</th>
-				<th class="logbook-freq">Freq</th>
-				<th class="logbook-mode">Mode</th>
-				<th class="logbook-call">Call</th>
-				<th class="logbook-sent">Sent</th>
-				<th class="logbook-recv">Recv</th>
-			</tr></thead>
-			<tbody>
-			</tbody>
-		</table>
-	</div>
-<!--   panadapter, xxxx_open functions will resize this as needed -->
-<!-- pan adapter and waterfall -->
-		<div id="pan_adapter">
-			<div id="console">Hello</div>
-			<div id="tx_meters">
-				<div class="menu-item">
-					<span class="slider-label">Watts</span>
-					<meter id="POWER_meter" max="500" min="0" value="0"></meter>
-					<span id="POWER_reading"></span> 
-				</div>
-				<div class="menu-item">
-					<span class="slider-label">SWR</span> 
-					<meter id="REF_meter" max="1000" min="0" value="0"></meter>
-					<span id="REF_reading"/></span>
-				</div>
-			</div><!-- end of tx_meters --> 
-<!-- recorder panel -->
-	<div id="recorder_panel" class="sbitx-panel mode-panel">
+<!-- frequency control -->
+		<div id = "vfo_panel" class="sbitx-panel">
 			<span class="sbitx-panel-title">
 				<button class="sbitx-btn-back" data-for="panel_bar">&#x2716; Close</button>  
 			</span>
-			<div class="menu_item">
-				<button class="logger-button" id="record_start">REC</button>
-				<button class="logger-button" id="record_stop">STOP</button>
-				<span id="record_duration">00:00</span>
+			<div class="help_text">
+			<div class="sbitx-btn-set">
+				<div class="vfo_panel_item">
+					<select class="sbitx-selection" id="AGC">
+						<option value="FAST">AGC FAST</option>
+						<option value="MED">AGC MED</option>
+						<option value="SLOW">AGC SLOW</option>
+						<option class="greyed" value="OFF">AGC OFF</option>
+					</select>
+				</div>
 			</div>
-	</div>	
+    	<div class="sbitx-btn-set">
+    		<button class="sbitx-btn band-btn" id="band 80m" type="submit">80M</button>
+    		<button class="sbitx-btn band-btn" id="band 40m" type="submit">40M</button>
+    		<button class="sbitx-btn band-btn" id="band 30m" type="submit">30M</button>
+    		<button class="sbitx-btn band-btn" id="band 20m" type="submit">20M</button>
+    		<button class="sbitx-btn band-btn" id="band 17m" type="submit">17M</button>
+    		<button class="sbitx-btn band-btn" id="band 15m" type="submit">15M</button>
+    		<button class="sbitx-btn band-btn" id="band 12m" type="submit">12M</button>
+				<button class="sbitx-btn band-btn" id="band 10m" type="submit">10M</button>
+			</div>
+    	<div class="sbitx-btn-set">
+				<button class="sbitx-toggle vfo-btn" id="toggle_RIT">RIT OFF</button>
+				<button class="sbitx-toggle vfo-btn" id="toggle_SPLIT" value="OFF"/> SPLIT OFF</button>
+    		<button class="sbitx-btn vfo-btn" id="VFO A" type="submit">VFO A</button>
+    		<button class="sbitx-btn vfo-btn" id="VFO B" type="submit">VFO B</button>
+    		<button class="sbitx-btn vfo-btn" id="vfo_reset" type="submit">A=B</button>
+    		<button class="sbitx-btn vfo-btn" id="vfo_swap" type="submit">A<->B</button>
+			</div>
+			<h2>Filter</h2>
+			<p>You can manually adjust the filter with HIGH and LOW or use one of the 9 filters.</p>
+    		<button class="bw-btn" id="3000" type="submit">3KH</button>
+    		<button class="bw-btn" id="2400" type="submit">2.4KH</button>
+    		<button class="bw-btn" id="1800" type="submit">1.8KH</button>
+    		<button class="bw-btn" id="1500" type="submit">1.5KH</button>
+    		<button class="bw-btn" id="1000" type="submit">1KH</button>
+    		<button class="bw-btn" id="800" type="submit">800H</button>
+    		<button class="bw-btn" id="400" type="submit">400H</button>
+    		<button class="bw-btn" id="200" type="submit">200H</button>
+    		<button class="bw-btn" id="100" type="submit">100H</button>
+			<div class="sbitx-rx-control">
+					<span class="slider-label">High </span>
+					<input type="range" class="sbitx-slider" id="HIGH" max="4000" min="0" step="50" value="2200" />
+					<span class="slider-reading" id="HIGH_reading"></span>Hz
+			</div>
+			<div class="sbitx-rx-control">
+					<span class="slider-label">Low </span>
+					<input type="range" class="sbitx-slider" id="LOW" max="4000" min="0" step="50" value="200" />
+					<span class="slider-reading" id="LOW_reading"></span>Hz
+			</div>
+		</div><!-- end of help-text box -->
+	</div> <!-- end of vfo_panel -->
+<!--   panadapter, xxxx_open functions will resize this as needed -->
+<!-- pan adapter and waterfall -->
+		<div id="pan_adapter">
 			<div id="spectrum-wrap">
+				<div id="span-control">
+					SPAN
+					<select class="sbitx-selection" id="SPAN">
+						<option value="25K">25K</option>
+						<option value="10K">10K</option>
+						<option value="6K">6K</option>
+						<option value="2.5K">2.5K</option>
+					</select>
+				</div><!-- end of span-control -->
 				<div width="100%"><canvas id="spectrum" width="600" height ="80"></canvas></div>
 			</div><!-- end of spectrum-wrap -->
 			<div width="100%"><canvas id="waterfall" width="600" height="80"></canvas></div>
 		</div>
-<!-- end of panadapter -->
+<!-- receiver panel -->
+		<div id="receiver_panel" class="sbitx-panel">
+			<div class="sbitx-panel-title">
+				<button class="sbitx-btn-back" data-for="panel_bar">&#x2039;</button> Receiver 
+			</div>
+		</div><!-- end of receiver panel -->
 <!- wsjtx specific controls -->
 		<div id="FT8_ui" class="sbitx-panel mode-panel">
 			<div id="wsjtx-activity" class="sbitx-list-container" >
@@ -291,81 +256,50 @@
 				<ol size="10" class="sbitx-list-box">
 				</ol>
 			</div>
-
-			<div id="FT8_controls">
-				<div class="sbitxv3-control">
-					<div class="sbitxv3-label">AUTO</div>
-					<select class="sbitxv3-selection sbitx-selection" id="FT8_AUTO">
-						<option value="ON">ON</option>
-						<option value="OFF">OFF</option>
+			<div id="FT8-control-panel">
+					<input type="checkbox"  class="sbitx-toggle" id="toggle_FT8_AUTO" value="on"/ > Auto |
+					RX Freq <input size="4" readonly="readonly" type="number" min="0" max="4000" id="FT8-rx-freq" /> |
+					TX Freq
+					<input type="range" class="sbitx-slider" id="TX_PITCH" max="4000" min="0" step="50" value="2200" /> 
+					<span id="TX_PITCH_reading"></span>Hz<br/>  
+					<button id="ft8-call-cq">Call </button> 
+					<select class="sbitx-selection" id="ft8_cq_kindof">
+						<option value="CQ">CQ</option>
+						<option value="CQ DX">CQ DX</option>
+						<option value="CQ GRID">CW GRID</option>
+						<option value="CQ POTA">CW POTA</option>
+						<option value="CQ SOTA">CW SOTA</option>
+						<option value="CQ VOTA">CQ VOTA</option>
 					</select>
-				</div>
-				<div class="sbitxv3-control">
-					<div class="sbitxv3-label">TX1ST</div>
-					<select class="sbitxv3-selection sbitx-selection" id="FT8_TX1ST">
-						<option value="ON">ON</option>
-						<option value="OFF">OFF</option>
+					| Repeat:
+					<select class="sbitx-selection" id="FT8_REPEAT">
+						<option value="1">No</option>
+						<option value="2">2</option>
+						<option value="3">3</option>
+						<option value="4">4</option>
+						<option value="5">5</option>
+						<option value="6">6</option>
+						<option value="7">7</option>
+						<option value="8">8</option>
+						<option value="9">9</option>
+						<option value="10">10</option>
 					</select>
-				</div><div class="linear" id="linear_TX_PITCH">
-    		<div class="linear-label">TX TONE</div>
-    			<input type="number" id="TX_PITCH" min="10" max="4000" class="linear-value" />
-     		<div class="linear-dropdown">
-      			<input type="range" class="linear-slider"
-        			id="slider_TX_PITCH" max="4000" min="10" step="10" value="1900" />
-					</div>
-				</div><div class="linear" id="linear_FT8_REPEAT">
-    			<div class="linear-label">REPEAT</div>
-    			<input type="number" id="FT8_REPEAT" min="1" max="10" class="linear-value" />
-     		<div class="linear-dropdown">
-      		<input type="range" class="linear-slider"
-        		id="slider_FT8_REPEAT" max="10" min="1" step="1" value="3" />
-				</div>
-			</div><!-- end of FT8_controls -->
+					<input type="checkbox" class="sbitx-toggle" id="toggle_FT8_TX1ST"> Tx even/1st
+			</div>
 		</div>
-	</div>
 <!- cw pane -->
 		<div id="CW_ui" class="sbitx-panel mode-panel">
+			<div id="cw_settings">
+				<span class="slider-label">SPEED</span>
+					<input type="range" class="sbitx-slider" id="WPM" max="50" min="5" step="1" value="13" /> 
+				<span class="sbitx-slider" id="WPM_reading"></span> WPM | 
+				<span class="slider-label">PITCH</span> 
+					<input type="range" class="sbitx-slider" id="PITCH" max="3000" min="0" step="10" value="600" size="3"/> 
+				<span class="sbitx-slider" id="PITCH_reading"></span>Hz 
+			</div>
 			<div id="data_window" tabindex="0">
 				<span id="text_done"></span>
 				<span id="text_pending"></span>
-			</div>
-			<div id="cw_settings">
-				<div class="linear" id="linear_WPM">
-    			<div class="linear-label">WPM</div>
-    			<input type="number" id="WPM" min="0" max="100" class="linear-value" />
-     			<div class="linear-dropdown">
-      			<input type="range" class="linear-slider"
-        			id="slider_WPM" max="40" min="5" step="1" value="13" />
-					</div>
-				</div><div class="linear" id="linear_PITCH">
-    			<div class="linear-label">PITCH</div>
-    			<input type="number" id="PITCH" min="0" max="100" class="linear-value" />
-     			<div class="linear-dropdown">
-      			<input type="range" class="linear-slider"
-        			id="slider_PITCH" max="3000" min="50" step="10" value="600" />
-					</div>
-				</div><div class="linear" id="linear_CW_DELAY">
-    			<div class="linear-label">DELAY</div>
-    			<input type="number" id="CW_DELAY" min="50" max="1000" class="linear-value" />
-     			<div class="linear-dropdown">
-      			<input type="range" class="linear-slider"
-        			id="slider_PITCH" max="1000" min="50" step="50" value="600" />
-					</div>
-				</div><div class="linear" id="linear_SIDETONE">
-    			<div class="linear-label">TX VOL</div>
-    			<input type="number" id="SIDETONE" min="0" max="100" class="linear-value" />
-     			<div class="linear-dropdown">
-      			<input type="range" class="linear-slider"
-        			id="slider_SIDETONE" max="100" min="0" step="5" value="600" />
-					</div>
-				</div><div class="sbitx-control longer-control">
-					<div class="sbitxv3-label">INPUT</div>
-						<select class="sbitxv3-selection sbitx-selection" id="CW_INPUT">
-							<option value="IAMBIC">IAMBIC</option>
-							<option value="IAMBICB">IAMBIC-B</option>
-							<option value="STRAIGHT">STRAIGHT</option>
-					</select>
-				</div>
 			</div>
 			<span id="data_chat">
 					<button  id="data_chat_tx">TX</button> 
@@ -374,16 +308,85 @@
 		</div>
 <!-- ssb/2tone pane -->
 	<div id="Voice_ui" class="sbitx-panel mode-panel">
-    <div class="linear" id="linear_MIC">
-    	<div class="linear-label">MIC</div>
-    	<input type="number" id="MIC" min="0" max="100" class="linear-value" />
-     	<div class="linear-dropdown">
-      	<input type="range" class="linear-slider"
-        	id="slider_MIC" max="100" min="0" step="1" value="13" />
+			<div class="menu_item">
+				MIC
+				<input type="range" class="sbitx-slider" id="MIC" max="50" min="1" step="1" value="25" /> 
+				<span class="sbitx-slider" id="MIC_reading"></span> 
 			</div>
-    </div>
-		<button id="ptt_tx">TX</button>
-		<button id="ptt_rx">RX</button>
+			<div class="menu_item">
+				<button id="ptt_tx">TX</button>
+				<button id="ptt_rx">RX</button>
+			</div>
+	</div>	
+<!-- logger panel -->
+	<div id="logger_panel" class="sbitx-panel">
+				<input type="text" class="logger-input sbitx-text-input" 
+					id="logger-callsign" placeholder="Call" size="6" />
+				<input type="text" class="logger-input sbitx-text-input" 
+					id="logger-rst-sent" placeholder="Sent" size="3" />
+				<input type="text" class="logger-input sbitx-text-input" 
+					id="logger-rst-received" placeholder="Rcv" size="3" />
+				<input type="text" class="logger-input sbitx-text-input" 
+					id="logger-exchange-received" placeholder="Exch" size="2" />
+				<input type="text" class="logger-input sbitx-text-input" 
+					id="logger-exchange-sent" placeholder="Nr" size="2" />
+				<button class="sbitx-btn logger-button" id="logger-log">Log &#187;</button>
+				<br />
+				<button class="sbitx-btn logger-button" id="esc">Esc</button>
+				<button class="sbitx-btn logger-button" id="wipe">Wipe</button>
+				<button class="sbitx-btn logger-button" id="qrz">QRZ</button>
+				<button class="sbitx-btn logger-button" id="macros">Macros</button>
+				<button class="sbitx-btn logger-button" id="logbook-open">Logbook</button>
+			<div id="logger-macros">
+				<button class="sbitx-btn macro-button" id="F1">F1</button>
+				<button class="sbitx-btn macro-button" id="F2">F2</button>
+				<button class="sbitx-btn macro-button" id="F3">F3</button>
+				<button class="sbitx-btn macro-button" id="F4">F4</button>
+				<button class="sbitx-btn macro-button" id="F5">F5</button>
+				<button class="sbitx-btn macro-button" id="F6">F6</button>
+				<button class="sbitx-btn macro-button" id="F7">F7</button>
+				<button class="sbitx-btn macro-button" id="F8">F8</button>
+				<button class="sbitx-btn macro-button" id="F9">F9</button>
+				<button class="sbitx-btn macro-button" id="F10">F10</button>
+				<button class="sbitx-btn macro-button" id="F11">F11</button>
+				<button class="sbitx-btn macro-button" id="F12">F12</button> 
+				<select id="MACROS_list">
+				</select>
+			</div> 
+	</div> <!-- end of logging panel -->
+	<!-- logbook -->
+	<div id="logbook_panel" class="sbitx-panel">
+		<span class="sbitx-panel-title">
+			<button class="sbitx-btn-back" data-for="panel_bar">&#x2716; Close</button>  
+		</span>
+		<div id="logbook-toolbar">
+			<button class="logger-button" id="btn-logbook-search">Search:</button> 
+			<input id="logbook-search" type="text" size="4" prompt="Search"/>
+			<button class="logger-button" id="btn-logbook-load">Load</button> 
+		</div>
+		<table id="logbook_table">
+			<thead><tr>
+				<th class="logbook-datestamp">Date-Time</th>
+				<th class="logbook-field">Freq</th>
+				<th class="logbook-field">Mode</th>
+				<th class="logbook-field">Call</th>
+				<th class="logbook-field">Sent</th>
+				<th class="logbook-field">Recv</th>
+			</tr></thead>
+			<tbody>
+			</tbody>
+		</table>
+	</div>
+<!-- recorder panel -->
+	<div id="recorder_panel" class="sbitx-panel mode-panel">
+			<span class="sbitx-panel-title">
+				<button class="sbitx-btn-back" data-for="panel_bar">&#x2716; Close</button>  
+			</span>
+			<div class="menu_item">
+				<button class="logger-button" id="record_start">REC</button>
+				<button class="logger-button" id="record_stop">STOP</button>
+				<span id="record_duration">00:00</span>
+			</div>
 	</div>	
 <!-- console panel -->
 		<div id ="console_panel" class="sbitx-panel">
@@ -413,56 +416,77 @@
 			</div>
 		</div>
 
+<!-- settings panel -->
+	<div id="settings_panel" class="sbitx-panel">
+		<span class="sbitx-panel-title">
+			<button class="sbitx-btn-back" data-for="panel_bar">&#x2716; Close</button>  
+		</span>
 
-	</div><!-- end of main used to limit overlapping of sidebar -->   
-<!-- the keyboard, comes at the bottom of them all -->
-</div> <!-- end of sdr_page (vs login page, etc)--> 
-	<div id="keybd-container">
-		<div id="more_keys">
-		<div class="Sbitxv3-control">
-			<div class="sbitxv3-label">MACRO</div>
-			<select class="sbitxv3-selection sbitx-selection" id="MACRO">
-			</select>
+		<div class="settings-element">
+			<span class="settings-label">Passkey:</span><input id="PASSKEY" 
+					class="settings_input sbitx-text-input" type="text" size="6" />
 		</div>
-		<button class="sbitxv3-btn" id="esc">ESC</button
-		><button class="sbitxv3-btn macro-btn" id="F1">F1</button
-		><button class="sbitxv3-btn macro-btn" id="F2">F2</button
-		><button class="sbitxv3-btn macro-btn" id="F3">F3</button
-		><button class="sbitxv3-btn macro-btn" id="F4">F4</button
-		><button class="sbitxv3-btn macro-btn" id="F5">F5</button
-		><button class="sbitxv3-btn macro-btn" id="F6">F6</button
-		><button class="sbitxv3-btn macro-btn" id="F7">F7</button
-		><button class="sbitxv3-btn macro-btn" id="F8">F8</button
-		><button class="sbitxv3-btn macro-btn" id="F9">F9</button
-		><button class="sbitxv3-btn macro-btn" id="F10">F10</button>
-		<button class="sbitxv3-btn" id="console-open">CMD</button
-		><button class="sbitxv3-btn" id="telnet-open">TEL</button
-		><button class="sbitxv3-btn" id="recorder-open">REC</button
-		><button class="sbitxv3-btn" id="settings-open">SET</button>
-		<input type="text" class="sbitx-text-input sbitx-text-field" 
-			id="TEXT" placeholder="TEXT\CMD" size="20" />
-		</div><!-- end of more_keys -->
+
+		<div class="settings-element">
+			<span class="settings-label">My Callsign:</span><input id="MYCALLSIGN" 
+					class="settings_input sbitx-text-input" type="text" size="6" />
+		</div>
+
+		<div class="settings-element">
+			<span class="settings-label">My Grid:</span><input id="MYGRID" 
+					class="settings_input sbitx-text-input" type="text" size="6" />
+		</div>
+		<div class="settings-element">
+			<span class="settings-label">Sidetone:</span>
+				<input type="range" class="sbitx-slider" id="SIDETONE" max="100" min="0" step="5" value="80" />
+		</div>
+		<div class="settings-element">
+			<span class="settings-label">CW Timeout:</span> 
+			<input type="range" class="sbitx-slider" id="CW_DELAY" max="1000" min="0" step="10" size="3" value="600" />	
+			<span class="sbitx-slider" id="CW_DELAY_reading"></span> msec
+		</div>
+		<div class="settings-element">
+			<span class="settings-label">CW Input</span> 
+				<select class="sbitx-selection" id="CW_INPUT">
+					<option value="KEYBOARD">Keyboard</option>
+					<option value="IAMBIC">Iambic Paddle</option>
+					<option value="STRAIGHT">Straight Key</option>
+				</select>
+		</div>
+		<div class="settings-element">
+			<span class="settings-label">Telnet Server:</span> 
+			<input type="text" class="settings_input sbitx-text-input" size="17"
+				id="TELNETURL" />
+			(Like : dxc.nc7j.com:7373)
+		</div>
+		<div class="settings-element">
+			<span class="settings-label"></span>
+			<button id="settings_save" class="logger-button">Update</button>		
+		</div>
+	</div><!-- end of help text -->
+
+<!-- the keyboard, comes at the bottom of them all -->
+	<div id="keybd-container" class="sbitx-panel">
 		<table id="keybd" class="sbitx-keystroke" width="100%">
 			<tr>
-			<td>Q</td><td>W</td><td>E</td><td>R</td><td>T</td><td>Y</td><td>U</td>
-			<td>I</td><td>O</td><td>P</td><td>@</td><td>1</td><td>2</td><td>3</td><td colspan="2">DEL</td>
+			<td>1</td><td>2</td><td>3</td><td>4</td><td>5</td><td>6</td><td>7</td><td>8</td><td>9</td><td>0</td><td>&#8676;</td>
 			</tr>
 			<tr>
-			<td>CMD</td><td>A</td><td>S</td><td>D</td><td>F</td><td>G</td><td>H</td>
-			<td>J</td><td>K</td><td>L</td><td>/</td><td>4</td><td>5</td><td>6</td><td colspan="2">Enter</td>
+			<td>q</td><td>w</td><td>e</td><td>r</td><td>t</td><td>y</td><td>u</td><td>i</td><td>o</td><td>p</td><td>/</td>
 			</tr>
 			<tr>
-			<td>SPACE</td><td>Z</td><td>X</td><td>C</td><td>V</td><td>B</td><td>N</td>
-			<td>M</td><td>,</td><td>.</td><td>?</td><td>7</td><td>8</td><td>9</td><td>0</td><td>[x]</td>
+			<td>a</td><td>s</td><td>d</td><td>f</td><td>g</td><td>h</td><td>j</td><td>k</td><td>l</td><td>;</td><td>?</td>
+			</tr>
+			<tr>
+			<td>&#x2716;</td><td>z</td><td>x</td><td>c</td><td>v</td><td>b</td><td>n</td><td>m</td><td>,</td><td>.</td><td>&#8617;</td>
+			</tr>
+			<tr>
+			<td>&#x2716;</td><td>AR</td><td>AS</td><td>BT</td><td colspan="4">&#x23D8;</td><td>:<td colspan=2">&#8617;</td>
 			</tr>
 		</table>
 	</div> <!-- end of on screen keyboard -->
-	<div class="menu-item">
-		<a href="https://www.hamqsl.com/solar.html" 
-			title="Click to add Solar-Terrestrial Data to your website!">
-			<img src="https://www.hamqsl.com/solarbc.php">
-		</a>
-	</div>
+	</div><!-- end of main used to limit overlapping of topbar -->   
+	</div> <!-- end of sdr_page (vs login page, etc)--> 
 <!- tx panel -->
 </body>
 
@@ -474,8 +498,6 @@ var qrz_window = null;
 var session_id = "nullsession";
 var macros_file = "";
 var spots = null;
-var logbook_bottom_row_id = -1;
-var logbook_top_row_id= 0;
 
 /* a few helper functions */
 function el(element_id){
@@ -510,6 +532,7 @@ function on_message(event){
 	response_handler(event.data);
 }
 
+let request_id = 0;
 function websocket_send(str){
 	//adds the session id 
 	if (socket == null)
@@ -517,8 +540,9 @@ function websocket_send(str){
 
 	if(str.substring(0,3) == "key")
 		log("got it");
-	var request = session_id + "\n" + str;
-//	log("ws tx:[" + request + "]");
+	var request = session_id + "\n" + request_id.toString() + "\n" + str;
+	request_id++;
+	//log("ws tx:[" + request + "]");
 	socket.send(request);
 }
 
@@ -528,7 +552,6 @@ function on_error(event){
   	socket.close();
   socket = null;
 	session_id = "nullsession";
-	log("on_error: session_id set to " + session_id);
   show_login();
 }
 
@@ -537,7 +560,6 @@ function on_error(event){
 function end_login(reason){
 	socket = null;
 	session_id = "nullsession";
-	log("end_login called:"+ reason);
 	$("#login_error").innerHTML = reason;
 	show_login();
 }
@@ -555,14 +577,13 @@ function go_fullscreen(){
 
 function do_login() {
 	log("requesting full screen");
-	if (document.location.hostname == "127.0.0.1")
-		go_fullscreen();
+	go_fullscreen();
 //	document.documentElement.requestFullscreen();
 	log("done full screen");
 	if (socket != null)
 		socket.close();
 	log("reset the socket, if any");
-	if(el("passkey").value.length < 3 && document.location.hostname != "127.0.0.1"){
+	if(el("passkey").value.length < 3){
 		alert("Enter the passkey (three characters or more)");
 		return false;
 	}
@@ -583,9 +604,7 @@ function show_login(){
 	$(".sbitx-panel").hide();
 	$("#pan_adapter").hide();
 	$("#cmd").hide();
-	$("#sidebar").hide();
-	$("#more_keys").hide();
-	$("#maincontrols").hide();
+	$("#topbar").hide();
 	if (document.location.hostname == "127.0.0.1")
 		show_keyboard();
 	
@@ -597,22 +616,12 @@ function show_login(){
 }
 
 function show_main(){
-	var dial = el("sidebar");
-	var main = el("main");
-	if (document.location.hostname == "127.0.0.1"){
-		main.style.marginLeft = 0;
-		dial.style.display = "none";	
-	}
-	else {
-		main.style.marginLeft = 200;
-		dial.style.display = "block";	
-	}
+	$("#topbar").show();
 	$("#pan_adapter").show();
 	$("#login_panel").hide();
-	$("#more_keys").show();
-	$("#maincontrols").show();
 	websocket_send("logbook=-1");
 	websocket_send("macros_list=macros_list");
+	$("#keybd-container").hide();
 }
 
 function toggle_fullscreen(){
@@ -654,6 +663,17 @@ function update_freq(freq){
 
 /* All tuning related functions including the soft-kob, drawing the dial etc. */
 
+// this is called when the dial is clicked
+function show_vfo_panel(){
+	open_panel("vfo_panel");
+	$(".sbitx-btn-set").show();
+ 	sbitx_toggle_update(el("RIT"));
+ 	sbitx_toggle_update(el("SPLIT"));
+}
+
+function close_vfo_panel(){
+	el("vfo_panel").style.display = "none";
+}
 
 function vfo_set(event){
 	var vfo_a = el("VFOA").value;
@@ -695,6 +715,10 @@ function draw_dial(){
 	var vfo   = el("VFO").value; //which one is used?
 	var rit_delta = el("RIT_DELTA").value;
 
+	el("agc_reading").innerHTML = "AGC "+ el("AGC").value;
+	el("if_reading").innerHTML = "IF Gain " + el("IF").value;
+	el("tx_drive_reading").innerHTML = "TX Drive " + el("DRIVE").value;	
+
 	if (rit == "ON"){
 		if (in_tx == 1){
 			el("current_freq").innerHTML = "TX&nbsp;" + freq2str(freq);
@@ -706,6 +730,7 @@ function draw_dial(){
 				"RX&nbsp;" + freq2str((parseInt(freq) + parseInt(rit_delta)).toString());
 			el("other_freq").innerHTML = "TX&nbsp;" + freq2str(freq); 
 		}
+		el("freq_status").innerHTML = "RIT ON";
 	}
 	else if (split == "ON") {
 		if (in_tx == 0){
@@ -717,6 +742,7 @@ function draw_dial(){
 			el("other_freq").innerHTML = "RX&nbsp;" + freq2str(freq);
 			
 		}
+		el("freq_status").innerHTML = "SPLIT ON";
 	}
 	else if (vfo == 'A'){
 		if (!in_tx){
@@ -726,6 +752,7 @@ function draw_dial(){
 			el("current_freq").innerHTML = "TX&nbsp;" + freq2str(vfo_a);
 			el("other_freq").innerHTML = "B&nbsp;" + freq2str(freq);
 		}
+		el("freq_status").innerHTML = "";
 	}
 	else if (vfo == 'B'){
 		if (!in_tx){
@@ -735,6 +762,7 @@ function draw_dial(){
 			el("current_freq").innerHTML =  "TX&nbsp;" + freq2str(freq);
 			el("other_freq").innerHTML = "A&nbsp;" + freq2str(vfo_a);
 		}
+		el("freq_status").innerHTML = "";
 	}	
 }
 
@@ -748,6 +776,19 @@ function draw_dial(){
 
 let tuning_position_last = 0;
 var knob_resolution = 6;
+
+function tuning_panel_open(){
+	log("intializing the tuning panel");
+	//resize the waterfall and the spectrum, both need to be visible when tuning
+	var waterfall = el("waterfall");
+	var spectrum = el("spectrum");
+//	spectrum.height = 50;
+//	waterfall.height = 50;
+		
+}
+
+function tuning_panel_close(){
+}
 
 function tuning_knob_handler(position_now){
 	//avoid small movements
@@ -815,16 +856,10 @@ $(function($) {
 
 function resize_ui(){
 	var b = $("body");
-	var sidebar_width = $("#sidebar").width();
-	if ($("#sidebar")[0].style.display == "none")
-		sidebar_width = 0;
-	
-	log("resize_ui w = " + b.width() + " h = " + b.height());
+	var topbar_width = $("#topbar").width();
 
-	el("waterfall").width = b.width()-sidebar_width;//-sidebar.width;
-	el("spectrum").width = b.width()-sidebar_width;//-sidebar.width;
-	$(".sbitx-panel").width = b.width()-sidebar_width;
-	el("CW_ui").width = b.width()-sidebar_width;//-sidebar.width;
+	el("waterfall").width = b.width()-topbar_width;//-topbar.width;
+	el("spectrum").width = b.width()-topbar_width;//-topbar.width;
 /*	if(b.height() > 600){
 		el("waterfall").height = b.height() / 4;
 		el("spectrum").height = b.height() /4;
@@ -858,6 +893,7 @@ function spectrum_update(update){
 	nbins = update.length - 3; //the first three characters are the  status
  	var scale = w.width/nbins;
 	var height = w.height - 15;
+//	ctx.fillStyle = "#004d4d";
 	ctx.fillStyle = "#000";
 	ctx.fillRect(0,0,w.width, w.height);
 
@@ -869,6 +905,7 @@ function spectrum_update(update){
 	var calculated_span = nbins * 46.875; //this comes from the sampling rate of the sdr
 	var hz_per_pixel = w.width / calculated_span;
 	
+//	ctx.fillStyle = "#009999";
 	ctx.fillStyle = "#444";
 	if (mode == 'LSB' || mode == 'CWR'){
 		ctx.fillRect(w.width/2 - (hz_per_pixel * high), 0, 
@@ -935,7 +972,7 @@ function spectrum_update(update){
 
 	ctx.beginPath();
 	ctx.font = "12px Sans";
-	ctx.strokeStyle = "cyan";
+	ctx.strokeStyle = "#00f";
 	ctx.fillStyle = "white";
 	if (mode == 'CWR' || mode == 'LSB'){
 		ctx.moveTo(w.width/2 - (rx_pitch * hz_per_pixel), 0);
@@ -955,8 +992,8 @@ function spectrum_update(update){
 		return;
 
 	ctx.beginPath();
-	ctx.strokeStyle = "red";
-	ctx.fillStyle = "red";
+	ctx.strokeStyle = "#f00";
+	ctx.fillStyle = "cyan";
 
 	if (mode == 'CWR' || mode == 'LSB'){
 		ctx.moveTo(w.width/2 - (tx_pitch * hz_per_pixel), 0);
@@ -973,52 +1010,23 @@ function spectrum_update(update){
 
 function waterfall_update(update){
 	var w = el("waterfall");
-	var i = 0;
 
 	if (w.width == 0 || w.height== 0)
 		return;
-
-	nbins = update.length - 3;
-	var scale = nbins/w.width;
-
-	//get the tx and rx lines
-	var rx_pitch = el("PITCH").value;
-	var tx_pitch = el("TX_PITCH").value;
-	var mode = el("MODE").value;
-	var calculated_span = nbins * 46.875; //this comes from the sampling rate of the sdr
-	var hz_per_pixel = w.width / calculated_span;
-	var repeat = 3;
-
-	if (mode == 'FT8')
-		repeat = 1;
-	else if (mode == 'CW' || mode == 'CWR')
-		repeat = 2;
-	
-
-	var rx_spot = -1;
-	var tx_spot = -1;
-
-	if (mode == 'CWR' || mode == 'LSB')
-		rx_spot = w.width/2 - (rx_pitch * hz_per_pixel);
-	else
-		rx_spot = w.width/2 + (rx_pitch * hz_per_pixel);
-	rx_spot = Math.round(rx_spot);
-
-	if (mode == 'FT8'){
-		tx_spot = w.width/2 + (tx_pitch * hz_per_pixel);
-		tx_spot = Math.round(tx_spot);
-	}
 
 	var ctx = w.getContext("2d", {willReadFrequently:true});
 
 	//first move the old image down by 1 pixels (bitblt it down)
 	var img = ctx.getImageData(0,0,w.width, w.height);
-	ctx.putImageData(img, 0, repeat);
+	ctx.putImageData(img, 0, 3);
+	
+	var i = 0;
+	nbins = update.length - 3;
+	var scale = nbins/w.width;
 
 	//create a new strip of waterfall width, but 1 pixels high
 	img = ctx.getImageData(0,0,w.width, 1);
 	var i = 0;
-
 	for (var x = 0; x < w.width; x++){
 		var bin = (w.width - x) * scale;
 		
@@ -1052,24 +1060,15 @@ function waterfall_update(update){
 			g = (100-v) * 12;
 			b = 0;
 		}
-		if (x == tx_spot)
-			img.data[i++] = 255;
-		else 
-			img.data[i++] = r;
-
-		if (x == rx_spot){
-			img.data[i++] = 255; 
-			img.data[i++] = 255; 
-		}
-		else{	
-			img.data[i++] = g;
-			img.data[i++] = b; 
-		}
+		img.data[i++] = r;
+		img.data[i++] = g;
+		img.data[i++] = b; 
 		img.data[i++] = 255;	
 	}
+	ctx.putImageData(img, 0,0);
+	ctx.putImageData(img, 0,1);
+	ctx.putImageData(img, 0,2);
 
-	for (i = 0; i < repeat; i++)
-		ctx.putImageData(img, 0,i);
 }
 
 /* on screen keyboard panel */
@@ -1087,14 +1086,6 @@ function sbitx_onscreen_key(event){
 	if (text_focus == null)
 		return;
 
-	//translate keys
-	if (key == 'SPACE')
-		key = ' ';
-	else if (key == 'CMD')
-		key = '\\';
-	else if (key == 'Enter')
-		key = '\n';
-
 	//sent key strokes to be transmitted
 	//even if the focus is not on datawindow
 	//as long as we have the CW_ui opened
@@ -1102,11 +1093,11 @@ function sbitx_onscreen_key(event){
 	if (text_focus.id == "data_window" ||
 		(el("CW_ui").style.display == "block" && text_focus == null)){
 		if (key == '\u21E4')
-			websocket_send("key " + String.fromCharCode(8));
+			websocket_send("key " + String.froCharCode(8));
 		else if (key == '\u23D8')
 			websocket_send("key  ");
 		else if (key == '\u2716')
-			$("#keybd").hide();
+			$("#keybd-container").hide();
 		else if (key == "AR")
 			websocket_send("key [");
 		else if (key == "AS")
@@ -1120,13 +1111,12 @@ function sbitx_onscreen_key(event){
 	
 	var caret = text_focus.selectionStart;
 	var string = text_focus.value;
-
 	//backspace
-	if (key == '\u21E4' || key == 'DEL'){
+	if (key == '\u21E4'){
 		text_focus.value = string.substring(0,caret-1) + string.substring(caret);
 		move_caret(text_focus, caret-1);
 	}//enter key when the focus is on text_in
-	else if ((key == "\u8617" || key == '\n') && text_focus.id == "text_in"){
+	else if (key == "\u8617" && text_focus.id == "text_in"){
 		websocket_send(text_focus.value);
 		text_focus.value = "";
 	}
@@ -1134,8 +1124,8 @@ function sbitx_onscreen_key(event){
 		text_focus.value = string.substring(0, caret) + ' ' + string.substring(caret);
 		move_caret(text_focus, caret+1);
 	}
-	else if (key == '[x]'){
-		$("#keybd").hide();
+	else if (key == '\u2716'){
+		$("#keybd-container").hide();
 	}
 	else {
 		if (key == '\u21A9')
@@ -1146,7 +1136,7 @@ function sbitx_onscreen_key(event){
 }
 
 function show_keyboard(){
-	$("#keybd").show();
+	$("#keybd-container").show();
 }
 /* Filter Panel */
 
@@ -1160,6 +1150,10 @@ function receiver_panel_open(){
 		
 }
 
+function show_bandwidth_panel(){
+	open_panel("bandwidth_panel");
+}
+
 function filter_set(event){
 	var id =parseInt(event.currentTarget.id);
 	var center = parseInt(el("PITCH").value);
@@ -1167,6 +1161,26 @@ function filter_set(event){
 	var low = 300;
 	var high = 3000;
 
+/*
+	if (mode == "FT8" || mode == "FT4" || mode == "DIGITAL"){
+		low = 0;
+		high = id;
+	}
+	else if (mode == "LSB" || mode =="USB"){
+		low = 300;
+		high = low + id; 
+	} else {
+		if (center - (id/2) < 0)
+			low = 0;
+		else
+			low = center -(id/2);
+		high = low + id;
+	}
+
+	log("setting filter from " + low + " to " + high);	
+	websocket_send("LOW " + low); 
+	websocket_send("HIGH " + high);
+*/
 	websocket_send("bandwidth " + id);
 }
 
@@ -1237,19 +1251,26 @@ function sbitx_selection_changed(event){
 	draw_dial(); 
 }
 
+function set_bandwidth_button_text(){
+	var low = el("LOW").value;
+	var high = el("HIGH").value;
+	var bandwidth = high - low;
+	if (bandwidth > 1000)
+		bandwidth = "BW:" +(bandwidth/1000) + " KHz";
+	else
+		bandwidth = "BW: " + bandwidth + " Hz";
+		
+	el("bandwidth").innerHTML =  bandwidth;
+}
+
 function sbitx_slider_update(e){
 	var id_reading = e.id + "_reading";
 	if (el(id_reading)){
 		if (el(id_reading).innerHTML != e.value)
 			el(id_reading).innerHTML= e.value; 
 	}
+	set_bandwidth_button_text();
 	draw_dial();
-}
-
-function sbitx_text_changed(event){
-	var e = event.currentTarget;
-			
-	websocket_send(e.id + " " + e.value);
 }
 
 function sbitx_slider_changed(event){
@@ -1330,11 +1351,13 @@ function sbitx_list_select(event){
 function switch_to_tx(){
 	log("setting in_tx true");
 	$("#tx_meters").show();
+	$("#rx_controls").hide();
 	in_tx = true;
 }
 
 function switch_to_rx(){
 	$("#tx_meters").hide();
+	$("#rx_controls").show();
 	log("setting in_tx false");
 	in_tx = false;
 }
@@ -1398,6 +1421,175 @@ function FT8_transmit(message){
 //	FT8_list_append("wsjtx-rx", message);
 }
 
+function FT8_process_message(text, start_call=false){
+	if (text.length == 0)
+		return;
+	//tokenize the message
+	var token_list = text.match(/\S+/g);
+	if (token_list.length < 8 || token_list[4] != '~' || token_list.length > 9){
+		log("FT8_process_message: error parsing [" + text + "]");
+		return;
+	}
+
+	var index = 1;
+	var confidence_score = token_list[1];
+	var signal_strength = token_list[2];
+	var rx_frequency = token_list[3];
+	var contact_callsign = token_list[5];
+	var sender_callsign = "";
+	var messsage = "";
+	var message_slot_1st = true;
+
+	//what we receive on 0 or 30th was actually started on 45th or 15th
+	//so the time stamp of last digit being zero is actually an odd slot
+	//we have to respond on the even slot
+	if (isNaN(parseInt(token_list[0])) == false){
+		//if it ended on 45th or 15th, then start the reply 
+		//on 15th of 45th, not the 1st or even (0/30)
+		if (parseInt(token_list[0]) & 1 == 1)
+			message_slot_1st = false;
+		else
+			message_slot_1st = true;
+	}
+		
+
+	if (token_list[5] == 'CQ'){
+		if (token_list.length == 9){
+			sender_callsign = token_list[7];
+			message = token_list[8];
+		}
+		else {
+			sender_callsign = token_list[6];
+			message = token_list[7];
+		}
+		contact_callsign == 'CQ';
+	}
+	else{ 
+		contact_callsign = token_list[5];
+	 	sender_callsign = token_list[6]; 
+		message = token_list[7];
+	}
+	var mycallsign = $("#MYCALLSIGN").val().toUpperCase();
+	var mygrid = $("#MYGRID").val().substring(0,4).toUpperCase();
+
+	//there are six kinds of messages we can receive
+
+	//First four are for S & P
+	//1. Replying to a CQ (new call)
+	if (start_call == true && contact_callsign == "CQ"
+		&& sender_callsign != mycallsign
+		&& ($("#logger-callsign").val() == "" || start_call == true)){
+		$("#FT8-rx-freq").val(rx_frequency);
+		$("#logger-callsign").val(sender_callsign);
+		$("#logger-rst-sent").val(signal_strength);
+		$("#logger-exchange-received").val(message); 
+		$("#logger-exchange-sent").val(mygrid);
+
+		//transmit a call to the CQer
+		//send in the alternate slot
+		if (message_slot_1st == true)
+			websocket_send("FT8_TX1ST ON");
+		else
+			websocket_send("FT8_TX1ST OFF");
+			
+		FT8_transmit(sender_callsign + " " + mycallsign + ' ' + mygrid);
+	}
+	else if (contact_callsign == "CQ"){ //strip off other CQs on my all
+		return;
+	}
+	//This is a reply to our CQ with a country grid, the grid has 4 characters 
+	//with alphabet in the begining
+	else if ($("#logger-exchange-received").val() == "" 
+		&& $("#logger-callsign").val() == "" 
+		&& message.length == 4 && message != "RR73" 
+		&& contact_callsign == mycallsign
+		&& message.charCodeAt(0) >= 65 && message.charCodeAt(0) <= 91){
+
+		$("#FT8-rx-freq").val(rx_frequency);
+		$("#logger-callsign").val(sender_callsign);
+		$("#logger-rst-sent").val(signal_strength);
+		$("#logger-exchange-received").val(message); 
+		$("#logger-exchange-sent").val(mygrid);
+/*
+		if (message_slot_1st == true)
+			websocket_send("FT8_TX1ST OFF");
+		else
+			websocket_send("FT8_TX1ST ON");
+*/
+		FT8_transmit(sender_callsign + " " + mycallsign + " " + signal_strength);
+	}  
+	//for all the remaining messages, the contact's callsign, grid and signal report
+	//should be already in the logger
+	else if ($("#logger-callsign").val() != sender_callsign || contact_callsign != mycallsign){
+		return; // this is not the call in progress
+	}
+	//2. the Runner contact has responded to us with our numeric signal report
+	else if (contact_callsign == mycallsign && message != '73' && !isNaN(parseInt(message))){
+		$("#logger-rst-received").val(message);
+		if (message_slot_1st == true)
+			websocket_send("FT8_TX1ST OFF");
+		else
+			websocket_send("FT8_TX1ST ON");
+		FT8_transmit(sender_callsign + " " + mycallsign + " R" + signal_strength);
+	}
+	//3. now, the runner has gotten their report and say byebye
+	else if ((message == 'RRR' || message == 'RR73')  
+			&& $("#logger-rst-received").val().length > 2 
+			&& $("#logger-exchange-received").val().length == 4){
+
+		log("qso to be logged");
+		if (message_slot_1st == true)
+			websocket_send("FT8_TX1ST OFF");
+		else
+			websocket_send("FT8_TX1ST ON");
+		FT8_transmit(sender_callsign + " " + mycallsign + " 73");
+		logger_enter_qso();
+		logger_wipe();
+		logger_abort();
+	}		
+
+	//We are running and someone called	
+	//the processing sequence in the code is altered
+
+	//5. The station who replied to our CQ has sent a second message with our report.
+	// Check that we have already entered this callsign into our logger entry window
+	// from a previous message
+	// the message is like Y0URS M1NE R-12 
+	//we have to handle this in the state machine first (although it comes after message#4
+
+	else if (message.charAt(0) == 'R' && (message.charAt(1) == '-' || message.charAt(1) == '+')
+		&& sender_callsign == $("#logger-callsign").val()
+		&& !isNaN(parseInt(message.substring(1)))){
+			$("#logger-rst-received").val(parseInt(message.substring(1)));
+
+		FT8_transmit(sender_callsign + " " + mycallsign + " RRR");
+	}
+	//the station has said 73, nothing more to be done now
+	else if (message == "73"  
+		&& $("#logger-rst-received").val().length > 1  
+		&& $("#logger-exchange-received").val().length == 4){
+		//log and wipe the call
+		logger_enter_qso();
+		logger_wipe();
+		logger_abort();
+	}
+	// if someone has called us back with grid location, we can start a call with them
+	else if (contact_callsign == mycallsign && message.length == 4 && message.charCodeAt(0) > 64
+		&& (el("FT8_AUTO").value == "ON" || start_call == true)){
+		$("#FT8-rx-freq").val(rx_frequency);
+		$("#logger-callsign").val(sender_callsign);
+		$("#logger-rst-sent").val(signal_strength);
+		$("#logger-exchange-sent").val(mygrid);
+		/*
+		if (message_slot_1st == true)
+			websocket_send("FT8_TX1ST OFF");
+		else
+			websocket_send("FT8_TX1ST ON");
+		*/	
+		FT8_transmit(sender_callsign + " " + mycallsign + " " + signal_strength);
+	}
+}
+
 function FT8_cq(event){
 	logger_wipe();
 	logger_abort();
@@ -1443,28 +1635,39 @@ function FT8_message_chosen(event){
 	logger_wipe();
 	logger_abort();
 	FT8_list_append("wsjtx-rx", message_text);
-	websocket_send("FT8 "+message_text);
+	FT8_process_message(message_text, true);
 }
 
 function FT8_new_message(text, style){
-	log("ft8:" + text + ":" + style);
+	log("ft8:" + text);
 	var words = text.split(' ');
 	FT8_list_append("wsjtx-activity", text, style) ;
 	var mycallsign = $("#MYCALLSIGN").val().toUpperCase();
 	if (words[4] == $("#FT8-rx-freq").val() || text.search(mycallsign) >= 0)
 		FT8_list_append("wsjtx-rx", text, style);
+	//now we process the message for a response if any
+	FT8_process_message(text, false);
 }
 
 // setup the html for wsjtx 
 function FT8_open(){
 	el("FT8_ui").style.display = "block";
+	el("keybd-container").style.display = "none";
+//	el("spectrum").height = 70;
+//	el("waterfall").height = 70;
+	el("logger-macros").style.display = "none";
+	websocket_send("HIGH 3000");
+	websocket_send("LOW 100");
+	open_panel("logger_panel");
 }
 
 /* cw functionality */
 
 function cw_open(mode){
 	if (document.location.hostname == "127.0.0.1")
-		el("keybd").style.display = "block";
+		el("keybd-container").style.display = "block";
+	open_panel("logger_panel");
+	$("#logger-macros").hide();
 	text_focus = el("data_window");
 	if (mode == 'RTTY' || mode == 'PSK31'){
 		$("#data_chat").show();
@@ -1485,10 +1688,11 @@ function cw_open(mode){
 function cw_keydown(c){
 	//we changed this from being an evernt handler
 	//var c = event.key; 
+
 	
 	if(el("MODE").value != "CW" && el("MODE").value == "CWR" &&
 			el("MODE").value != "PSK31" && el("MODE").value != "RTTY")	
-	return;
+		return;
 	
 	if (c == "Shift" || c == "Alt"){
 		logger_abort();
@@ -1587,6 +1791,7 @@ function show_telnet_panel(){
 
 /* voice functionality */
 function voice_open(){
+	open_panel("logger_panel");
 //	el("spectrum").height =  150;
 //	el("waterfall").height = 150;
 }
@@ -1604,11 +1809,11 @@ function ptt_rx(event){
 
 function logger_wipe(event){
 	websocket_send("ABORT");
-	$("CALL").val("");
-	$("SENT").val("");
-	$("RECV").val("");
-	$("EXCH").val(""); 
-	$("NR").val("");
+	$("#logger-callsign").val("");
+	$("#logger-rst-sent").val("");
+	$("#logger-rst-received").val("");
+	$("#logger-exchange-received").val(""); 
+	$("#logger-exchange-sent").val("");
 }
 
 function logger_abort(event){
@@ -1616,10 +1821,10 @@ function logger_abort(event){
 }
 
 function logger_qrz(event){
-	if($("#CALL").val().length < 2)
+	if($("#logger-callsign").val().length < 2)
 		return;
 
-	var url = "https://www.qrz.com/db/" + $("#CALL").val();
+	var url = "https://www.qrz.com/db/" + $("#logger-callsign").val();
 	if (qrz_window == null)
 		qrz_window = window.open(url, "_blank");
 	else if (qrz_window.closed)
@@ -1628,23 +1833,12 @@ function logger_qrz(event){
 		qrz.window.location = url;
 }
 
-function logbook_open(event){
-//	var url = "https://www.qrz.com/db/" + $("#CALL").val();
-	var url = window.location.href+ "logbook.html";
-
-	if (qrz_window == null)
-		qrz_window = window.open(url, "_blank");
-	else if (qrz_window.closed)
-		qrz_window = window.open(url, "_blank");
-	else
-		qrz.window.location = url;
-}
 function logger_enter_qso(){
-	var contact_callsign = el("CALL").value.toUpperCase();
-	var rst_sent = el("SENT").value.toUpperCase();
-	var exchange_sent = el("NR").value.toUpperCase();
-	var rst_recv = el("RECV").value.toUpperCase();	
-	var	exchange_recv = el("EXCH").value.toUpperCase();	
+	var contact_callsign = el("logger-callsign").value.toUpperCase();
+	var rst_sent = el("logger-rst-sent").value.toUpperCase();
+	var exchange_sent = el("logger-exchange-sent").value.toUpperCase();
+	var rst_recv = el("logger-rst-received").value.toUpperCase();	
+	var	exchange_recv = el("logger-exchange-received").value.toUpperCase();	
 	if (contact_callsign.length < 2 || !rst_sent.length  || !rst_recv.length){
 		alert("Fill the logger callsign, RST sent, received to save the QSO");
 		return;
@@ -1655,11 +1849,106 @@ function logger_enter_qso(){
 	setTimeout(logbook_reload, 500);
 }
 
+function logger_list_macros(list){
+	var names = list.split("|");
+	var sel = el("MACROS_list");
+	sel.innerHTML = "";
+//	sel.appendChild(new Option("(Macros)", "--"));
+	for (var i = 0; i < names.length; i++)
+		sel.appendChild(new Option(names[i], names[i]));
+	var current_value = el("MACRO").value;
+	if (current_value.length > 2)
+		sel.value = el("MACRO").value;
+	else
+		websocket_send("MACRO");
+}
+
+function logger_macro_variable(variable){
+	var text = "";
+	switch(variable){
+	case 'MYCALL':
+		return el("MYCALLSIGN").value;
+	case 'CALL':
+		return el("logger-callsign").value;
+	case 'EXCH':
+		return el("logger-exchange-sent").value;
+	case 'FREQ':
+		return el("FREQ").value;
+	case 'SENTRST':
+		return el("logger-rst-sent").value;
+	case 'GRIDSQUARE':
+		return el("MYGRID").value.substring(1,4);
+	case 'SENTRSTCUT':
+		var rst = el("logger-rst-sent").value;
+		text = rst.charAt(0);
+		if (rst.charAt(1) == '9')
+			text += 'N';
+		else
+			text += rst.charAt(1);
+		if (rst.charAt(2) == '9')
+			text += 'N';
+		else
+			text += rst.charAt(2);
+		return text;
+	default:
+		return "";
+	}
+}
+
+
+function logger_do_macro(macro_key){
+	var output = "";
+	var variable = "";
+	var state = "text";
+
+	var macro_text = el(macro_key).dataset.macro_text;
+
+	var mode = el("MODE").value;
+	if (mode == "USB" || mode == "LSB" || mode == "2TONE")
+		return;
+
+	for (var i = 0; i < macro_text.length; i++){
+		switch(macro_text.charAt(i)){
+		case '!': output += logger_macro_variable("CALL");break; 
+		case '*': output += logger_macro_variable("MYCALL");break;
+		case '#': output += logger_macro_variable("EXCH");break;
+		case '@': output += logger_macro_variable("FREQ");break;
+			break;
+		case '{':
+				state = "var";
+				break;
+			case '}':
+				//substitute the variable
+				output += logger_macro_variable(variable);
+				state = "text";
+				variable = "";
+				break;
+			default:
+				if (state == 'var')
+					variable += macro_text.charAt(i);
+				else
+					output += macro_text.charAt(i);	
+		}
+	}
+
+	// clear the previous buffer if any
+	websocket_send("abort=1");
+	if (mode != "CW" && mode != "CWR")
+		output = output + "^r"; //to end the tx for fldigi
+	websocket_send("key " + output);	
+	if (el("CW_ui").style.display == "block"){
+		websocket_send("t ");
+		websocket_send("key " + String.fromCharCode(18));
+	}
+	return output;
+}
+
 function logger_trigger_macro(event){
-	websocket_send(event.id);
+	logger_do_macro(event.currentTarget.id);
 }
 
 function logger_bind_key(fn_key, macro_line){
+	log("macro key ["+fn_key+"] has '" + macro_line + "'");
 	//extract the key name
 	var key_name = "";
 	var i;
@@ -1668,13 +1957,8 @@ function logger_bind_key(fn_key, macro_line){
 			break;
 	if (i == 0 || i == macro_line.length)
 		return;
-	if (fn_key){
-		var e = el(fn_key);
-		if (e != null){
-			el(fn_key).innerHTML = e.id + "<br>" + macro_line.substring(0, i);
-			el(fn_key).dataset.macro_text = macro_line.substring(i+1);
-		}
-	}
+	el(fn_key).innerHTML = fn_key + " " + macro_line.substring(0, i);
+	el(fn_key).dataset.macro_text = macro_line.substring(i+1);
 }
 
 //we expect the macro file to be in n1mm format
@@ -1693,14 +1977,12 @@ function logger_keys_update(){
 }
 
 function logger_set_macro(macro_file_name){
-	if(el("MACRO").value != macro_file_name)
-		el("MACRO").value = macro_file_name;
 	jQuery.get("/"+macro_file_name+".mc", function(data){macros_file = data; logger_keys_update();});
 }
 
 function logger_get_macro_file(event){
 	var macro_file_name = event.currentTarget.value;
-	logger_set_macro(macro_file_name);
+	logger_set_marcro(macro_file_name);
 }
 
 function logger_toggle_macros(event){
@@ -1713,120 +1995,93 @@ function logger_toggle_macros(event){
 	jQuery.get("/"+macro_file_name+".mc", function(data){macros_file = data; logger_keys_update();});
 }
 
-function logger_list_macros(list){
-	var names = list.split("|");
-	var sel = el("MACRO");
-	sel.innerHTML = "";
-	for (var i = 0; i < names.length; i++)
-		if (names[i].length > 0)
-			sel.appendChild(new Option(names[i], names[i]));
-}
-
 // trigged when the back sdr changes the macros
 function logger_macro_changed_from_sdr(new_macro){
 	if (el("MACRO").value == new_macro)
 		return;
 	el("MACRO").value = new_macro;
+	el("MACROS_list").value = new_macro;
 	websocket_send("macro_labels=" + new_macro);
 }
 
-/* logbook 
-web api:
-	logbook=0 loads the last 50 qsos
-	any +ve number loads 50 qsos with earlier
-*/
+/* logbook */
+
+function open_logbook(event){
+	open_panel("logger_panel");
+	open_panel("logbook_panel");
+}
 
 function logbook_update(args){
 	var token = args.split("|");
-	var insert_index = 0; //at the top
 	if(token.length < 10)
 		return;
 
-	var qso_id = token[0];
-
-	if (logbook_top_row_id < Number(qso_id))
-		logbook_top_row_id = Number(qso_id);
-	if (logbook_bottom_row_id > Number(qso_id)){
-		logbook_bottom_row_id = Number(qso_id);
-		insert_index = -1; //insert at the bottom
-	}
-
+	log("log entry:" + args);
 	var table = $("#logbook_table tbody")[0];
 
 	//replace existing row?
 	var row = el("logentry-"+token[0]);
 	if (row == null){
-		row = table.insertRow(insert_index);
+		row = table.insertRow(-1);
 		row.id = "logentry-" + token[0];
 	} else {
-		for (var i = 0; i < 8; i++)
+		for (var i = 0; i < 7; i++)
 			row.deleteCell(-1);
 	}
 
 	//date and time are at position 3, 4
 	item = row.insertCell(-1);
-	item.innerHTML = qso_id;
-	item.className = "logbook-field logbook-serial";
-
-	item = row.insertCell(-1);
 	item.innerHTML = token[3] + ' ' + token[4];
-	item.className = "logbook-field logbook-datestamp";
+	item.className = "logbook-datestamp";
 	//frequency
 	item = row.insertCell(-1);
 	item.innerHTML =  token[2];
-	item.className = "logbook-field logbook-freq";
+	item.className = "logbook-field";
 	//mode
 	item = row.insertCell(-1);
 	item.innerHTML = token[1];
-	item.className = "logbook-field logbook-mode";
+	item.className = "logbook-field";
 	//callsign
 	item = row.insertCell(-1);
 	item.innerHTML = token[8];
-	item.className = "logbook-field logbook-call";
+	item.className = "logbook-field";
 	//sent
 	item = row.insertCell(-1);
 	item.innerHTML = token[6] + '  ' + token[7];		
-	item.className = "logbook-field logbook-sent";
+	item.className = "logbook-field";
 	//received
 	item = row.insertCell(-1);
 	item.innerHTML = token[9] + '  ' + token[10];		
-	item.className = "logbook-field logbook-recv";
+	item.className = "logbook-field";
 }
 
-function logbook_reset(){
+function logbook_reload(){
 	$("#logbook_table tbody")[0].innerHTML = "";
- 	logbook_bottom_row_id = 10000000;
- 	logbook_top_row_id = 0;
+	websocket_send("logbook=-1");	
 }
 
-function open_logbook(event){
-	open_panel("logbook_panel");
-}
+function logbook_load(){
 
-function close_logbook(event){
+	//check if there is a seach query, in which case, you need to reload all over
+	if (el("logbook-search").value.length > 0){
+		$("#logbook_table tbody")[0].innerHTML = "";
+		websocket_send("logbook=-1");	
+		return;
+	}
 
-}
-//ask for qso made after a particular qso id
-//or qso made prior to a particular qso_id (prior is minus)
-function logbook_request(qso_id){
-	var q = "logbook="+Number(qso_id);
-	if (el("logbook-search").value.length > 0)
-		q += " " + el("logbook-search").value.toUpperCase();
-	websocket_send(q);
-}
-
-function logbook_more(){
-	logbook_request(logbook_bottom_row_id);
+	var rowcount = $("#logbook_table tbody tr").length
+	if(rowcount > 0){
+		var id = $("#logbook_table tbody tr")[rowcount-1].id;
+		websocket_send("logbook="+id.substring("logentry-".length));
+ 	}
+	else 
+		websocket_send("logbook=-1");
 }
 
 function logbook_search(){
-	logbook_reset();
+	$("#logbook_table tbody")[0].innerHTML = "";
+	websocket_send("logbook=-1 " + el("logbook-search").value.toUpperCase());
 }
-
-function open_logbook(event){
-	open_panel("logbook_panel");
-}
-
 
 /* settings panel */
 
@@ -1834,6 +2089,8 @@ function open_settings(){
 	open_panel("settings_panel");
 	//set the focs to the pin
 	el("PASSKEY").focus();
+	if (document.location.hostname == "127.0.0.1")
+		show_keyboard();
 }
 
 function save_settings(){
@@ -1859,7 +2116,6 @@ function start_recorder(){
 
 function stop_recorder(){
 	websocket_send("REC OFF");
-	el("recorder_panel").style.display = "";
 }
 
 function update_recorder(){
@@ -1921,21 +2177,16 @@ function update_data(text){
 			for (var i = 0; i < data.length; i++)
 				cw_update(data[i].innerHTML, "data_tx");
 
-		var data = xml.getElementsByTagName("CW-RX");
+		var data = xml.getElementsByTagName("LOG");
 		if (data)
 			for (var i = 0; i < data.length; i++)
-				cw_update(data[i].innerHTML, "data_rx");
-
-		var data = xml.getElementsByTagName("LOG");
-		for (var i = 0; i < data.length; i++)
-				write_console(data[i].innerHTML);
+				console_update(data[i].innerHTML);
 	}
 	else
 		console_update(text);
 //		el("log").insertAdjacentHTML("beforeend", text);
 }
 
-var ticks = 0;
 function ui_tick(){
 	if (socket == null)
 		return;
@@ -1946,55 +2197,38 @@ function ui_tick(){
 
 	if (socket.readyState != 1)
 		return;
-	if (session_id ==  'nullsession')
+	if (session_id ==  'nullsesssion')
 		return;
 	if (player != null)
 		websocket_send("audio");
 	else
 		websocket_send("spectrum");
-
-	ticks++;
-	if (ticks % 10 == 0)
-		logbook_request(-logbook_top_row_id);
 }
 
 function mode_set(new_mode){
-
-	var wf = el("waterfall");
-	var sp = el("spectrum");
-	wf.height = 100;
-	sp.height = 100;
 
 	$(".mode-panel").hide();
 	switch(new_mode){
 		case 'CW':
 		case 'CWR':
-			wf.height=150;
-			sp.height = 100;
+		case 'RTTY':
+		case 'PSK31':
 			cw_open(new_mode);
 			$("#CW_ui").show();
-			logger_set_macro("CW1");
 		break;
 		case "LSB":
 		case "USB":
 		case "2TONE":
-			wf.height=150;
-			sp.height = 100;
+			voice_open();
 			$("#Voice_ui").show();
-			logger_set_macro("CW1");
 			break;
 		case 'FT8':
-			sp.height = 50;
-			wf.height=50;
 			FT8_open();
 			$("#FT8_ui").show();
-			logger_set_macro("FT8");
 			break;
 		default:
-			wf.height=150;
 			var panel_name = "#" + new_mode + "_ui";
 			var active_panel = $(panel_name);
-			logger_set_macro("CW1");
 			if (active_panel.length > 0)
 				$(panel_name).show();
 					return;
@@ -2067,10 +2301,7 @@ function response_handler(response){
 		case 'login':
 			if (args !=  'error'){
 				session_id = args;
-				document.cookie ="sessionid="+session_id+";path=/";
-				log("session_id set to " + session_id);
 				show_main();
-				resize_ui();
 			}
 			else
 				alert("Incorrect passkey.\r\nIf you have forgotten your pass key\r\n" +
@@ -2086,8 +2317,8 @@ function response_handler(response){
 		case 'CONSOLE':
 			update_data(args);
 			break;
-		case 'SPECTRUM':
-		case 'WATERFALL':
+		case 'Spectrum':
+		case 'Waterfall':
 			break;
 		case 'FREQ':
 			e = el(cmd);
@@ -2108,24 +2339,21 @@ function response_handler(response){
 			logger_macro_changed_from_sdr(args);
 			break;
 		case 'MODE':
-			mode_set(args); 
-			//There is no break statement here, MODE continues to default case
+			mode_set(args); // ... and let it fall to the default, break
 		default:
 			e = el(cmd);
 			if (e){
+				if(cmd.search("FT8") == '0')
+					log("setting " + cmd + " : " + args);
 				if (e.value != args){
 					e.value = args;
-//					log("changing from " + e.value + " to [" + args + "]");
-					if (e.classList.contains('knob-value'))
-						knob_update(e);
-					else if (e.classList.contains("linear-value"))
-						update_linear(e);
+//					log("changing from " + e.value + " to " + args);
+					if (e.classList.contains('sbitx-slider'))
+						sbitx_slider_update(e);
 					else if(e.classList.contains('sbitx-update-toggle'))
 						sbitx_toggle_update(e);
 					else if (cmd == "MYCALLSIGN" && args== "NOBODY")
 						open_settings("settings_panel");
-					else if (cmd == 'SPLIT')
-						draw_dial();
 					if (cmd == "REC"){
 						if (args == "ON")
 							record_started  = Math.round(Date.now()/1000);
@@ -2136,9 +2364,8 @@ function response_handler(response){
 				}
 
 			}
-		/*	else
+			else
 				log("unhandled " + cmd + " : " + args);
-		*/
 
 			if (cmd == 'REF'){
 				draw_meters();
@@ -2153,33 +2380,33 @@ waterfall_init();
 setInterval(ui_tick, 50);
 spots = [];
 
+
 //init the event handlers
 window.addEventListener("resize", resize_ui);
-window.addEventListener("click", on_click);
 $(".sbitx-btn").on("click", sbitx_button_clicked);
-$(".sbitxv3-btn").on("click", sbitx_button_clicked);
-//$(".sbitxv3-control").on("click", sbitxv3_control_clicked);
 $(".sbitx-selection").on("change", sbitx_selection_changed);	
 $(".sbitx-slider").on("input", sbitx_slider_changed);
 $(".sbitx-toggle").on("click", sbitx_toggle_clicked);
 $(".sbitx-keystroke td").on("click", sbitx_onscreen_key);
 $(".sbitx-panel-title").on("click", close_panel);
-$(".sbitx-text-field").on("change keydown paste input",sbitx_text_changed);
-$(".linear-slider").on("input", on_linear_moved);
-$(".linear").on("click",  linear_toggle);
-$(".macro-btn").on("click", logger_trigger_macro);
+$(".bw-btn").on("click", filter_set);
 
 //ft8 specific handlers
 //$(".ft8-clickable").on("click", FT8_message_chosen);
 
 //specific control handler
 $("#REF").on("change", draw_meters);
+$("#dial").on("click", show_vfo_panel);
+$("#bandwidth").on("click", show_bandwidth_panel);
 $("#MODE").on("change", mode_changed);
+$("#ft8-call-cq").on("click", FT8_cq);
 $("#console-open").on("click", show_console_panel);
 $("#telnet-open").on("click", show_telnet_panel);
 $("#keyboard-open").on("click", show_keyboard);
-$("#MACRO").on("change", logger_get_macro_file);
+
 //vfo buttons
+$(".band-btn").on("click", close_vfo_panel);
+$(".vfo-btn").on("click", close_vfo_panel);
 $("#vfo_reset").on("click", vfo_set);
 $("#vfo_swap").on("click", vfo_set);
 
@@ -2188,17 +2415,15 @@ $("#wipe").on("click", logger_wipe);
 $("#esc").on("click", logger_abort);
 $("#qrz").on("click", logger_qrz);
 $("#logger-log").on("click", logger_enter_qso);
-//$("#macros").on("click", logger_toggle_macros);
-$("#MACRO").on("change", logger_get_macro_file);
+$("#macros").on("click", logger_toggle_macros);
+$("MACRO").on("change", logger_macro_changed_from_sdr);
+$("#MACROS_list").on("change", logger_get_macro_file);
 $(".macro-button").on("click", logger_trigger_macro); 
 //function key handlers
 document.addEventListener('keydown', function(e){
+	log("key : " + e.key);
 	if(e.key.length > 1 && e.key[0] == 'F' && isdigit(e.key[1])){
-		websocket_send(e.key);
-		e.preventDefault();
-	}
-	else if (e.key == 'Escape'){
-		websocket_send("ESC");
+		logger_do_macro(e.key);
 		e.preventDefault();
 	}
 	else if (e.key == "Enter" && text_focus != null && text_focus.id == "text_in"){
@@ -2215,22 +2440,23 @@ document.addEventListener('keydown', function(e){
 });
 	
 
+//do login
 $("#start_login").on("click", do_login);
+
 //cw buttons, also used for chatty data
+//$("#data_window").on("keydown", cw_keydown);
 $("#data_window").on("click", cw_input_focus);
 $("#data_chat_tx").on("click", data_tx);
 $("#data_chat_rx").on("click", data_rx);
-//$(".sbitxv3-slider").on("click", toggle_slider);
+
 //ssb buttons
 $("#ptt_tx").on("click", ptt_tx);
 $("#ptt_rx").on("click", ptt_rx);
 
 //logbook buttons
-$("#logbook-open").on("click", logbook_open);
-$("#btn-logbook-close").on("click", close_logbook);
-$("#btn-logbook-search").on("click", logbook_request);
-$("#btn-logbook-load").on("click", logbook_more);
-$("#logbook-search").on("input", logbook_search);
+$("#logbook-open").on("click", open_logbook);
+$("#btn-logbook-search").on("click", logbook_search);
+$("#btn-logbook-load").on("click", logbook_load);
 
 //settings buttons
 $("#settings-open").on("click", open_settings);
@@ -2241,122 +2467,16 @@ $("#recorder-open").on("click", open_recorder);
 $("#record_start").on("click", start_recorder);
 $("#record_stop").on("click", stop_recorder);
 
-//toggle the soft dial knob
-$("#dial").on("click", toggle_dial);
-window.onload = ui_init();
-
 //init the state of the ui
-function ui_init(){
-	$(".sbitx-text-input").on("focus", sbitx_text_focus);
-	$("#tx_rx").hide();
-	$(".sbitx-panel").hide();
-	$("#extra-controls").hide(); //do something about these
-	$("#more_keys").hide(); //do something about these
-	logger_set_macro("CW1");
-	logbook_reset();
-	if (document.location.hostname == "127.0.0.1"){
-//		window.addEventListener("contextmenu", function(e) { e.preventDefault(); }); //uncomment in production
-//		$("#tuning_knob").hide();
-	}
-	if (document.location.hostname == "127.0.0.1"){
-		show_keyboard();
-		do_login();
-	}
-/*	else
-		$("#keybd").hide();*/
-}
-
-function v3control_number(id, start, stop, step){
-	var c = document.getElementById(id);
-	for (var i = start; i <= stop; i += step){
-		var option = document.createElement("option");
-		option.text = i.toString();
-		option.value = i.toString();
-		option.className = "sbitxv3-option";
-		c.add(option);
-	}
-}
-
-function sbitxv3_control_clicked(event){
-	//find the nested button or select, just one in the control
-	var id = event.currentTarget.getElementsByTagName("select")[0].id;
-	var	select_control = el(id);
-	var options = select_control.options;
-	if (options.selectedIndex < options.length - 1)
-		select_control.value = options[options.selectedIndex+1].text;
-	else
-		select_control.value = options[0].text;
-	
-	websocket_send(id + " " + select_control.value); 
-}
-
-
-/* knob control handlers */
-
-function linear_toggle(event){
-	var drop_id = event.currentTarget.id.substring(7);
-	var div_el = event.currentTarget.querySelector(".linear-dropdown");
-	if (div_el.style.display == "block")
-		div_el.style.display = "";
-	else{
-		div_el.style.display = "block";
-		//send this value to the radio to get the focus here
-		//this will enable the control encoder to work 
-		websocket_send(drop_id+ " " + el(drop_id).value);
-	}
-}
-
-
-//when the user changes the value
-function on_linear_moved(event){
-	var control = event.currentTarget;
-	var control_id = control.id.substring(7);
-	el(control_id).value = control.value;
-	websocket_send(control_id + " " + control.value);
-}
-
-//called in update from the server
-//the value is already set in the readonly control
-//we just duplicate it on the slider
-function update_linear(event){
-	event.parentNode.querySelector(".linear-slider").value = event.value;
-}
-
-/* close any open linear controls if clicked outside*/
-function on_click(event){
-	log("clicked");
-	var target = event.target;
-
-	//don't close if the click is within the controls slider
-	if(target.classList.contains("linear-slider") ||
-		target.classList.contains("linear-dropdown") || 
-		target.classList.contains("linear-value"))
-		return;
-
-	var collection = document.getElementsByClassName("linear-dropdown");
-	for (var i = 0; i < collection.length; i++)
-		collection[i].style.display = "";
-}
-
-function toggle_dial(event){
-	var dial = el("sidebar");
-	var main = el("main");
-	if (dial.style.display == "block"){
-		main.style.marginLeft = 0;
-		dial.style.display = "none";	
-	}
-	else {
-		main.style.marginLeft = 200;
-		dial.style.display = "block";	
-	}
-	resize_ui();	
-}
-
-function write_console(str){
-	var con = $("#console");
-	con[0].innerHTML = str;
-	con.fadeIn(0);
-	con.fadeOut(6000);
-}
+$(".sbitx-text-input").on("focus", sbitx_text_focus);
+el("logger-macros").style.display = "none";
+$("#tx_rx").hide();
+$(".sbitx-panel").hide();
+$("#extra-controls").hide(); //do something about these
+logger_set_macro("CW1");
+if (document.location.hostname == "127.0.0.1")
+	window.addEventListener("contextmenu", function(e) { e.preventDefault(); }); //uncomment in production
+//if (document.location.hostname == "127.0.0.1")
+	show_keyboard();
 </script>
 </html>

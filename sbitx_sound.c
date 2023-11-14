@@ -628,18 +628,10 @@ int sound_loop(){
 			data_out[j++] = output_q[i++];
 		}
 
-/*
-	// This is the original pcm play write routine, now commented out.
-    while ((pcmreturn = snd_pcm_writei(pcm_play_handle, 
-			data_out, frames)) < 0) {
-       snd_pcm_prepare(pcm_play_handle);
-    }
-*/
-
-	// This is the new pcm play write routine
 
 	int framesize = ret_card;
 	int offset = 0;
+	int play_write_errors = 0;
 		
 	while(framesize > 0)
 	{
@@ -676,15 +668,6 @@ int sound_loop(){
 		ii += 2;	// Skip a pair of samples to account for the 96K sample to 48K sample rate change.
 	}
 
-/*
-	// This is the original pcm loopback write routine, now commented out.
-    while((pcmreturn = snd_pcm_writei(loopback_play_handle, 
-			 line_out, jj)) < 0){
-			 //printf("loopback rx error: %s\n", snd_strerror(pcmreturn));
-       snd_pcm_prepare(loopback_play_handle);
-			//puts("preparing loopback");
-    }
-*/    
 
 	// This is the new pcm loopback write routine
 	framesize = (ret_card + 1) /2;		// only writing half the number of samples because of the slower channel rate
@@ -692,11 +675,14 @@ int sound_loop(){
 
 	while(framesize > 0)
 	{
+	//	printf("Writing %d frame to loopback\n", framesize);
 		pcmreturn = snd_pcm_writei(loopback_play_handle, line_out + offset, framesize);
 		if(pcmreturn < 0)
 		{
-//			printf("Loopback PCM Write Error: %s  count = %d\n",snd_strerror(pcmreturn), loopback_write_error++);
+			//printf("Loopback PCM Write %d bytes Error: %s  count = %d\n",
+			//	framesize, snd_strerror(pcmreturn), loopback_write_error++);
 			// Handle an error condition from the snd_pcm_writei function
+			play_write_errors++;
 			snd_pcm_prepare(loopback_play_handle);
 		}
 		
@@ -710,7 +696,11 @@ int sound_loop(){
 		}
 	}
 	// End of new pcm loopback write routine	
-	
+
+	if(play_write_errors > 20){
+//		printf("play write error!\n");
+		play_write_errors = 0;
+	}			
     
 		//played_samples += pcmreturn;
   }
@@ -750,8 +740,8 @@ int loopback_loop(){
 		i = 0; 
 		j = 0;	
 		for (int i = 0; i < pcmreturn; i++){
-			q_write(&qloop, data_in[j]/64);
-			q_write(&qloop, data_in[j]/64);
+			q_write(&qloop, data_in[j]);
+			q_write(&qloop, data_in[j]);
 			j += 2;
 		}
 		nsamples += j;

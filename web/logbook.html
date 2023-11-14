@@ -1,0 +1,653 @@
+<html>
+<!--
+	HOW IT WORKS
+	
+	1. A number of classes with names starting with sbitx- are defined these are
+	used to implment sbitx specific handlers for events, etc.
+
+	2. A single websocket is used for efficient communication with the sbitx process
+	The websocket is used to transmit text messages for UI interactions and a binary
+	format for raw audio samples. 
+	2.1 The audio samples are enabled only for remote login. We do this by detecting if
+	the sbitx url is localhost or not.
+	2.2 All commands are implemented as fields of UI in sbitx. Read the C source to 
+	understand those.
+
+	SEMANTIC STRUCTURE		
+
+  
+  The top bar has frequency, volume, mode and icons to restore the web ui,
+	enable/disable the on-screen keyboard, etc.  
+
+	Each mode like ssb, ft8, etc has its one div that is enabled and others are all disabled.
+	
+	MAKING YOUR OWN SKINS
+	we can use different skins by replacing/editing the index.html and the style.css
+	in /home/pi/sbitx/web directory on the sbitx. 	
+
+	CREDITS:
+	The wonderful knob is from https://github.com/aterrien/jQuery-Knob
+-->
+	<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>sBitx</title>
+    <script src="jquery.min.js"></script>
+    <script src="jquery.knob.min.js"></script>
+    <script src="pcm-player.js"></script> 
+		<link rel="stylesheet" href="style.css">
+		<style>
+		#main { margin-left: 0px; margin-top: 0;}
+		.sbitx-panel { width: 100%; }
+		.logbook-serial{width: 30px;}
+		.logbook-datetime{width: 150px;}
+		.logbook-freq{width: 50px;}
+		.logbook-mode{width: 50px;}
+		.logbook-sent{width: 70px;}
+		.logbook-recv{width: 70px;}
+		</style>
+  </head>
+  <body>
+  <div id="sdr_page">
+		<input type="hidden" id="FREQ" value="7040000"/>
+		<input type="hidden" id="VFOA" value="7040000"/>
+		<input type="hidden" id="VFOB" value="7040000"/>
+		<input type="hidden" id="POWER" value="0"/>
+		<input type="hidden" id="REF" value="1"/>
+		<input type="hidden" id="HIGH" value="2200"/>
+		<input type="hidden" id="LOW" value="300"/>
+		<input type="hidden" id="MACRO" value =""/>
+		<input type="hidden" id="FT8_AUTO" value ="OFF" class="sbitx-update-toggle"/>
+		<input type="hidden" id="FT8_TX1ST" value ="OFF" class="sbitx-update-toggle"/>
+		<input type="hidden" id="STATUS" value="---" />
+		<input type="hidden" id="SPLIT"  class="sbitx-update-toggle" value="OFF" /> 
+		<input type="hidden" id="RIT" class="sbitx-update-toggle" value="OFF" /> 
+		<input type="hidden" id="REC" value="OFF" /> 
+		<input type="hidden" id="RIT_DELTA" name="RIT_DELTA" value="" /> 
+		<input type="hidden" id="VFO" value="A" />
+		<span id="restore-btn" onclick="toggle_fullscreen();"> &#X21F3; </span>
+		<div id="main">
+	<!-- logbook -->
+	<div id="logbook_panel" class="sbitx-panel">
+		<div id="logbook-toolbar">
+			<input id="logbook-search" type="text" size="6" 
+				class="logger-input sbitx-text-input sbitx-text-field"
+				placeholder="Search"/>
+			<button class="sbitxv3-btn longer-contro" id="btn-logbook-load">More</button> 
+		</div>
+		<table id="logbook_table">
+			<thead><tr>
+				<th class="logbook-serial">#</th>
+				<th class="logbook-datestamp">Date-Time</th>
+				<th class="logbook-freq">Freq</th>
+				<th class="logbook-mode">Mode</th>
+				<th class="logbook-call">Call</th>
+				<th class="logbook-sent">Sent</th>
+				<th class="logbook-recv">Recv</th>
+			</tr></thead>
+			<tbody>
+			</tbody>
+		</table>
+	</div>
+
+<!-- the keyboard, comes at the bottom of them all -->
+	<div id="keybd-container" class="sbitx-panel">
+		<table id="keybd" class="sbitx-keystroke" width="100%">
+			<tr>
+			<td>Q</td><td>W</td><td>E</td><td>R</td><td>T</td><td>Y</td><td>U</td>
+			<td>I</td><td>O</td><td>P</td><td>@</td><td>1</td><td>2</td><td>3</td><td colspan="2">DEL</td>
+			</tr>
+			<tr>
+			<td>CMD</td><td>A</td><td>S</td><td>D</td><td>F</td><td>G</td><td>H</td>
+			<td>J</td><td>K</td><td>L</td><td>/</td><td>4</td><td>5</td><td>6</td><td colspan="2">Enter</td>
+			</tr>
+			<tr>
+			<td>SPACE</td><td>Z</td><td>X</td><td>C</td><td>V</td><td>B</td><td>N</td>
+			<td>M</td><td>,</td><td>.</td><td>?</td><td>7</td><td>8</td><td>9</td><td>0</td><td>[x]</td>
+			</tr>
+		</table>
+	</div> <!-- end of on screen keyboard -->
+	</div><!-- end of main used to limit overlapping of topbar -->   
+	</div> <!-- end of sdr_page (vs login page, etc)--> 
+<!- tx panel -->
+</body>
+
+<script>
+
+var qrz_window = null;
+var session_id = "nullsession";
+var logbook_bottom_row_id = -1;
+var logbook_top_row_id= 0;
+
+/* a few helper functions */
+function el(element_id){
+	return document.getElementById(element_id);
+}
+
+function log(str){
+	console.log(str);
+}
+
+function isdigit(str){
+	if (isNaN(str[0]))
+		return false;
+	else
+		return true;
+}
+
+/* socket handlers */
+var socket = null;
+
+function on_open(event){
+	log("socket is connected");
+	websocket_send("login="+document.cookie);
+}
+
+function on_close(event){
+	log("socket was closed by the radio");
+	end_login("Connection lost");
+}
+
+function on_message(event){
+	response_handler(event.data);
+}
+
+function websocket_send(str){
+	//adds the session id 
+	if (socket == null)
+		return;
+
+	if(str.substring(0,3) == "key")
+		log("got it");
+	var request = session_id + "\n" + str;
+	log("ws tx:[" + request + "]");
+	socket.send(request);
+}
+
+function on_error(event){
+  log("socket communication error, resetting now");
+	if (socket != null)
+  	socket.close();
+  socket = null;
+	session_id = "nullsession";
+	log("on_error: session_id set to " + session_id);
+}
+
+/* login handler */
+
+function end_login(reason){
+	socket = null;
+	session_id = "nullsession";
+	log("end_login called:"+ reason);
+	$("#login_error").innerHTML = reason;
+	//show_login();
+}
+
+// ui panel switchers
+
+function show_main(){
+	logbook_request(0);
+}
+
+function toggle_fullscreen(){
+	if (document.fullscreenElement != null){
+		if (document.exitFullscreen)
+			document.exitFullscreen();
+		else
+			document.documentElement.exitFullscreen();
+	}
+	else 
+		document.documentElement.requestFullscreen();
+}
+
+/* on screen keyboard panel */
+
+var text_focus = null;
+
+function sbitx_text_focus(event){
+	text_focus = event.currentTarget;
+}
+
+function sbitx_onscreen_key(event){
+	event.stopImmediatePropagation();
+	var key = event.currentTarget.innerHTML;
+
+	if (text_focus == null)
+		return;
+
+	//sent key strokes to be transmitted
+	//even if the focus is not on datawindow
+	//as long as we have the CW_ui opened
+
+	
+	var caret = text_focus.selectionStart;
+	var string = text_focus.value;
+	//backspace
+	if (key == '\u21E4'){
+		text_focus.value = string.substring(0,caret-1) + string.substring(caret);
+		move_caret(text_focus, caret-1);
+	}//enter key when the focus is on text_in
+	else if (key == "\u8617" && text_focus.id == "text_in"){
+		websocket_send(text_focus.value);
+		text_focus.value = "";
+	}
+	else if (key == '\u23D8'){
+		text_focus.value = string.substring(0, caret) + ' ' + string.substring(caret);
+		move_caret(text_focus, caret+1);
+	}
+	else {
+		if (key == '\u21A9')
+			key = '\n';
+		text_focus.value = string.substring(0, caret) + key + string.substring(caret);
+		move_caret(text_focus, caret+1);
+	}
+}
+
+function show_keyboard(){
+	$("#keybd-container").show();
+}
+
+function move_caret(elem, caretPos) {
+
+    if(elem != null) {
+        if(elem.createTextRange) {
+            var range = elem.createTextRange();
+            range.move('character', caretPos);
+            range.select();
+        }
+        else {
+            if(elem.selectionStart) {
+                elem.focus();
+                elem.setSelectionRange(caretPos, caretPos);
+            }
+            else
+                elem.focus();
+        }
+    }
+}
+
+//user interaction handlers
+
+
+function sbitx_button_clicked(event){
+	websocket_send(event.currentTarget.id);
+}
+
+function sbitx_selection_changed(event){
+	var e = event.currentTarget;
+	var id_reading = e.id + "_reading";
+	websocket_send(e.id + " " + e.value);
+	draw_dial(); 
+}
+
+function set_bandwidth_button_text(){
+	var low = el("LOW").value;
+	var high = el("HIGH").value;
+	var bandwidth = high - low;
+	if (bandwidth > 1000)
+		bandwidth = "BW:" +(bandwidth/1000) + " KHz";
+	else
+		bandwidth = "BW: " + bandwidth + " Hz";
+		
+	el("bandwidth").innerHTML =  bandwidth;
+}
+
+function sbitx_text_changed(event){
+	var e = event.currentTarget;
+	websocket_send(e.id + " " + e.value);
+}
+
+/* logger functionality */
+
+function logger_wipe(event){
+	websocket_send("ABORT");
+	$("CALL").val("");
+	$("SENT").val("");
+	$("RECV").val("");
+	$("EXCH").val(""); 
+	$("NR").val("");
+}
+
+function logger_abort(event){
+	websocket_send("abort=1");
+}
+
+function logger_qrz(event){
+	if($("#CALL").val().length < 2)
+		return;
+
+	var url = "https://www.qrz.com/db/" + $("#CALL").val();
+	if (qrz_window == null)
+		qrz_window = window.open(url, "_blank");
+	else if (qrz_window.closed)
+		qrz_window = window.open(url, "_blank");
+	else
+		qrz.window.location = url;
+}
+
+function logger_enter_qso(){
+	websocket_send("qso");
+	setTimeout(logbook_reload, 1000);
+}
+
+function logger_trigger_macro(event){
+	websocket_send(event.id);
+}
+
+function logger_bind_key(fn_key, macro_line){
+	log("macro key ["+fn_key+"] has '" + macro_line + "'");
+	//extract the key name
+	var key_name = "";
+	var i;
+	for (i =0; i < macro_line.length; i++)
+		if (macro_line.charAt(i) == ',')
+			break;
+	if (i == 0 || i == macro_line.length)
+		return;
+	el(fn_key).innerHTML = fn_key + " " + macro_line.substring(0, i);
+	el(fn_key).dataset.macro_text = macro_line.substring(i+1);
+}
+
+//we expect the macro file to be in n1mm format
+function logger_keys_update(){
+	var lines = macros_file.split("\n");
+	for (var i = 0; i < lines.length; i++){
+		var line = lines[i];
+		//we deal only with the lines that start with 'FN ' or 'FNN '
+		if (line.charAt(0) == 'F' && isdigit(line.charAt(1))){
+			if (isdigit(line.charAt(2)) && line.charAt(3) == ' ')
+				logger_bind_key(line.substring(0,3), line.substring(4));
+			else if (line.charAt(2) == ' ')
+				logger_bind_key(line.substring(0,2), line.substring(3));
+		}
+	}
+}
+
+function logger_set_macro(macro_file_name){
+	jQuery.get("/"+macro_file_name+".mc", function(data){macros_file = data; logger_keys_update();});
+}
+
+function logger_get_macro_file(event){
+	var macro_file_name = event.currentTarget.value;
+	logger_set_marcro(macro_file_name);
+}
+
+function logger_toggle_macros(event){
+	if ( el("logger-macros").style.display == "block"){
+		el("logger-macros").style.display = "none";
+		return;
+	}
+	el("logger-macros").style.display = "block";
+	var macro_file_name = el("MACROS_list").value
+	jQuery.get("/"+macro_file_name+".mc", function(data){macros_file = data; logger_keys_update();});
+}
+
+function logger_list_macros(list){
+	var names = list.split("|");
+	var sel = el("MACROS_list");
+	sel.innerHTML = "";
+//	sel.appendChild(new Option("(Macros)", "--"));
+	for (var i = 0; i < names.length; i++)
+		sel.appendChild(new Option(names[i], names[i]));
+	var current_value = el("MACRO").value;
+	if (current_value.length > 2)
+		sel.value = el("MACRO").value;
+	else
+		websocket_send("MACRO");
+}
+
+function logger_list_macros(list){
+	var names = list.split("|");
+	var sel = el("MACROS_list");
+	sel.innerHTML = "";
+	for (var i = 0; i < names.length; i++)
+		sel.appendChild(new Option(names[i], names[i]));
+	var current_value = el("MACRO").value;
+	if (current_value.length > 2)
+		sel.value = el("MACRO").value;
+	else
+		websocket_send("MACRO");
+}
+
+// trigged when the back sdr changes the macros
+function logger_macro_changed_from_sdr(new_macro){
+	if (el("MACRO").value == new_macro)
+		return;
+	el("MACRO").value = new_macro;
+	el("MACROS_list").value = new_macro;
+	websocket_send("macro_labels=" + new_macro);
+}
+
+/* logbook 
+web api:
+	logbook=0 loads the last 50 qsos
+	any +ve number loads 50 qsos with earlier
+*/
+
+function logbook_update(args){
+	var token = args.split("|");
+	var insert_index = 0; //at the top
+	if(token.length < 10)
+		return;
+
+	var qso_id = token[0];
+
+	if (logbook_top_row_id < Number(qso_id))
+		logbook_top_row_id = Number(qso_id);
+	if (logbook_bottom_row_id > Number(qso_id)){
+		logbook_bottom_row_id = Number(qso_id);
+		insert_index = -1; //insert at the bottom
+	}
+
+	log("log entry:" + args + " at " + insert_index);
+	var table = $("#logbook_table tbody")[0];
+
+	//replace existing row?
+	var row = el("logentry-"+token[0]);
+	if (row == null){
+		row = table.insertRow(insert_index);
+		row.id = "logentry-" + token[0];
+	} else {
+		for (var i = 0; i < 8; i++)
+			row.deleteCell(-1);
+	}
+
+	//date and time are at position 3, 4
+	item = row.insertCell(-1);
+	item.innerHTML = qso_id;
+	item.className = "logbook-field logbook-serial";
+
+	item = row.insertCell(-1);
+	item.innerHTML = token[3] + ' ' + token[4];
+	item.className = "logbook-field logbook-datetime";
+	//frequency
+	item = row.insertCell(-1);
+	item.innerHTML =  token[2];
+	item.className = "logbook-field logbook-freq";
+	//mode
+	item = row.insertCell(-1);
+	item.innerHTML = token[1];
+	item.className = "logbook-field logbook-mode";
+	//callsign
+	item = row.insertCell(-1);
+	item.innerHTML = token[8];
+	item.className = "logbook-field logbook-call";
+	//sent
+	item = row.insertCell(-1);
+	item.innerHTML = token[6] + '  ' + token[7];		
+	item.className = "logbook-field logbook-sent";
+	//received
+	item = row.insertCell(-1);
+	item.innerHTML = token[9] + '  ' + token[10];		
+	item.className = "logbook-field logbook-recv";
+}
+
+function logbook_reset(){
+	$("#logbook_table tbody")[0].innerHTML = "";
+ 	logbook_bottom_row_id = 10000000;
+ 	logbook_top_row_id = 0;
+}
+
+//ask for qso made after a particular qso id
+//or qso made prior to a particular qso_id (prior is minus)
+function logbook_request(qso_id){
+	var q = "logbook="+Number(qso_id);
+	if (el("logbook-search").value.length > 0)
+		q += " " + el("logbook-search").value.toUpperCase();
+	websocket_send(q);
+}
+
+function logbook_more(){
+	logbook_request(logbook_bottom_row_id);
+}
+
+function logbook_search(){
+	logbook_reset();
+}
+
+function ui_tick(){
+	if (socket == null)
+		return;
+
+	if (socket.readyState != 1)
+		return;
+	if (session_id ==  'nullsession')
+		return;
+	logbook_request(-logbook_top_row_id);
+}
+
+function response_handler(response){
+	var cmd = "";
+	var args = "";
+
+	var i = response.indexOf(' ');	
+	if (i >= 0){
+		cmd = response.substring(0, i);
+		args = response.substring(i+1);
+	}
+	else
+		return;
+
+	switch(cmd){
+		case 'QSO':
+			logbook_update(args);
+			break;
+		case 'FREQ':
+			e = el(cmd);
+			log("freq " + args);
+			if (e)
+				e.value = args;
+			//update the selected VFO
+			if (el("VFO").value  == 'A')
+				el("VFOA").value = args;
+			else
+				el("VFOB").value = args;
+			draw_dial();
+			break;
+		case 'macros_list':
+			logger_list_macros(args);
+			break;
+		case 'MACRO':
+			logger_macro_changed_from_sdr(args);
+			break;
+		case 'MODE':
+			mode_set(args); // ... and let it fall to the default, break
+		default:
+			e = el(cmd);
+			if (e){
+				if(cmd.search("FT8") == '0')
+					log("setting " + cmd + " : " + args);
+				if (e.value != args){
+					e.value = args;
+//					log("changing from " + e.value + " to " + args);
+					if (e.classList.contains('sbitx-slider'))
+						sbitx_slider_update(e);
+					else if(e.classList.contains('sbitx-update-toggle'))
+						sbitx_toggle_update(e);
+					else if (cmd == "MYCALLSIGN" && args== "NOBODY")
+						open_settings("settings_panel");
+					if (cmd == "REC"){
+						if (args == "ON")
+							record_started  = Math.round(Date.now()/1000);
+						else
+							record_started = -1; 							
+						update_recorder();
+					}
+				}
+
+			}
+			else
+				log("unhandled " + cmd + " : " + args);
+	}
+}
+
+setInterval(ui_tick, 2000);
+
+//init the event handlers
+$(".sbitx-btn").on("click", sbitx_button_clicked);
+$(".sbitx-selection").on("change", sbitx_selection_changed);	
+$(".sbitx-keystroke td").on("click", sbitx_onscreen_key);
+$(".sbitx-text-field").on("change keydown paste input",sbitx_text_changed);
+
+// logger buttons
+$("#wipe").on("click", logger_wipe);
+$("#esc").on("click", logger_abort);
+$("#qrz").on("click", logger_qrz);
+$("#logger-log").on("click", logger_enter_qso);
+$("#macros").on("click", logger_toggle_macros);
+$("MACRO").on("change", logger_macro_changed_from_sdr);
+$("#MACROS_list").on("change", logger_get_macro_file);
+$(".macro-button").on("click", logger_trigger_macro); 
+//function key handlers
+
+document.addEventListener('keydown', function(e){
+	if(e.key.length > 1 && e.key[0] == 'F' && isdigit(e.key[1])){
+		websocket_send(e.key);
+		e.preventDefault();
+	}
+	else if (e.key == "Enter" && text_focus != null && text_focus.id == "text_in"){
+		websocket_send(text_focus.value);
+		text_focus.value = "";
+	}
+	else if (e.key == "Enter" && text_focus != null && text_focus.id == "telnet_in"){
+		websocket_send("tel " + text_focus.value);
+		text_focus.value = "";
+	}
+	else if (text_focus != null && text_focus.id == "data_window"){
+			cw_keydown(e.key);
+	}
+});
+	
+
+//do login
+
+//cw buttons, also used for chatty data
+//$("#data_window").on("keydown", cw_keydown);
+
+
+//logbook buttons
+$("#btn-logbook-search").on("click", logbook_request);
+$("#btn-logbook-load").on("click", logbook_more);
+$("#logbook-search").on("input", logbook_search);
+
+window.onload = ui_init();
+
+//init the state of the ui
+function ui_init(){
+	$(".sbitx-text-input").on("focus", sbitx_text_focus);
+	if (document.location.hostname == "127.0.0.1"){
+//		window.addEventListener("contextmenu", function(e) { e.preventDefault(); }); //uncomment in production
+		$("#tuning_knob").hide();
+	}
+	if (document.location.hostname == "127.0.0.1"){
+		show_keyboard();
+	}
+	session_id = document.cookie.substring(10);
+	socket = new WebSocket("ws://" + location.host + "/websocket");
+	socket.onmessage = on_message;
+	socket.onclose = on_close;
+	socket.onerror = on_error;
+	logbook_reset();
+}
+</script>
+</html>

@@ -32,19 +32,45 @@
 static int rc;
 static sqlite3 *db;
 
-/* writes the output to data/result_rows.txt */
+
+/* writes the output to data/result_rows.txt
+	if the from_id is negative, it returns the later 50 records (higher id)
+	if the from_id is positive, it returns the prior 50 records (lower id) */
 
 int logbook_query(char *query, int from_id, char *result_file){
 	sqlite3_stmt *stmt;
 	char statement[200], json[10000], param[2000];
 
-	if (from_id == -1)
-		from_id = 1000000000; //set it very high
-	if (!query)
-		sprintf(statement, "select * from logbook where id <= %d ORDER BY id DESC LIMIT 50", from_id);
-	else
-		sprintf(statement, "select * from logbook where (callsign_recv LIKE '%s%%' AND id <=%d) ORDER BY id DESC LIMIT 50", query, from_id);	
 
+	//add to the bottom of the logbook
+	if (from_id > 0){
+		if (query)
+			sprintf(statement, "select * from logbook "
+				"where (callsign_recv LIKE '%s%%' AND id < %d) ",
+				query, from_id);
+		else
+			sprintf(statement, "select * from logbook where id < %d ", from_id);
+	}
+	//last 50 QSOs
+	else if (from_id == 0){
+		if (query)
+			sprintf(statement, "select * from logbook "
+				"where callsign_recv LIKE '%s%%' ", query);
+		else
+			strcpy(statement, "select * from logbook ");
+	}
+	//latest QSOs after from_id (top of the log)
+	else {
+		if (query)
+			sprintf(statement, "select * from logbook "
+				"where (callsign_recv LIKE '%s%%' AND id > %d) ",
+				query, -from_id);
+		else 
+			sprintf(statement, "select * from logbook where id > %d ", -from_id); 
+	}
+	strcat(statement, "ORDER BY id DESC LIMIT 50;");
+
+	//printf("[%s]\n", statement);
 	sqlite3_prepare_v2(db, statement, -1, &stmt, NULL);
 
 	char output_path[200];	//dangerous, find the MAX_PATH and replace 200 with it
@@ -75,12 +101,36 @@ int logbook_query(char *query, int from_id, char *result_file){
 				sprintf(param, "%d", sqlite3_column_type(stmt, i));
 				break;
 			}
+			//printf("%s|", param);
 			fprintf(pf, "%s|", param);
 		}
+		//printf("\n");
 		fprintf(pf, "\n");
 	}
 	sqlite3_finalize(stmt);
 	fclose(pf);
+}
+
+int logbook_count_dup(const char *callsign, int last_seconds){
+	char date_str[100], time_str[100], statement[1000];
+	sqlite3_stmt *stmt;
+
+	time_t log_time = time_sbitx() - last_seconds;
+	struct tm *tmp = gmtime(&log_time);
+	sprintf(date_str, "%04d-%02d-%02d", tmp->tm_year + 1900, tmp->tm_mon + 1, tmp->tm_mday);
+	sprintf(time_str, "%02d%02d", tmp->tm_hour, tmp->tm_min);
+	
+	sprintf(statement, "select * from logbook where "
+		"callsign_recv=\"%s\" AND qso_date >= \"%s\" AND qso_time >= \"%s\"",
+		callsign, date_str, time_str);
+
+	sqlite3_prepare_v2(db, statement, -1, &stmt, NULL);
+	int rec = 0;
+	while (sqlite3_step(stmt) == SQLITE_ROW) {
+		rec++;
+	}
+	sqlite3_finalize(stmt);
+	return rec;
 }
 
 void logbook_open(){
@@ -88,7 +138,6 @@ void logbook_open(){
 	sprintf(db_path, "%s/sbitx/data/sbitx.db", getenv("HOME"));
 
 	rc = sqlite3_open(db_path, &db);
-	printf("sqlite3 opening returned %d\n", rc);
 }
 
 void logbook_add(char *contact_callsign, char *rst_sent, char *exchange_sent, 
@@ -116,7 +165,6 @@ void logbook_add(char *contact_callsign, char *rst_sent, char *exchange_sent,
 
 	sqlite3_exec(db, statement, 0,0, &err_msg);
 }
-
 
 void import_logs(char *filename){
 	char entry_text[1000], statement[1000];
