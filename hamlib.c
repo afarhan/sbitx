@@ -113,9 +113,9 @@ void hamlib_set_freq(char *f){
   else
     freq = atoi(f);
   send_response("RPRT 0\n");
-	sprintf(cmd, "r1:freq=%ld", freq);
-	do_cmd(cmd);
-	//set_freq(freq);
+	sprintf(cmd, "freq %d", freq);
+	cmd_exec(cmd);
+//	set_freq(freq);
 }
 	
 
@@ -180,7 +180,7 @@ void interpret_command(char *cmd){
 
 void hamlib_handler(char *data, int len){
 
-	printf("<<<hamlib cmd %s =>", data);
+//	printf("<<<hamlib cmd %s =>", data);
   for (int i = 0; i < len; i++){
     if (data[i] == '\n'){
       incoming_data[incoming_ptr] = 0;

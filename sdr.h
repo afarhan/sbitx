@@ -191,6 +191,7 @@ extern int freq_hdr;
 void set_lo(int frequency);
 void set_volume(double v);
 void sdr_request(char *request, char *response);
+void cmd_exec(char *cmd);
 
 void sdr_modulation_update(int32_t *samples, int count, double scale_up);
 
@@ -202,9 +203,7 @@ int get_tx_data_byte(char *c);
 int	get_tx_data_length();
 void modem_poll(int mode);
 float modem_next_sample(int mode);
-void ft8_tx(char *message, int freq);
 void modem_abort();
-void ft8_interpret(char *received, char *transmit);
 
 int is_in_tx();
 
@@ -215,7 +214,6 @@ void tx_on(int trigger);
 void tx_off();
 long get_freq();
 int get_pitch();
-void do_cmd(char *cmd);
 time_t time_sbitx();
 
 //cw defines, these are bitfields, hence, powers of 2

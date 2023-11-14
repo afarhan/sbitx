@@ -3,7 +3,7 @@ void loop();
 void display();
 void redraw();
 void key_pressed(char c);
-int set_field(char *id, char *value);
+int field_set(char *label, char *new_value);
 int get_field_value(char *id, char *value);
 int get_field_value_by_label(char *label, char *value);
 extern int spectrum_plot[];
@@ -12,8 +12,11 @@ int remote_update_field(int i, char *text);
 void web_get_spectrum(char *buff);
 int web_get_console(char *buff, int max);
 int remote_audio_output(int16_t *samples);
+const char *field_str(char *label);
+int field_int(char *label);
 int is_in_tx();
 void abort_tx();
+void enter_qso();
 extern int display_freq;
 
 #define FONT_FIELD_LABEL 0
@@ -31,7 +34,10 @@ extern int display_freq;
 #define FONT_FLDIGI_TX 12
 #define FONT_TELNET 13
 #define FONT_FT8_QUEUED 14
+#define FONT_FT8_REPLY 15
 
+void enter_qso();
+void call_wipe();
 void write_console(int style, char *text);
 int macro_load(char *filename, char *output);
 int macro_exec(int key, char *dest);
@@ -42,4 +48,4 @@ void update_log_ed();
 void write_call_log();
 time_t time_sbitx();
 
-#define VER_STR "sbitx v2.0"
+#define VER_STR "sbitx v3.0"

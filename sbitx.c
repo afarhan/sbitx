@@ -64,7 +64,7 @@ static int rx_gain = 100;
 static int rx_vol = 100;
 static int tx_gain = 100;
 static int tx_compress = 0;
-static double spectrum_speed = 0.1;
+static double spectrum_speed = 0.3;
 static int in_tx = 0;
 static int rx_tx_ramp = 0;
 static int sidetone = 2000000000;
@@ -126,7 +126,7 @@ void radio_tune_to(u_int32_t f){
 	else
   	si5351bx_setfreq(2, f + bfo_freq - 24000 + TUNING_SHIFT);
 
-  //printf("Setting radio to %d\n", f);
+//  printf("Setting radio rx_pitch %d\n", rx_pitch);
 }
 
 void fft_init(){
@@ -200,10 +200,11 @@ void spectrum_reset(){
 }
 
 void spectrum_update(){
-	//we are only using the lower half of the bins, so this copies twice as many bins, 
-	//it can be optimized. leaving it here just in case someone wants to try I Q channels 
+	//we are only using the lower half of the bins, 
+	//so this copies twice as many bins, 
+	//it can be optimized. leaving it here just in case 
+	//someone wants to try I Q channels 
 	//in hardware
-//	for (int i = 0; i < MAX_BINS; i++){
 
 	// this has been hand optimized to lower
 	//the inordinate cpu usage
@@ -497,60 +498,6 @@ double agc2(struct rx *r){
 	//printf("%d:s meter: %d %d %d \n", count++, (int)r->agc_gain, (int)r->signal_strength, r->agc_loop);
   return 100000000000 / r->agc_gain;  
 }
-/*
-double tgc(struct rx *r){
-	int i;
-  double signal_strength, agc_gain_should_be;
-
-	//do nothing if agc is off
-  if (r->agc_speed == -1){
-	  for (i=0; i < MAX_BINS/2; i++)
-			__real__ (r->fft_time[i+(MAX_BINS/2)]) *=10000000;
-    return 10000000;
-  }
-
-  //find the peak signal amplitude
-  signal_strength = 0.0;
-	for (i=0; i < MAX_BINS/2; i++){
-		double s = creal(r->fft_time[i+(MAX_BINS/2)]) * 1000;
-		if (signal_strength < s) 
-			signal_strength = s;
-	}
-	//also calculate the moving average of the signal strength
-  r->signal_avg = (r->signal_avg * 0.93) + (signal_strength * 0.07);
-	if (signal_strength == 0)
-		agc_gain_should_be = 10000000;
-	else
-		agc_gain_should_be = 100000000000/signal_strength;
-	r->signal_strength = signal_strength;
-
-	double agc_ramp = 0.0;
-
-  // climb up the agc quickly if the signal is louder than before 
-	if (agc_gain_should_be < r->agc_gain){
-		r->agc_gain = agc_gain_should_be;
-		//reset the agc to hang count down 
-    r->agc_loop = r->agc_speed;
-  }
-	else if (r->agc_loop <= 0){
-		agc_ramp = (agc_gain_should_be - r->agc_gain) / (MAX_BINS/2);	
-	}
- 
-	if (agc_ramp != 0){
-  	for (i = 0; i < MAX_BINS/2; i++){
-	  	__real__ (r->fft_time[i+(MAX_BINS/2)]) *= r->agc_gain;
-		}
-		r->agc_gain += agc_ramp;		
-	}
-	else 
-  	for (i = 0; i < MAX_BINS/2; i++)
-	  	__real__ (r->fft_time[i+(MAX_BINS/2)]) *= r->agc_gain;
-
-  r->agc_loop--;
-
-  return 100000000000 / r->agc_gain;  
-}
-*/
 
 void my_fftw_execute(fftw_plan f){
 	fftw_execute(f);
@@ -744,7 +691,7 @@ void tx_process(
 	int m = 0;
 	int j = 0;
 
-	double max = -10.0, min = 10.0;
+	//double max = -10.0, min = 10.0;
 	//gather the samples into a time domain array 
 	for (i= MAX_BINS/2; i < MAX_BINS; i++){
 
@@ -839,14 +786,19 @@ void tx_process(
 
 	//convert back to time domain	
 	fftw_execute(r->plan_rev);
-
+	int min = 10000000;
+	int max = -10000000;
 	float scale = volume;
 	for (i= 0; i < MAX_BINS/2; i++){
-			double s = creal(r->fft_time[i+(MAX_BINS/2)]);
-			output_tx[i] = s * scale * tx_amp * alc_level;
+		double s = creal(r->fft_time[i+(MAX_BINS/2)]);
+		output_tx[i] = s * scale * tx_amp * alc_level;
+		if (min > output_tx[i])
+			min = output_tx[i];
+		if (max < output_tx[i])
+			max = output_tx[i];	
 			//output_tx[i] = 0;
 	}
-//	printf("min %g, max %g\n", min, max);
+//	printf("min %d, max %d\n", min, max);
 
 	read_power();
 	sdr_modulation_update(output_tx, MAX_BINS/2, tx_amp);	
@@ -1335,7 +1287,15 @@ void sdr_request(char *request, char *response){
 				(1.0 * 3000)/96000.0 , 
 				5);
 		}
-		
+	
+		//we need to nudge the oscillator to adjust 
+		//to cw offset. setting it to the already tuned freq
+		//doesnt recalculte the offsets
+
+		int f = freq_hdr;
+		set_rx1(f-10);
+		set_rx1(f);
+	
 		//printf("mode set to %d\n", rx_list->mode);
 		strcpy(response, "ok");
 	}
@@ -1363,7 +1323,6 @@ void sdr_request(char *request, char *response){
 	}
 	else if (!strcmp(cmd, "rx_pitch")){
 		rx_pitch = atoi(value);
-		printf("rx_pitch set to %d\n", rx_pitch);
 	}
 	else if (!strcmp(cmd, "tx_gain")){
 		tx_gain = atoi(value);
@@ -1377,7 +1336,6 @@ void sdr_request(char *request, char *response){
 	}
 	else if (!strcmp(cmd, "bridge")){
     bridge_compensation = atoi(value);
-		printf("bridge compesation = %d\n", bridge_compensation);
 	}
 	else if(!strcmp(cmd, "r1:gain")){
 		rx_gain = atoi(value);
@@ -1425,4 +1383,5 @@ void sdr_request(char *request, char *response){
   /* else
 		printf("*Error request[%s] not accepted\n", request); */
 }
+
 
