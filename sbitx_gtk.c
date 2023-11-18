@@ -526,7 +526,7 @@ struct field main_controls[] = {
 	{"#enter_qso", NULL, 290, 50, 40, 40, "LOG\u00bb", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
 		"", 0,0,0,COMMON_CONTROL},
 	{"#wipe", NULL, 330, 50, 40, 40, "WIPE", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0,COMMON_CONTROL}, 
-	{"#mfqrz", do_macro, 370, 50, 40, 40, "QRZ", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0,COMMON_CONTROL}, 
+	{"#mfqrz", NULL, 370, 50, 40, 40, "QRZ", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0,COMMON_CONTROL}, 
 	{"#text_in", do_text, 5, 70, 285, 20, "TEXT", 70, "text box", FIELD_TEXT, FONT_LOG, 
 		"nothing valuable", 0,128,0,COMMON_CONTROL},
 
