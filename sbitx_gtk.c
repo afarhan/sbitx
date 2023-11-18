@@ -1380,7 +1380,12 @@ static int user_settings_handler(void* user, const char* section,
     // if it is an empty section
     else if (strlen(section) == 0){
       sprintf(cmd, "%s", name);
-      set_field(cmd, new_value); 
+			//skip the button actions 
+			struct field *f = get_field(cmd);
+			if (f){
+				if (f->value_type != FIELD_BUTTON)
+      		set_field(cmd, new_value); 
+			}
     }
 
 		//band stacks
@@ -4562,7 +4567,6 @@ int main( int argc, char* argv[] ) {
 
 	rtc_read();
 
-	dump_ui();
 //	open_url("http://127.0.0.1:8080");
 //	execute_app("chromium-browser --log-leve=3 "
 //	"--enable-features=OverlayScrollbar http://127.0.0.1:8080"

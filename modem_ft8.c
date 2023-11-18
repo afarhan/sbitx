@@ -673,7 +673,7 @@ void ft8_poll(int seconds, int tx_is_on){
 }
 
 float ft8_next_sample(){
-		float sample;
+		float sample = 0;
 		if (ft8_tx_buff_index/8 < ft8_tx_nsamples){
 			sample = ft8_tx_buff[ft8_tx_buff_index/8]/7;
 			ft8_tx_buff_index++;
