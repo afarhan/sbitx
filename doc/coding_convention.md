@@ -1,6 +1,8 @@
+# Coding Convention
+
 This is a short note on the coding conventions followed with the source code of sbitx.
 
-1. The source code files should be formatted so that they don't go paste the right edge of the 
+1. The source code files should be formatted so that they don't go past the right edge of the 
 screen on the 800x480 display of the Raspberry Pi.
 
 2. For function and variable names, we use all small case with underscore (_) to seperate out 
