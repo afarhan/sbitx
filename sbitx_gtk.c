@@ -3414,7 +3414,7 @@ int key_poll(){
 			key |= CW_DOT;
 	}
 	//straight key
-	else if (digitalRead(PTT) == LOW || digitalRead(DASH) == LOW)
+	else if (digitalRead(DASH) == LOW)
 			key = CW_DOWN;
 
 	//printf("key %d\n", key);
