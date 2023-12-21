@@ -5,8 +5,8 @@
 # run if the build failed.
 F=$@
 [ -z "$F" ] && {
-   echo "usage:   build 'name-of-program'"
-   echo "example: build sbitx"
+   echo "usage:   $0 program"
+   echo "example: $0 sbitx"
    exit 1
 }
 WORKING_DIRECTORY=`pwd`
