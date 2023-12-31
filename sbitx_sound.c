@@ -3,18 +3,11 @@
 #include <pthread.h>
 #include <complex.h>
 #include <fftw3.h>
-#include <sys/time.h>
 #include <time.h>
 #include "sound.h"
 #include "wiringPi.h"
 #include "sdr.h"
 
-// Set the DEBUG define to 1 to compile in the debugging messages.
-// Set the DEBUG define to 2 to compile in detailed error reporting debugging messages.
-#define DEBUG 0
-
-// Set the DISABLE_LOOPBACK define to 1 to disable the loopback processing.
-#define DISABLE_LOOPBACK 0
 
 /* follows the tutorial at http://alsamodular.sourceforge.net/alsa_programming_howto.html
 Next thing to try is http://www.saunalahti.fi/~s7l/blog/2005/08/21/Full%20Duplex%20ALSA
@@ -30,13 +23,6 @@ Next thing to try is http://www.saunalahti.fi/~s7l/blog/2005/08/21/Full%20Duplex
 	configuring the Raspberry Pi with Wolfson codec.
 */
 
-/*
-	The audio channels are:
-	PCM Playback
-	Loopback Capture
-	PCM Capture
-	Loopback Play
-*/
 
 /*
 	MIXER api
@@ -142,7 +128,7 @@ void sound_mixer(char *card_name, char *element, int make_on)
 }
 
 int rate = 96000; /* Sample rate */
-static snd_pcm_uframes_t buff_size = 8192; /* Periodsize (bytes) */ 
+static snd_pcm_uframes_t buff_size = 8192; /* Periodsize (bytes) */
 static int n_periods_per_buffer = 2;       /* Number of periods */
 //static int n_periods_per_buffer = 1024;       /* Number of periods */
 
@@ -164,10 +150,8 @@ static int	sound_thread_continue = 0;
 pthread_t sound_thread, loopback_thread;
 
 #define LOOPBACK_LEVEL_DIVISOR 8				// Constant used to reduce audio level to the loopback channel (FLDIGI)
-static int pcm_capture_error = 0;				// count pcm capture errors
-static int pcm_play_write_error = 0;			// count play channel write errors
-static int pcm_loopback_write_error = 0;		// count loopback channel write errors
-static int result = 0;							// scratch variable for storing function call results
+static int play_write_error = 0;				// count play channel write errors
+static int loopback_write_error = 0;			// count loopback channel write errors
 // Note: Error messages appear when the sbitx program is started from the command line
 
 int use_virtual_cable = 0;
@@ -185,28 +169,22 @@ The sequence of the alsa functions must be maintained for this to work consisten
 It returns a -1 if the device didn't open. The error message is on stderr.
 
 IMPORTANT:
-The sound is playback is carried on in a non-blocking way
-Update - Sound playback now uses blocking ALSA calls, although the calls
-do not block until the buffers are completely filled (which will never occur)
+The sound is playback is carried on in a non-blocking way  
 
 */
 
 int sound_start_play(char *device){
 	//found out the correct device through aplay -L (for pcm devices)
+
+	snd_pcm_hw_params_alloca(&hwparams);	//more alloc
+
 	//puts a playback handle into the pointer to the pointer
-	
-#if DEBUG > 0	
-	printf ("opening audio playback stream to %s\n", device); 
-#endif
-	int e = snd_pcm_open(&pcm_play_handle, device, play_stream, 0);  // was SND_PCM_NONBLOCK
+	int e = snd_pcm_open(&pcm_play_handle, device, play_stream, SND_PCM_NONBLOCK);
 	
 	if (e < 0) {
 		fprintf(stderr, "Error opening PCM playback device %s: %s\n", device, snd_strerror(e));
 		return -1;
 	}
-
-	snd_pcm_hw_params_alloca(&hwparams);	// more alloc
-	snd_pcm_sw_params_alloca(&swparams);	// more alloc
 
 	//fills up the hwparams with values, hwparams was allocated above
 	e = snd_pcm_hw_params_any(pcm_play_handle, hwparams);
@@ -215,7 +193,7 @@ int sound_start_play(char *device){
 		fprintf(stderr, "*Error getting hw playback params (%d)\n", e);
 		return(-1);
 	}
-	
+
 	// set the pcm access to interleaved
 	e = snd_pcm_hw_params_set_access(pcm_play_handle, hwparams, SND_PCM_ACCESS_RW_INTERLEAVED);
 	if (e < 0) {
@@ -241,10 +219,9 @@ int sound_start_play(char *device){
 	}
 	if (rate != exact_rate)
 		fprintf(stderr, "*The playback rate %d changed to %d Hz\n", rate, exact_rate);
-#if DEBUG > 0		
-	else
+/*	else
 		fprintf(stderr, "Playback sampling rate is set to %d\n", exact_rate);
-#endif
+*/
 
 	/* Set number of channels */
 	if ((e = snd_pcm_hw_params_set_channels(pcm_play_handle, hwparams, 2)) < 0) {
@@ -252,8 +229,7 @@ int sound_start_play(char *device){
 		return(-1);
 	}
 
-/*
-// This function call and the next have been replaced by the snd_pcm_hw_params_set_period_size_near() function call - N3SB December 2023
+
 	// frame = bytes_per_sample x n_channel
 	// period = frames transfered at a time (160 for voip, etc.)
 	// we use two periods per buffer.
@@ -261,24 +237,12 @@ int sound_start_play(char *device){
 		fprintf(stderr, "*Error setting playback periods.\n");
 		return(-1);
 	}
-*/
+
 
 	// the buffer size is each periodsize x n_periods
-	//	snd_pcm_uframes_t  n_frames= (buff_size  * n_periods_per_buffer)/8;
-	snd_pcm_uframes_t  n_frames= (buff_size  * n_periods_per_buffer)/8*4;		// A Larger buffer - N3SB Hack
-#if DEBUG > 0	
-	printf("trying for buffer size of %ld\n", n_frames);
-#endif
-/*
-// This function call and the previous have been replaced by the snd_pcm_hw_params_set_period_size_near() function call - N3SB December 2023
+	snd_pcm_uframes_t  n_frames= (buff_size  * n_periods_per_buffer)/8;
+	//printf("trying for buffer size of %ld\n", n_frames);
 	e = snd_pcm_hw_params_set_buffer_size_near(pcm_play_handle, hwparams, &n_frames);
-	if (e < 0) {
-		    fprintf(stderr, "*Error setting playback buffersize.\n");
-		    return(-1);
-	}
-*/
-	// This function call replaces the two function calls above - N3SB December 2023
-	e = snd_pcm_hw_params_set_period_size_near(pcm_play_handle, hwparams, &n_frames, 0);
 	if (e < 0) {
 		    fprintf(stderr, "*Error setting playback buffersize.\n");
 		    return(-1);
@@ -288,23 +252,7 @@ int sound_start_play(char *device){
 		fprintf(stderr, "*Error setting playback HW params.\n");
 		return(-1);
 	}
-
-	// get the current swparams
-    e = snd_pcm_sw_params_current(pcm_play_handle, swparams);
-    if (e < 0) {
-        printf("Unable to determine current swparams for playback: %s\n", snd_strerror(e));
-	}
-
-    e = snd_pcm_sw_params_set_start_threshold(pcm_play_handle, swparams, (8192) );
-    if (e < 0) {
-        printf("Unable to set start threshold mode for playback: %s\n", snd_strerror(e));
-    }
-
-
-#if DEBUG > 0
-	printf("PCM Playback Buffer Size: %d\n",snd_pcm_avail(pcm_play_handle));
-	puts("All hw params set to play sound");
-#endif	
+//	puts("All hw params set to play sound");
 
 	return 0;
 }
@@ -313,10 +261,7 @@ int sound_start_play(char *device){
 int sound_start_loopback_capture(char *device){
 
 	snd_pcm_hw_params_alloca(&hloop_params);
-	
-#if DEBUG > 0	
-	printf ("opening audio loopback tx stream to %s\n", device); 
-#endif
+	//printf ("opening audio tx stream to %s\n", device); 
 	int e = snd_pcm_open(&loopback_capture_handle, device, capture_stream, 0);
 	
 	if (e < 0) {
@@ -363,31 +308,22 @@ int sound_start_loopback_capture(char *device){
 		return(-1);
 	}
 
-/*
 	//printf("%d: set the #channels\n", __LINE__, 2);
-	// Set number of periods. Periods used to be called fragments.
+	/* Set number of periods. Periods used to be called fragments. */ 
 	if ((e = snd_pcm_hw_params_set_periods(loopback_capture_handle, hloop_params, n_periods_per_buffer, 0)) < 0) {
 		fprintf(stderr, "*Error setting loopback capture periods.\n");
 		return(-1);
 	}
 
 	// the buffer size is each periodsize x n_periods
-	snd_pcm_uframes_t  n_frames= (buff_size  * n_periods_per_buffer) / 8;
-	// printf("trying for buffer size of %ld\n", n_frames);
+	snd_pcm_uframes_t  n_frames= (buff_size  * n_periods_per_buffer)/ 8;
+	//printf("trying for buffer size of %ld\n", n_frames);
 	e = snd_pcm_hw_params_set_buffer_size_near(loopback_capture_handle, hloop_params, &n_frames);
 	if (e < 0) {
 		    fprintf(stderr, "*Error setting loopback capture buffersize.\n");
 		    return(-1);
 	}
-*/
-	// This function call and the previous have been replaced by the snd_pcm_hw_params_set_period_size_near() function call - N3SB December 2023
-	snd_pcm_uframes_t  n_frames= (buff_size  * n_periods_per_buffer) / 8;
-	e = snd_pcm_hw_params_set_period_size_near(loopback_capture_handle, hloop_params, &n_frames, 0);
-	if (e < 0) {
-		    fprintf(stderr, "*Error setting loopback capture buffersize.\n");
-		    return(-1);
-	}
-		    
+
 	//printf("%d: set buffer to \n", __LINE__, n_frames);
 	if (snd_pcm_hw_params(loopback_capture_handle, hloop_params) < 0) {
 		fprintf(stderr, "*Error setting capture HW params.\n");
@@ -407,14 +343,9 @@ int sound_start_loopback_capture(char *device){
 	} 
 	
 	if ((e = snd_pcm_sw_params_set_stop_threshold(loopback_capture_handle, sloop_params, 1)) < 0){
+
 		fprintf(stderr, "Unable to set stop threshold for loopback  capture\n");
 	}
-	
-#if DEBUG > 0
-	printf("Loopback Capture Buffer Size: %d\n",snd_pcm_avail(loopback_capture_handle));
-	puts("All hw params set for loopback capture sound");
-#endif	
-	
 	return 0;
 }
 
@@ -428,10 +359,7 @@ just wait for the next block to arrive
 
 int sound_start_capture(char *device){
 	snd_pcm_hw_params_alloca(&hwparams);
-	
-#if DEBUG > 0
-	printf ("opening PCM Capture stream to %s\n", device); 
-#endif
+
 	int e = snd_pcm_open(&pcm_capture_handle, device,  	capture_stream, 0);
 	
 	if (e < 0) {
@@ -442,76 +370,64 @@ int sound_start_capture(char *device){
 	e = snd_pcm_hw_params_any(pcm_capture_handle, hwparams);
 
 	if (e < 0) {
-		fprintf(stderr, "*Error setting PCM capture access (%d)\n", e);
+		fprintf(stderr, "*Error setting capture access (%d)\n", e);
 		return(-1);
 	}
 
 	e = snd_pcm_hw_params_set_access(pcm_capture_handle, hwparams, SND_PCM_ACCESS_RW_INTERLEAVED);
 	if (e < 0) {
-		fprintf(stderr, "*Error setting PCM capture access.\n");
+		fprintf(stderr, "*Error setting capture access.\n");
 		return(-1);
 	}
 
   /* Set sample format */
 	e = snd_pcm_hw_params_set_format(pcm_capture_handle, hwparams, SND_PCM_FORMAT_S32_LE);
 	if (e < 0) {
-		fprintf(stderr, "*Error setting PCM capture format.\n");
+		fprintf(stderr, "*Error setting capture format.\n");
 		return(-1);
 	}
+
 
 	/* Set sample rate. If the exact rate is not supported */
 	/* by the hardware, use nearest possible rate.         */ 
 	exact_rate = rate;
 	e = snd_pcm_hw_params_set_rate_near(pcm_capture_handle, hwparams, &exact_rate, 0);
 	if ( e< 0) {
-		fprintf(stderr, "*Error setting PCM capture rate.\n");
+		fprintf(stderr, "*Error setting capture rate.\n");
 		return(-1);
 	}
 
 	if (rate != exact_rate)
-		fprintf(stderr, "#The PCM capture rate %d changed to %d Hz\n", rate, exact_rate);
+		fprintf(stderr, "#The capture rate %d changed to %d Hz\n", rate, exact_rate);
 
 
 	/* Set number of channels */
 	if ((e = snd_pcm_hw_params_set_channels(pcm_capture_handle, hwparams, 2)) < 0) {
-		fprintf(stderr, "*Error setting PCM capture channels.\n");
+		fprintf(stderr, "*Error setting capture channels.\n");
 		return(-1);
 	}
 
-/*
-	// Set number of periods. Periods used to be called fragments.
+
+	/* Set number of periods. Periods used to be called fragments. */ 
 	if ((e = snd_pcm_hw_params_set_periods(pcm_capture_handle, hwparams, n_periods_per_buffer, 0)) < 0) {
 		fprintf(stderr, "*Error setting capture periods.\n");
 		return(-1);
 	}
 
+
 	// the buffer size is each periodsize x n_periods
 	snd_pcm_uframes_t  n_frames= (buff_size  * n_periods_per_buffer)/ 8;
 	//printf("trying for buffer size of %ld\n", n_frames);
-	e = snd_pcm_hw_params_set_buffer_size_near(pcm_capture_handle, hwparams, &n_frames);
+	e = snd_pcm_hw_params_set_buffer_size_near(pcm_play_handle, hwparams, &n_frames);
 	if (e < 0) {
-		    fprintf(stderr, "*Error setting PCM capture buffersize.\n");
+		    fprintf(stderr, "*Error setting capture buffersize.\n");
 		    return(-1);
 	}
-*/
-	snd_pcm_uframes_t  n_frames= (buff_size  * n_periods_per_buffer)/ 8;
-	// This function call replaces the two function calls above - N3SB December 2023
-	e = snd_pcm_hw_params_set_period_size_near(pcm_capture_handle, hwparams, &n_frames, 0);
-	if (e < 0) {
-		    fprintf(stderr, "*Error setting PCM Capture buffersize.\n");
-		    return(-1);
-	}
-
 
 	if (snd_pcm_hw_params(pcm_capture_handle, hwparams) < 0) {
-		fprintf(stderr, "*Error setting PCM capture HW params.\n");
+		fprintf(stderr, "*Error setting capture HW params.\n");
 		return(-1);
 	}
-
-#if DEBUG > 0
-	printf("Capture Buffer Size: %d\n",snd_pcm_avail(pcm_capture_handle));
-	puts("All hw params set for PCM sound capture");
-#endif	
 
 	return 0;
 }
@@ -521,10 +437,8 @@ int sound_start_loopback_play(char *device){
 
 	snd_pcm_hw_params_alloca(&hwparams);	//more alloc
 
-#if DEBUG > 0
-	printf ("opening Loopback Play stream to %s\n", device); 
-#endif
-	int e = snd_pcm_open(&loopback_play_handle, device, play_stream, 0);	// was SND_PCM_NONBLOCK
+	//printf ("opening audio rx stream to %s\n", device); 
+	int e = snd_pcm_open(&loopback_play_handle, device, play_stream, SND_PCM_NONBLOCK);
 	
 	if (e < 0) {
 		fprintf(stderr, "Error opening loopback playback device %s: %s\n", device, snd_strerror(e));
@@ -540,14 +454,14 @@ int sound_start_loopback_play(char *device){
 
 	e = snd_pcm_hw_params_set_access(loopback_play_handle, hwparams, SND_PCM_ACCESS_RW_INTERLEAVED);
 	if (e < 0) {
-		fprintf(stderr, "*Error setting loopback Play access.\n");
+		fprintf(stderr, "*Error setting loopback access.\n");
 		return(-1);
 	}
 
   /* Set sample format */
 	e = snd_pcm_hw_params_set_format(loopback_play_handle, hwparams, SND_PCM_FORMAT_S32_LE);
 	if (e < 0) {
-		fprintf(stderr, "*Error setting loopback Play format.\n");
+		fprintf(stderr, "*Error setting loopback format.\n");
 		return(-1);
 	}
 
@@ -569,7 +483,7 @@ int sound_start_loopback_play(char *device){
 		return(-1);
 	}
 
-/*
+
 	// frame = bytes_per_sample x n_channel
 	// period = frames transfered at a time (160 for voip, etc.)
 	// we use two periods per buffer.
@@ -577,6 +491,7 @@ int sound_start_loopback_play(char *device){
 		fprintf(stderr, "*Error setting playback periods.\n");
 		return(-1);
 	}
+
 
 	// the buffer size is each periodsize x n_periods
 	snd_pcm_uframes_t  n_frames= (buff_size  * n_periods_per_buffer)/8;
@@ -588,26 +503,13 @@ int sound_start_loopback_play(char *device){
 		    fprintf(stderr, "*Error setting loopback playback buffersize.\n");
 		    return(-1);
 	}
-*/
-	// This function call replaces the two function calls above - N3SB December 2023
-	snd_pcm_uframes_t  n_frames= (buff_size  * n_periods_per_buffer)/8;
-	//lets pump it up to see if we can reduce the dropped frames
-	n_frames *= 4;	
-	e = snd_pcm_hw_params_set_period_size_near(loopback_play_handle, hwparams, &n_frames, 0);
-	if (e < 0) {
-		    fprintf(stderr, "*Error setting loopback play buffersize.\n");
-		    return(-1);
-	}
+
+	//printf("loopback playback buffer size is set to %d\n", n_frames);
 
 	if (snd_pcm_hw_params(loopback_play_handle, hwparams) < 0) {
 		fprintf(stderr, "*Error setting loopback playback HW params.\n");
 		return(-1);
 	}
-
-#if DEBUG > 0
-	printf("Loopback Playback Buffer Size: %d\n",snd_pcm_avail(pcm_capture_handle));
-	puts("All hw params set for Loopback Playback");
-#endif	
 
 	return 0;
 }
@@ -641,20 +543,6 @@ static int nframes = 0;
 int32_t	resample_in[10000];
 int32_t	resample_out[10000];
 
-struct timeval GetTimeStamp()
-{
-    struct timeval tv;
-    gettimeofday(&tv,NULL);
-    return tv;
-}
-struct timeval tv;
-signed long pcm_read_old_time = 0;
-signed long pcm_read_new_time = 0;
-signed long delta_time = 0;
-unsigned long samples_read = 0;
-unsigned long samples_written = 0;
-static unsigned long loop_counter = 0;
-
 int last_second = 0;
 int nsamples = 0;
 int	played_samples = 0;
@@ -664,8 +552,6 @@ int sound_loop(){
   int pcmreturn, i, j, loopreturn;
   short s1, s2;
   int frames;
-  int pcm_read_avail;
-  int pcm_write_avail;
 
 	//we allocate enough for two channels of int32_t sized samples	
   data_in = (int32_t *)malloc(buff_size * 2);
@@ -678,26 +564,14 @@ int sound_loop(){
   output_q = (int32_t *)malloc(buff_size * 2);
 
   frames = buff_size / 8;
-
-
+	
   snd_pcm_prepare(pcm_play_handle);
   snd_pcm_prepare(loopback_play_handle);
+  snd_pcm_writei(pcm_play_handle, data_out, frames);
+  snd_pcm_writei(pcm_play_handle, data_out, frames);
 
-/*  
-  pcmreturn = snd_pcm_writei(pcm_play_handle, data_out, frames*2);		// Get a head start on filling the queue
-#if DEBUG > 0  
-  printf("Pre-filling play and loopback queues\n");
-  printf("Playback buffer filled with %d samples\n",pcmreturn);
-#endif
-  pcmreturn = snd_pcm_writei(loopback_play_handle, data_out, frames);		// Get a head start on filling the queue
-#if DEBUG > 0
-  printf("Loopback buffer filled with %d samples\n",pcmreturn);  
-#endif
-*/
 	//Note: the virtual cable samples queue should be flushed at the start of tx
  	qloop.stall = 1;
- 	
-// ******************************************************************************************************** The Big Loop starts here
 
   while(sound_thread_continue) {
 
@@ -705,51 +579,21 @@ int sound_loop(){
 		//this is opened as a blocking device, hence we derive accurate timing 
 
 		last_time = gettime_now.tv_nsec/1000;
-		
-		// printf("%d\n", last_time);
-		pcm_read_avail = snd_pcm_avail(pcm_capture_handle);
-		
-		tv = GetTimeStamp(); // get time
-		pcm_read_new_time= 1000000 * tv.tv_sec + tv.tv_usec; // Store time in microseconds
-		delta_time = pcm_read_new_time - pcm_read_old_time;
-		if ((delta_time > 11667) || (delta_time < 9667))	// Loop should iterate every 10667 microseconds
-		{
-#if DEBUG > 1			
-			printf("Loop Counter: %d, Loop Time: %d, Samples available: %d\n", loop_counter, delta_time, pcm_read_avail);
-#endif
-		}
-		pcm_read_old_time = pcm_read_new_time;
-		
 
-		while ((pcmreturn = snd_pcm_readi(pcm_capture_handle, data_in, frames)) < 0)
-		{
-			result = snd_pcm_prepare(pcm_capture_handle);
-#if DEBUG > 0
-			printf("**** PCM Capture Error: %s  count = %d\n",snd_strerror(pcmreturn), pcm_capture_error++);
-#endif
+
+		while ((pcmreturn = snd_pcm_readi(pcm_capture_handle, data_in, frames)) < 0){
+			snd_pcm_prepare(pcm_capture_handle);
+			//putchar('=');
 		}
-#if DEBUG > 1		
-		printf("Delta Time: %d, Available output sample storage: %d\n", delta_time, snd_pcm_avail(pcm_play_handle));
-#endif		
-		samples_read += pcmreturn;
-		
 		i = 0; 
 		j = 0;
-#if DEBUG > 0
-		if (pcmreturn < 1024)
-			printf("\n----PCM Read Size = %d\n",pcmreturn);
-#endif
 		int ret_card = pcmreturn;
-		if (use_virtual_cable)
-		{
+    if (use_virtual_cable){
 
 			//printf(" we have %d in qloop, writing now\n", q_length(&qloop));
 			// if don't we have enough to last two iterations loop back...
-			if (q_length(&qloop) < pcmreturn)
-			{
-#if DEBUG > -1
-				puts(" skipping\n");
-#endif
+			if (q_length(&qloop) < pcmreturn){
+//				puts(" skipping");
 				continue;
 			}
 	
@@ -764,7 +608,7 @@ int sound_loop(){
 				j++; 
 			}
 			played_samples += 1024;
-		}  // end for use_virtual_cable test
+		}
 		else {
 			while (i < ret_card){
 				input_i[i] = data_in[j++]/2;
@@ -773,7 +617,7 @@ int sound_loop(){
 			}
 		}
 
-		// printf("\n-%d %ld %d\n", count++, nsamples, pcmreturn);
+		//printf("%d %ld %d\n", count++, nsamples, pcmreturn);
 			
 		sound_process(input_i, input_q, output_i, output_q, ret_card);
 
@@ -784,55 +628,19 @@ int sound_loop(){
 			data_out[j++] = output_q[i++];
 		}
 
+
 	int framesize = ret_card;
 	int offset = 0;
 	int play_write_errors = 0;
-	int pswitch = 0;
 		
 	while(framesize > 0)
 	{
-		do
-		{
-			pcmreturn = snd_pcm_avail(pcm_play_handle);
-		} while ((pcmreturn == 0) || (pcmreturn == -11));
-		
-		do
-		{
-			pcmreturn = snd_pcm_writei(pcm_play_handle, data_out + offset, framesize);
-		} while (pcmreturn == -11);
-		
-		if ((pcmreturn > 0) && (pcmreturn < 1024))
-		{
-#if DEBUG > 0
-			printf("#### Partial Write ####");	// would signify that the playback channel didn't accept all the samples
-#endif
-		}
-		// if((pcmreturn < 0) && (pcmreturn != -11))	// also ignore "temporarily unavailable" errors
-		if(pcmreturn < 0)
+		pcmreturn = snd_pcm_writei(pcm_play_handle, data_out + offset, framesize);
+		if((pcmreturn < 0) && (pcmreturn != -11))	// also ignore "temporarily unavailable" errors
 		{
 			// Handle an error condition from the snd_pcm_writei function
-#if DEBUG > 0			
-			printf("Loop Counter: %d, Play PCM Write Error %d: %s  count = %d\n",loop_counter, pcmreturn, snd_strerror(pcmreturn), pcm_play_write_error++);
-#endif
-			if (pcmreturn == -EPIPE)
-			{
-#if DEBUG > 0
-				printf("Samples Read: %d, Samples Written: %d, delta: %d, available %d\n", samples_read, samples_written, samples_read - samples_written, pcm_write_avail);
-				printf("Available write buffer: %d\n", pcm_write_avail);
-#endif
-				snd_pcm_recover(pcm_play_handle, pcmreturn, 0);
-			}
-
-			
-#if DEBUG > 0
-				printf("Now Available write buffer: %d\n", snd_pcm_avail(pcm_play_handle));				
-#endif			
-			
-#if DEBUG <2			
-			// snd_pcm_recover(pcm_play_handle, pcmreturn, 1);		// Does not provide detailed error message
-#else
-			// snd_pcm_recover(pcm_play_handle, pcmreturn, 0);		// Provides detailed error message
-#endif		
+//			printf("Play PCM Write Error: %s  count = %d\n",snd_strerror(pcmreturn), play_write_error++);
+			snd_pcm_prepare(pcm_play_handle);		
 		}
 		
 		if(pcmreturn >= 0)
@@ -840,37 +648,12 @@ int sound_loop(){
 			// Calculate remaining number of samples to be sent and new position in sample array.
 			// If all the samples were processed by the snd_pcm_writei function then framesize will be
 			// zero and the while() loop will end.
-			if (pswitch == 1)
-			{
-#if DEBUG > 0
-				printf("%d ",pcmreturn);
-#endif
-			}				
 			framesize -= pcmreturn;
-			if ((framesize > 0)	&& (pswitch == 0))		
-			{
-#if DEBUG > 0
-				printf("%d ",pcmreturn);
-#endif
-				pswitch = 1;				
-			}
 			offset += (pcmreturn * 2);
-			samples_written += pcmreturn;
-		}
-		if (framesize == 0)
-		{
-			if (pswitch == 1)
-			{
-#if DEBUG > 0				
-				printf("\n");
-#endif				
-				pswitch = 0;
-			}
 		}
 	}
 	// End of new pcm play write routine
 
-#if DISABLE_LOOPBACK == 0
 
 	//decimate the line out to half, ie from 96000 to 48000
 	//play the received data (from left channel) to both of line out
@@ -892,30 +675,15 @@ int sound_loop(){
 
 	while(framesize > 0)
 	{
-		do
-		{
-			pcmreturn = snd_pcm_avail(loopback_play_handle);
-		} while ((pcmreturn == 0) || (pcmreturn == -11));
-				
 	//	printf("Writing %d frame to loopback\n", framesize);
-	
-		do
-		{	
 		pcmreturn = snd_pcm_writei(loopback_play_handle, line_out + offset, framesize);
-		} while (pcmreturn == -11);
-		
-		// if((pcmreturn < 0) && (pcmreturn != -11))	// also ignore "temporarily unavailable" errors
 		if(pcmreturn < 0)
-		{  	// Handle an error condition from the snd_pcm_writei function
-#if DEBUG > 0			
-			printf("Loopback PCM Write %d bytes Error %d: %s  count = %d\n", framesize, pcmreturn, snd_strerror(pcmreturn), pcm_loopback_write_error++);
-#endif
-	
-#if DEBUG <2			
-			snd_pcm_recover(loopback_play_handle, pcmreturn, 1);		// Does not provide detailed error message
-#else
-			snd_pcm_recover(loopback_play_handle, pcmreturn, 0);		// Provides detailed error message
-#endif				
+		{
+			//printf("Loopback PCM Write %d bytes Error: %s  count = %d\n",
+			//	framesize, snd_strerror(pcmreturn), loopback_write_error++);
+			// Handle an error condition from the snd_pcm_writei function
+			play_write_errors++;
+			snd_pcm_prepare(loopback_play_handle);
 		}
 		
 		if(pcmreturn >= 0)
@@ -925,21 +693,17 @@ int sound_loop(){
 			// zero and the while() loop will end.	
 			framesize -= pcmreturn;
 			offset += (pcmreturn * 2);
-			if (framesize > 0)
-			{
-#if DEBUG > 0
-				printf("\nLoopback - pcmreturn = %d\n", pcmreturn);
-#endif
-			}
 		}
 	}
 	// End of new pcm loopback write routine	
-    
-#endif
+
+	if(play_write_errors > 20){
+//		printf("play write error!\n");
+		play_write_errors = 0;
+	}			
     
 		//played_samples += pcmreturn;
-	loop_counter++;		
-  } // End of while (sound_thread_continue) loop
+  }
 	//fclose(pf);
   printf("********Ending sound thread\n");
 }
@@ -959,7 +723,7 @@ int loopback_loop(){
 
   while(sound_thread_continue) {
 
-		//restart the loopback capture if there is an error reading the samples
+		//restart the pcm capture if there is an error reading the samples
 		//this is opened as a blocking device, hence we derive accurate timing 
 
 		last_time = gettime_now.tv_nsec/1000;
