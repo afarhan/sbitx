@@ -1,10 +1,5 @@
 #!/bin/sh
 F=$@
-if [ "$F" = "" ]; then
-  echo "No build target provided"
-  echo "Assuming target is sbitx"
-  F=sbitx
-fi
 WORKING_DIRECTORY=`pwd`
 echo ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
 date
