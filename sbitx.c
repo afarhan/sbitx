@@ -1417,11 +1417,9 @@ void sdr_request(char *request, char *response){
 	}
 	else if (!strcmp(cmd, "tx")){
 		if (!strcmp(value, "on"))
-			// tr_switch_v2(1);	// Gordon's Mod N3SB
-			tr_switch(1);	// Gordon's Mod
+			tr_switch_v2(1);
 		else
-			// tr_switch_v2(0);	// Gordon's Mod N3SB
-			tr_switch(0);	// Gordon's Mod
+			tr_switch_v2(0);
 		strcpy(response, "ok");
 	}
 	else if (!strcmp(cmd, "rx_pitch")){
