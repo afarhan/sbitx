@@ -1,7 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
-#include <fcntl.h> 
+#include <fcntl.h>
 #include <math.h>
 #include <complex.h>
 #include <fftw3.h>
@@ -21,6 +21,9 @@
 #include "i2cbb.h"
 #include "si5351.h"
 #include "ini.h"
+int set_field(char *, char *);  // This should be moved to a .h file
+
+#define DEBUG 0
 
 char audio_card[32];
 static int tx_shift = 512;
@@ -50,6 +53,18 @@ fftw_plan plan_spectrum;
 float spectrum_window[MAX_BINS];
 void set_rx1(int frequency);
 void tr_switch(int tx_on);
+float min_fft_level;
+int rx_gain_slow_count;
+int rx_gain_changed = 0;	// Flag to indicate a change in rx_gain has been called for
+
+// Wisdom Defines for the FFTW and FFTWF libraries
+// Options for WISDOM_MODE from least to most rigorous are FFTW_ESTIMATE, FFTW_MEASURE, FFTW_PATIENT, and FFTW_EXHAUSTIVE
+// The FFTW_ESTIMATE mode seems to make completely incorrect Wisdom plan choices sometimes, and is not recommended.
+// Wisdom plans found in an existing Wisdom file will negate the need for time consuming Wisdom plan calculations
+// if the Wisdom plans in the file were generated at the same or more rigorous level.
+#define WISDOM_MODE FFTW_MEASURE
+#define PLANTIME -1		// spend no more than plantime seconds finding the best FFT algorithm. -1 turns the platime cap off.
+char wisdom_file[] = "sbitx_wisdom.wis";
 
 fftw_complex *fft_out;		// holds the incoming samples in freq domain (for rx as well as tx)
 fftw_complex *fft_in;			// holds the incoming samples in time domain (for rx as well as tx) 
@@ -130,12 +145,12 @@ void radio_tune_to(u_int32_t f){
 }
 
 void fft_init(){
-	int mem_needed;
+	// int mem_needed;
 
 	//printf("initializing the fft\n");
 	fflush(stdout);
 
-	mem_needed = sizeof(fftw_complex) * MAX_BINS;
+	// mem_needed = sizeof(fftw_complex) * MAX_BINS;
 
 	fft_m = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * MAX_BINS/2);
 	fft_in = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * MAX_BINS);
@@ -147,8 +162,16 @@ void fft_init(){
 	memset(fft_out, 0, sizeof(fftw_complex) * MAX_BINS);
 	memset(fft_m, 0, sizeof(fftw_complex) * MAX_BINS/2);
 
-	plan_fwd = fftw_plan_dft_1d(MAX_BINS, fft_in, fft_out, FFTW_FORWARD, FFTW_ESTIMATE);
-	plan_spectrum = fftw_plan_dft_1d(MAX_BINS, fft_in, fft_spectrum, FFTW_FORWARD, FFTW_ESTIMATE);
+	fftw_set_timelimit(PLANTIME);
+	fftwf_set_timelimit(PLANTIME);
+	int e = fftw_import_wisdom_from_filename(wisdom_file);
+	if (e == 0)
+	{
+		printf("Generating Wisdom File...\n");
+	}
+	plan_fwd = fftw_plan_dft_1d(MAX_BINS, fft_in, fft_out, FFTW_FORWARD, WISDOM_MODE); // Was FFTW_ESTIMATE N3SB
+	plan_spectrum = fftw_plan_dft_1d(MAX_BINS, fft_in, fft_spectrum, FFTW_FORWARD, WISDOM_MODE); // Was FFTW_ESTIMATE N3SB
+	fftw_export_wisdom_to_filename(wisdom_file);
 
 	//zero up the previous 'M' bins
 	for (int i= 0; i < MAX_BINS/2; i++){
@@ -240,18 +263,24 @@ void set_lpf_40mhz(int frequency){
 		lpf = LPF_A; 
 
 	if (lpf == prev_lpf){
-		//puts("LPF not changed");
+#if DEBUG > 0		
+		puts("LPF not changed");
+#endif		
 		return;
 	}
-
-	//printf("##################Setting LPF to %d\n", lpf);
+	
+#if DEBUG > 0
+	printf("##################Setting LPF to %d\n", lpf);
+#endif
 
   digitalWrite(LPF_A, LOW);
   digitalWrite(LPF_B, LOW);
   digitalWrite(LPF_C, LOW);
   digitalWrite(LPF_D, LOW);
 
-  //printf("################ setting %d high\n", lpf);
+#if DEBUG > 0
+  printf("################ setting %d high\n", lpf);
+#endif 
   digitalWrite(lpf, HIGH); 
 	prev_lpf = lpf;
 }
@@ -362,8 +391,15 @@ struct rx *add_tx(int frequency, short mode, int bpf_low, int bpf_high){
 	//create fft complex arrays to convert the frequency back to time
 	r->fft_time = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * MAX_BINS);
 	r->fft_freq = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * MAX_BINS);
-	r->plan_rev = fftw_plan_dft_1d(MAX_BINS, r->fft_freq, r->fft_time, FFTW_BACKWARD, FFTW_ESTIMATE);
-
+	
+	int e = fftw_import_wisdom_from_filename(wisdom_file);
+	if (e == 0)
+	{
+		printf("Generating Wisdom File...\n");
+	}	
+	r->plan_rev = fftw_plan_dft_1d(MAX_BINS, r->fft_freq, r->fft_time, FFTW_BACKWARD, WISDOM_MODE); // Was FFTW_ESTIMATE N3SB
+	fftw_export_wisdom_to_filename(wisdom_file);
+	
 	r->output = 0;
 	r->next = NULL;
 	r->mode = mode;
@@ -403,8 +439,15 @@ struct rx *add_rx(int frequency, short mode, int bpf_low, int bpf_high){
 	//create fft complex arrays to convert the frequency back to time
 	r->fft_time = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * MAX_BINS);
 	r->fft_freq = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * MAX_BINS);
-	r->plan_rev = fftw_plan_dft_1d(MAX_BINS, r->fft_freq, r->fft_time, FFTW_BACKWARD, FFTW_ESTIMATE);
-
+	
+	int e = fftw_import_wisdom_from_filename(wisdom_file);
+	if (e == 0)
+	{
+		printf("Generating Wisdom File...\n");
+	}	
+	r->plan_rev = fftw_plan_dft_1d(MAX_BINS, r->fft_freq, r->fft_time, FFTW_BACKWARD, WISDOM_MODE);  // Was FFTW_ESTIMATE N3SB
+	fftw_export_wisdom_to_filename(wisdom_file);
+	
 	r->output = 0;
 	r->next = NULL;
 	r->mode = mode;
@@ -511,8 +554,6 @@ void rx_process(int32_t *input_rx,  int32_t *input_mic,
 	int i, j = 0;
 	double i_sample, q_sample;
 
-
-
 	//STEP 1: first add the previous M samples to
 	for (i = 0; i < MAX_BINS/2; i++)
 		fft_in[i]  = fft_m[i];
@@ -555,6 +596,67 @@ void rx_process(int32_t *input_rx,  int32_t *input_mic,
 	// the spectrum display is updated
 	spectrum_update();
 
+	// Make adjustments to IF Gain
+	min_fft_level = 10000;
+	for(i=1269; i<1803; i++)
+	{
+		if (fft_bins[i] < min_fft_level)
+		{
+			min_fft_level = fft_bins[i];
+		}
+	}
+	//printf("%f\n", min_fft_level);
+	// Fast IF Gain Compensation Loop
+
+#define TARGET_FFT_LEVEL 0.015	
+#define FAST_MIN_FFT_LEVEL 0.008
+#define FAST_MAX_FFT_LEVEL 0.03
+	
+	if ((min_fft_level < FAST_MIN_FFT_LEVEL) || (min_fft_level > FAST_MAX_FFT_LEVEL))
+	{
+		rx_gain_slow_count = 0;
+		if (min_fft_level < .008)
+		{
+			rx_gain += 10;
+			rx_gain_changed = 1;
+			// printf("F_U ");
+		}
+		else
+		{
+			rx_gain -= 10;
+			rx_gain_changed = 1;			
+			// printf("F_D ");
+		}
+	}
+	else
+	{
+		rx_gain_slow_count++;				// Only make fine adjustments to rx_gain every second.
+		if (rx_gain_slow_count > 104)
+		{
+			rx_gain_slow_count = 0;			
+			if (min_fft_level < TARGET_FFT_LEVEL)
+			{
+					rx_gain += 1;
+					rx_gain_changed = 1;
+					// printf("S_U ");		
+			}
+			else
+			{
+					rx_gain -= 1;
+					rx_gain_changed = 1;
+					// printf("S_D ");		
+			}
+		}
+	}
+	// printf("%d\n", rx_gain);	
+	if((!in_tx) && rx_gain_changed == 1)
+	{
+			sound_mixer(audio_card, "Capture", rx_gain);
+			char rx_gain_buff[8];
+			(void) sprintf(rx_gain_buff, "%d", rx_gain);
+			set_field("r1:gain", rx_gain_buff);
+			rx_gain_changed = 0;
+	}	
 
 	// ... back to the actual processing, after spectrum update  
 
@@ -813,7 +915,6 @@ void sound_process(
 	int32_t *output_speaker, int32_t *output_tx, 
 	int n_samples)
 {
-
 	if (in_tx)
 		tx_process(input_rx, input_mic, output_speaker, output_tx, n_samples);
 	else
@@ -1071,7 +1172,7 @@ void tr_switch_de(int tx_on){
 			if (tr_relay){
   			digitalWrite(LPF_A, LOW);
   			digitalWrite(LPF_B, LOW);
- 	 			digitalWrite(LPF_C, LOW);
+ 	 		digitalWrite(LPF_C, LOW);
   			digitalWrite(LPF_D, LOW);
 			}
 			delay(10);
@@ -1094,7 +1195,7 @@ void tr_switch_v2(int tx_on){
 			//first turn off the LPFs, so PA doesnt connect 
   		digitalWrite(LPF_A, LOW);
   		digitalWrite(LPF_B, LOW);
- 	 		digitalWrite(LPF_C, LOW);
+ 	 	digitalWrite(LPF_C, LOW);
   		digitalWrite(LPF_D, LOW);
 
 			//mute it all and hang on for a millisecond
@@ -1127,7 +1228,7 @@ void tr_switch_v2(int tx_on){
 
   		digitalWrite(LPF_A, LOW);
   		digitalWrite(LPF_B, LOW);
- 	 		digitalWrite(LPF_C, LOW);
+ 	 	digitalWrite(LPF_C, LOW);
   		digitalWrite(LPF_D, LOW);
 			prev_lpf = -1; //force the lpf to be re-energized
 			delay(10);
@@ -1316,9 +1417,11 @@ void sdr_request(char *request, char *response){
 	}
 	else if (!strcmp(cmd, "tx")){
 		if (!strcmp(value, "on"))
-			tr_switch_v2(1);
+			// tr_switch_v2(1);	// Gordon's Mod N3SB
+			tr_switch(1);	// Gordon's Mod
 		else
-			tr_switch_v2(0);
+			// tr_switch_v2(0);	// Gordon's Mod N3SB
+			tr_switch(0);	// Gordon's Mod
 		strcpy(response, "ok");
 	}
 	else if (!strcmp(cmd, "rx_pitch")){
@@ -1383,5 +1486,3 @@ void sdr_request(char *request, char *response){
   /* else
 		printf("*Error request[%s] not accepted\n", request); */
 }
-
-
