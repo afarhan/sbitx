@@ -245,6 +245,8 @@ void set_bandwidth(int hz);
 GtkWidget *window;
 GtkWidget *display_area = NULL;
 GtkWidget *text_area = NULL;
+extern void settings_ui(GtkWidget*p);
+extern int logbook_open();
 
 // these are callbacks called by the operating system
 static gboolean on_draw_event( GtkWidget* widget, cairo_t *cr, 
@@ -529,9 +531,11 @@ struct field main_controls[] = {
 	{"#mfqrz", NULL, 370, 50, 40, 40, "QRZ", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0,COMMON_CONTROL}, 
 	{"#text_in", do_text, 5, 70, 285, 20, "TEXT", 70, "text box", FIELD_TEXT, FONT_LOG, 
 		"nothing valuable", 0,128,0,COMMON_CONTROL},
+	{"#set", NULL, 420, 50, 40, 40, "SET", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0,COMMON_CONTROL}, 
 
 	{ "#toggle_kbd", do_toggle_kbd, 495, 50, 40, 40, "KBD", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, 
 		"ON/OFF", 0,0, 0,COMMON_CONTROL},
+
 
 /* end of common controls */
 
@@ -754,7 +758,7 @@ struct field *get_field(const char *cmd){
 }
 
 //set the field directly to a particuarl value, programmatically
-int set_field(char *id, char *value){
+int set_field(const char *id, const char *value){
 	struct field *f = get_field(id);
 	int v;
 	int debug = 0;
@@ -830,7 +834,7 @@ int set_field(char *id, char *value){
 	return 0;
 }
 
-struct field *get_field_by_label(char *label){
+struct field *get_field_by_label(const char *label){
 	for (int i = 0; active_layout[i].cmd[0] > 0; i++)
 		if (!strcasecmp(active_layout[i].label, label))
 			return active_layout + i;
@@ -856,7 +860,7 @@ int field_int(char *label){
 	}
 }
 
-int field_set(char *label, char *new_value){
+int field_set(const char *label, const char *new_value){
 	struct field *f = get_field_by_label(label);
 	if (!f)
 		return -1;
@@ -4082,6 +4086,8 @@ void do_control_action(char *cmd){
 		save_user_settings(1);
 		exit(0);
 	}
+	else if (!strcmp(request, "SET"))
+		settings_ui(window);
 	else if (!strncmp(request, "BW ",3)){
 		int bw = atoi(request+3);	
 		set_filter_high_low(bw); //calls do_control_action again to set LOW and HIGH
@@ -4102,8 +4108,10 @@ void do_control_action(char *cmd){
 	else if (!strcmp(request, "TX")){	
 		tx_on(TX_SOFT);
 	}
-	else if (!strcmp(request, "WEB"))
-		open_url("http://127.0.0.1:8080");
+	else if (!strcmp(request, "WEB")){
+		//open_url("http://127.0.0.1:8080");
+		logbook_list_open();
+	}
 	else if (!strcmp(request, "RX")){
 		tx_off();
 	}
