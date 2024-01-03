@@ -1338,13 +1338,13 @@ void enter_qso(){
 	const char *rst_received = field_str("RECV");
 
 	// skip empty or half filled log entry
-	if (strlen(callsign) < 3 || strlen(rst_sent) < 2 || strlen(rst_received) < 2){
+	if (strlen(callsign) < 3 || strlen(rst_sent) < 1 || strlen(rst_received) < 1){
 		printf("log entry is empty [%s], [%s], [%s], no log created\n", callsign, rst_sent, rst_received);
 		return;
 	}
  
-	if (logbook_count_dup(field_str("CALL"), 120)){
-		printf("duplicate log entry aborted within 60 seconds\n");
+	if (logbook_count_dup(field_str("CALL"), 60)){
+		printf("Duplicate log entry not accepted for %s within two minutes of last entry of %s.\n", callsign, callsign);
 		return;
 	}	
 	logbook_add(get_field("#contact_callsign")->value, 
