@@ -485,7 +485,7 @@ static int sbitx_ft8_decode(float *signal, int num_samples, bool is_ft8)
            ++num_decoded;
 
 					char buff[1000];
-          sprintf(buff, "%s %3d %+3d %-4.0f ~  %s\n", time_str, 
+          sprintf(buff, "%s %3d %+03d %-4.0f ~  %s\n", time_str, 
 						cand->score, cand->snr, freq_hz, message.text);
 
 					if (strstr(buff, mycallsign_upper)){
