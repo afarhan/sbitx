@@ -1295,7 +1295,7 @@ static void save_user_settings(int forced){
 	//attempt to save settings only if it has been 30 seconds since the 
 	//last time the settings were saved
 	int now = millis();
-	if ((now < last_save_at + 30000 ||  !settings_updated) && forced == 0)
+	if ((now < last_save_at + 30000 || !settings_updated) && forced == 0)
 		return;
 
 	char *path = getenv("HOME");
@@ -1328,6 +1328,7 @@ static void save_user_settings(int forced){
 
 
 	fclose(f);
+	last_save_at = now;	// As proposed by Dave N1AI
 	settings_updated = 0;
 }
 
@@ -1338,13 +1339,13 @@ void enter_qso(){
 	const char *rst_received = field_str("RECV");
 
 	// skip empty or half filled log entry
-	if (strlen(callsign) < 3 || strlen(rst_sent) < 2 || strlen(rst_received) < 2){
+	if (strlen(callsign) < 3 || strlen(rst_sent) < 1 || strlen(rst_received) < 1){
 		printf("log entry is empty [%s], [%s], [%s], no log created\n", callsign, rst_sent, rst_received);
 		return;
 	}
  
-	if (logbook_count_dup(field_str("CALL"), 120)){
-		printf("duplicate log entry aborted within 60 seconds\n");
+	if (logbook_count_dup(field_str("CALL"), 60)){
+		printf("Duplicate log entry not accepted for %s within two minutes of last entry of %s.\n", callsign, callsign);
 		return;
 	}	
 	logbook_add(get_field("#contact_callsign")->value, 
@@ -1374,9 +1375,9 @@ static int user_settings_handler(void* user, const char* section,
       strcpy(cmd, name);
       set_field(cmd, new_value);
     }
-		else if (!strncmp(cmd, "#kbd", 4)){
-			return 1; //skip the keyboard values
-		}
+	else if (!strncmp(section, "#kbd", 4)){
+		return 1; //skip the keyboard values
+	}
     // if it is an empty section
     else if (strlen(section) == 0){
       sprintf(cmd, "%s", name);
