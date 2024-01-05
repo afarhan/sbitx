@@ -1309,6 +1309,7 @@ static void save_user_settings(int forced){
 	FILE *f = fopen(file_path, "w");
 	if (!f){
 		printf("Unable to save %s : %s\n", file_path, strerror(errno));
+		settings_updated = 0;  // stop repeated attempts to write if file cannot be opened.		
 		return;
 	}
 
