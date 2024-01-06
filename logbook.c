@@ -84,6 +84,8 @@ int logbook_query(char *query, int from_id, char *result_file){
 	strcpy(result_file, output_path);
 	
 	FILE *pf = fopen(output_path, "w");
+	if (!pf)
+		return -1;
 
 	int rec = 0;
 	while (sqlite3_step(stmt) == SQLITE_ROW) {
@@ -115,6 +117,7 @@ int logbook_query(char *query, int from_id, char *result_file){
 	}
 	sqlite3_finalize(stmt);
 	fclose(pf);
+	return rec;
 }
 
 int logbook_count_dup(const char *callsign, int last_seconds){

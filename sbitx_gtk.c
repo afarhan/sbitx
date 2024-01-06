@@ -479,8 +479,9 @@ struct field main_controls[] = {
 		"", 0,0,0,COMMON_CONTROL},
 	{ "#record", do_record, 380, 5, 40, 40, "REC", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, 
 		"ON/OFF", 0,0, 0,COMMON_CONTROL},
-	{ "#web", NULL, 430,5,  40, 40, "WEB", 40, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+	{ "#web", NULL, 420,5,  40, 40, "WEB", 40, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
 		"", 0,0, 0,COMMON_CONTROL},
+	{"#set", NULL, 460, 5, 40, 40, "SET", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0,COMMON_CONTROL}, 
 	{ "r1:gain", NULL, 375, 5, 40, 40, "IF", 40, "60", FIELD_NUMBER, FONT_FIELD_VALUE, 
 		"", 0, 100, 1,COMMON_CONTROL},
 	{ "r1:agc", NULL, 415, 5, 40, 40, "AGC", 40, "SLOW", FIELD_SELECTION, FONT_FIELD_VALUE, 
@@ -525,13 +526,13 @@ struct field main_controls[] = {
 		"", 0, 7,0,COMMON_CONTROL},
 	{"#exchange_sent", do_text, 240, 50, 50, 20, "NR", 70, "", FIELD_TEXT, FONT_LOG, 
 		"", 0, 7,0,COMMON_CONTROL},
-	{"#enter_qso", NULL, 290, 50, 40, 40, "LOG\u00bb", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+	{"#enter_qso", NULL, 290, 50, 40, 40, "SAVE", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
 		"", 0,0,0,COMMON_CONTROL},
 	{"#wipe", NULL, 330, 50, 40, 40, "WIPE", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0,COMMON_CONTROL}, 
 	{"#mfqrz", NULL, 370, 50, 40, 40, "QRZ", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0,COMMON_CONTROL}, 
+	{"#logbook", NULL, 410, 50, 40, 40, "LOG", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0,COMMON_CONTROL}, 
 	{"#text_in", do_text, 5, 70, 285, 20, "TEXT", 70, "text box", FIELD_TEXT, FONT_LOG, 
 		"nothing valuable", 0,128,0,COMMON_CONTROL},
-	{"#set", NULL, 420, 50, 40, 40, "SET", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0,COMMON_CONTROL}, 
 
 	{ "#toggle_kbd", do_toggle_kbd, 495, 50, 40, 40, "KBD", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, 
 		"ON/OFF", 0,0, 0,COMMON_CONTROL},
@@ -1986,18 +1987,18 @@ static void layout_ui(){
 	field_move("KBD", screen_width - 47, screen_height-47, 45, 45);
 
 	//now, move the main radio controls to the right
-	field_move("FREQ", x2-230, 0, 180, 40);
+	field_move("FREQ", x2-200, 0, 180, 40);
 	field_move("AUDIO", x2-45, 5, 40, 40);
 	field_move("IF", x2-45, 50, 40, 40);
 	field_move("DRIVE", x2-85, 50, 40, 40);
 	field_move("BW", x2-125, 50, 40, 40);
 	field_move("AGC", x2-165, 50, 40, 40);
 
-	field_move("STEP", x2-270, 5, 40, 40);
-	field_move("RIT", x2-310, 5, 40, 40);
-	field_move("SPLIT", x2-310, 50, 40, 40);
-	field_move("VFO", x2-270, 50, 40, 40);
-	field_move("SPAN", x2-225, 50, 40, 40);
+	field_move("STEP", x2-245, 5, 40, 40);
+	field_move("RIT", x2-285, 5, 40, 40);
+	field_move("SPLIT", x2-285, 50, 40, 40);
+	field_move("VFO", x2-245, 50, 40, 40);
+	field_move("SPAN", x2-205, 50, 40, 40);
 	
 
 	if (!strcmp(field_str("KBD"), "ON")){
@@ -4088,6 +4089,8 @@ void do_control_action(char *cmd){
 	}
 	else if (!strcmp(request, "SET"))
 		settings_ui(window);
+	else if (!strcmp(request, "LOG"))
+		logbook_list_open();
 	else if (!strncmp(request, "BW ",3)){
 		int bw = atoi(request+3);	
 		set_filter_high_low(bw); //calls do_control_action again to set LOW and HIGH
@@ -4109,8 +4112,7 @@ void do_control_action(char *cmd){
 		tx_on(TX_SOFT);
 	}
 	else if (!strcmp(request, "WEB")){
-		//open_url("http://127.0.0.1:8080");
-		logbook_list_open();
+		open_url("http://127.0.0.1:8080");
 	}
 	else if (!strcmp(request, "RX")){
 		tx_off();
@@ -4156,7 +4158,7 @@ void do_control_action(char *cmd){
 	else if (!strcmp(request, "KBD OFF")){
 		layout_ui();
 	}
-	else if (!strcmp(request, "LOG\u00bb")){
+	else if (!strcmp(request, "SAVE")){
 			enter_qso();
 	}
 	//tuning step
