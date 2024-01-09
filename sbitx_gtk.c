@@ -1519,10 +1519,10 @@ void init_waterfall(){
 		free(wf);
 	//this will store the db values of waterfall
 	wf = malloc((MAX_BINS/2) * f->height * sizeof(int));
-	if (!wf){
-		puts("*Error: malloc failed on waterfall buffer");
-		exit(0);
-	}
+//	if (!wf){
+//		puts("*Error: malloc failed on waterfall buffer");
+//		exit(0);
+//	}
 	memset(wf, 0, (MAX_BINS/2) * f->height * sizeof(int));
 
 	if (waterfall_map)
