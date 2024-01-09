@@ -233,7 +233,7 @@ void webserver_start(){
 	strcpy(s_web_root, path);
 	strcat(s_web_root, "/sbitx/web");
 
-	logbook_open();
+	//logbook_open();
  	pthread_create( &webserver_thread, NULL, webserver_thread_function, 
 		(void*)NULL);
 }
