@@ -1516,7 +1516,9 @@ void init_waterfall(){
 	struct field *f = get_field("waterfall");
 
 	//this will store the db values of waterfall
-	realloc(wf, (MAX_BINS/2) * f->height * sizeof(int));
+    if (wf)
+        free(wf);
+    realloc(wf, (MAX_BINS/2) * f->height * sizeof(int));
 	memset(wf, 0, (MAX_BINS/2) * f->height * sizeof(int));
 
 	//this will store the bitmap pixles, 3 bytes per pixel
@@ -4480,7 +4482,7 @@ int main( int argc, char* argv[] ) {
 	
 	ui_init(argc, argv);
 	hw_init();
-    sleep(2);
+    sleep(1);
 	console_init();
 
 	q_init(&q_remote_commands, 1000); //not too many commands
@@ -4498,7 +4500,7 @@ int main( int argc, char* argv[] ) {
 	tx_mod_buff = malloc(sizeof(int32_t) * tx_mod_max);
 	memset(tx_mod_buff, 0, sizeof(int32_t) * tx_mod_max);
 	tx_mod_index = 0;
-	init_waterfall();
+    init_waterfall();
 
 	//set the radio to some decent defaults
 	do_control_action("FREQ 7100000");
