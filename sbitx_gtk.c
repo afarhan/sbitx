@@ -1515,20 +1515,16 @@ guint8 *waterfall_map = NULL;
 void init_waterfall(){
 	struct field *f = get_field("waterfall");
 
-	if (wf)
-		free(wf);
 	//this will store the db values of waterfall
-	wf = malloc((MAX_BINS/2) * f->height * sizeof(int));
-//	if (!wf){
-//		puts("*Error: malloc failed on waterfall buffer");
-//		exit(0);
-//	}
+	realloc(wf, (MAX_BINS/2) * f->height * sizeof(int));
+	if (!wf){
+		puts("*Error: malloc failed on waterfall buffer");
+		exit(0);
+	}
 	memset(wf, 0, (MAX_BINS/2) * f->height * sizeof(int));
 
-	if (waterfall_map)
-		free(waterfall_map);
 	//this will store the bitmap pixles, 3 bytes per pixel
-	waterfall_map = malloc(f->width * f->height * 3);
+	realloc(waterfall_map, f->width * f->height * 3);
 	for (int i = 0; i < f->width; i++)
 		for (int j = 0; j < f->height; j++){
 			int row = j * f->width * 3;
@@ -4488,6 +4484,7 @@ int main( int argc, char* argv[] ) {
 	
 	ui_init(argc, argv);
 	hw_init();
+    sleep(2);
 	console_init();
 
 	q_init(&q_remote_commands, 1000); //not too many commands
