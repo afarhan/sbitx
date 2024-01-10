@@ -1517,10 +1517,6 @@ void init_waterfall(){
 
 	//this will store the db values of waterfall
 	realloc(wf, (MAX_BINS/2) * f->height * sizeof(int));
-	if (!wf){
-		puts("*Error: malloc failed on waterfall buffer");
-		exit(0);
-	}
 	memset(wf, 0, (MAX_BINS/2) * f->height * sizeof(int));
 
 	//this will store the bitmap pixles, 3 bytes per pixel
