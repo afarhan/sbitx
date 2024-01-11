@@ -31,10 +31,69 @@ These are text commands that can be entered from the keyboard
 \txpitch [in Hz]
 	Sets the tone of transmit tone of the CW. 
 	Ex: \txpitch 700
-\
+10M	
+12M
+15M
+17M
+20M
+30M
+40M
+80M
+REC ON/OFF
+WEB
+AGC OFF/SLOW/MED/FAST
+DRIVE 1-100
+FREQ/F/f 
+AUDIO 0-100
+STEP 10K/1K/100H/10H
+SPAN 25K/10K/6K/2.5K
+RIT ON/OFF
+VFO A/B
+BW 50-5000 (Hz)
+MODE USB/LSB/CW/CWR/FT8/DIGITAL/2TONE
 
-	
-	
+Logger Controls
+CALL [text]
+SENT [text]
+RECV [text]
+EXCH [text]
+NR [text]
+LOG Enter the QSO into the Logbook
+WIPE
+QRZ
+TEXT
+KBD
+MIC 0-100
+WPM 1-50
+PITCH 100-3000 (Hz)
+TX
+RX
+LOW
+HIGH
+MYCALLSIGN
+MYGRID
+PASSKEY
+VFOA
+VFOB
+RIT_DELTA -25000 to 25000 (Hz)
+CW_INPUT IAMBIC/IAMBICB/STRAIGHT
+CW_DELAY 50-1000 (msec)
+TX_PITCH 300-3000 (Hz)
+SIDTONE 0-100
+SENT_EXCHANGE (text)
+CONTEST_SERIAL 0-100000
+MACRO overloaded  
+POWER (watts)
+REF (in 1/10th of VSWR)
+ESC Abort
+BW_CW (Hz)
+BW_VOICE (Hz)
+BW_DIGITAL (Hz)
+
+FT8_AUTO ON/OFF
+FT8_TX1ST ON/OFF
+FT8_REPEAT 1-10
+TELNETURL [server:port]
 
 
 
