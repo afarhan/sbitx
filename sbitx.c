@@ -57,15 +57,6 @@ float min_fft_level;
 int rx_gain_slow_count;
 int rx_gain_changed = 0;	// Flag to indicate a change in rx_gain has been called for
 
-// Wisdom Defines for the FFTW and FFTWF libraries
-// Options for WISDOM_MODE from least to most rigorous are FFTW_ESTIMATE, FFTW_MEASURE, FFTW_PATIENT, and FFTW_EXHAUSTIVE
-// The FFTW_ESTIMATE mode seems to make completely incorrect Wisdom plan choices sometimes, and is not recommended.
-// Wisdom plans found in an existing Wisdom file will negate the need for time consuming Wisdom plan calculations
-// if the Wisdom plans in the file were generated at the same or more rigorous level.
-#define WISDOM_MODE FFTW_MEASURE
-#define PLANTIME -1		// spend no more than plantime seconds finding the best FFT algorithm. -1 turns the platime cap off.
-char wisdom_file[] = "sbitx_wisdom.wis";
-
 fftw_complex *fft_out;		// holds the incoming samples in freq domain (for rx as well as tx)
 fftw_complex *fft_in;			// holds the incoming samples in time domain (for rx as well as tx) 
 fftw_complex *fft_m;			// holds previous samples for overlap and discard convolution 
@@ -162,16 +153,8 @@ void fft_init(){
 	memset(fft_out, 0, sizeof(fftw_complex) * MAX_BINS);
 	memset(fft_m, 0, sizeof(fftw_complex) * MAX_BINS/2);
 
-	fftw_set_timelimit(PLANTIME);
-	fftwf_set_timelimit(PLANTIME);
-	int e = fftw_import_wisdom_from_filename(wisdom_file);
-	if (e == 0)
-	{
-		printf("Generating Wisdom File...\n");
-	}
-	plan_fwd = fftw_plan_dft_1d(MAX_BINS, fft_in, fft_out, FFTW_FORWARD, WISDOM_MODE); // Was FFTW_ESTIMATE N3SB
-	plan_spectrum = fftw_plan_dft_1d(MAX_BINS, fft_in, fft_spectrum, FFTW_FORWARD, WISDOM_MODE); // Was FFTW_ESTIMATE N3SB
-	fftw_export_wisdom_to_filename(wisdom_file);
+	plan_fwd = fftw_plan_dft_1d(MAX_BINS, fft_in, fft_out, FFTW_FORWARD, FFTW_ESTIMATE);
+	plan_spectrum = fftw_plan_dft_1d(MAX_BINS, fft_in, fft_spectrum, FFTW_FORWARD, FFTW_ESTIMATE);
 
 	//zero up the previous 'M' bins
 	for (int i= 0; i < MAX_BINS/2; i++){
@@ -391,15 +374,8 @@ struct rx *add_tx(int frequency, short mode, int bpf_low, int bpf_high){
 	//create fft complex arrays to convert the frequency back to time
 	r->fft_time = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * MAX_BINS);
 	r->fft_freq = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * MAX_BINS);
-	
-	int e = fftw_import_wisdom_from_filename(wisdom_file);
-	if (e == 0)
-	{
-		printf("Generating Wisdom File...\n");
-	}	
-	r->plan_rev = fftw_plan_dft_1d(MAX_BINS, r->fft_freq, r->fft_time, FFTW_BACKWARD, WISDOM_MODE); // Was FFTW_ESTIMATE N3SB
-	fftw_export_wisdom_to_filename(wisdom_file);
-	
+	r->plan_rev = fftw_plan_dft_1d(MAX_BINS, r->fft_freq, r->fft_time, FFTW_BACKWARD, FFTW_ESTIMATE);
+
 	r->output = 0;
 	r->next = NULL;
 	r->mode = mode;
@@ -439,15 +415,8 @@ struct rx *add_rx(int frequency, short mode, int bpf_low, int bpf_high){
 	//create fft complex arrays to convert the frequency back to time
 	r->fft_time = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * MAX_BINS);
 	r->fft_freq = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * MAX_BINS);
-	
-	int e = fftw_import_wisdom_from_filename(wisdom_file);
-	if (e == 0)
-	{
-		printf("Generating Wisdom File...\n");
-	}	
-	r->plan_rev = fftw_plan_dft_1d(MAX_BINS, r->fft_freq, r->fft_time, FFTW_BACKWARD, WISDOM_MODE);  // Was FFTW_ESTIMATE N3SB
-	fftw_export_wisdom_to_filename(wisdom_file);
-	
+	r->plan_rev = fftw_plan_dft_1d(MAX_BINS, r->fft_freq, r->fft_time, FFTW_BACKWARD, FFTW_ESTIMATE);
+
 	r->output = 0;
 	r->next = NULL;
 	r->mode = mode;
@@ -1417,9 +1386,11 @@ void sdr_request(char *request, char *response){
 	}
 	else if (!strcmp(cmd, "tx")){
 		if (!strcmp(value, "on"))
-			tr_switch_v2(1);
+			// tr_switch_v2(1);	// Gordon's Mod N3SB
+			tr_switch(1);	// Gordon's Mod
 		else
-			tr_switch_v2(0);
+			// tr_switch_v2(0);	// Gordon's Mod N3SB
+			tr_switch(0);	// Gordon's Mod
 		strcpy(response, "ok");
 	}
 	else if (!strcmp(cmd, "rx_pitch")){
@@ -1484,3 +1455,5 @@ void sdr_request(char *request, char *response){
   /* else
 		printf("*Error request[%s] not accepted\n", request); */
 }
+
+
