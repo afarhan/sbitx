@@ -485,7 +485,7 @@ static int sbitx_ft8_decode(float *signal, int num_samples, bool is_ft8)
            ++num_decoded;
 
 					char buff[1000];
-          sprintf(buff, "%s %3d %3d %-4.0f ~  %s\n", time_str, 
+          sprintf(buff, "%s %3d %+03d %-4.0f ~  %s\n", time_str, 
 						cand->score, cand->snr, freq_hz, message.text);
 
 					if (strstr(buff, mycallsign_upper)){
@@ -616,6 +616,7 @@ void ft8_rx(int32_t *samples, int count){
 	//if there is an overflow, then reset to the begining
 	if (ft8_rx_buff_index + (count/decimation_ratio) >= FT8_MAX_BUFF){
 		ft8_rx_buff_index = 0;		
+		printf("Buffer Overflow\n");
 	}
 
 	//down convert to 12000 Hz sampling rate
