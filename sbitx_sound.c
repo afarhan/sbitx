@@ -140,7 +140,6 @@ static snd_pcm_t *loopback_capture_handle=0;   	//handle for the pcm device
 static snd_pcm_stream_t play_stream = SND_PCM_STREAM_PLAYBACK;	//playback stream
 static snd_pcm_stream_t capture_stream = SND_PCM_STREAM_CAPTURE;	//playback stream
 
-static char	*pcm_play_name, *pcm_capture_name;
 static snd_pcm_hw_params_t *hwparams;
 static snd_pcm_sw_params_t *swparams;
 static snd_pcm_hw_params_t *hloop_params;
@@ -363,7 +362,7 @@ int sound_start_capture(char *device){
 	int e = snd_pcm_open(&pcm_capture_handle, device,  	capture_stream, 0);
 	
 	if (e < 0) {
-		fprintf(stderr, "Error opening PCM capture device %s: %s\n", pcm_capture_name, snd_strerror(e));
+		fprintf(stderr, "Error opening PCM capture device %s: %s\n", device, snd_strerror(e));
 		return -1;
 	}
 
@@ -780,18 +779,18 @@ void *sound_thread_function(void *ptr){
 			printf("Retrying the sound system %d\n", i);
 	}
 	if (i == 10){
-	 fprintf(stderr, "*Error opening play device");
+	 fprintf(stderr, "*Error opening play device\n");
 		return NULL;
 	}
 
 	if (sound_start_capture(device)){
-		fprintf(stderr, "*Error opening capture device");
+		fprintf(stderr, "*Error opening capture device\n");
 		return NULL;
 	}
 
 //  printf("opening loopback on plughw:1,0 sound card\n");	
 	if(sound_start_loopback_play("plughw:1,0")){
-		fprintf(stderr, "*Error opening loopback play device");
+		fprintf(stderr, "*Error opening loopback play device\n");
 		return NULL;
 	}
 	sound_thread_continue = 1;
@@ -809,7 +808,7 @@ void *loopback_thread_function(void *ptr){
 //  printf("opening loopback on plughw:1,0 sound card\n");	
 
 	if (sound_start_loopback_capture("plughw:2,1")){
-		fprintf(stderr, "*Error opening loopback capture device");
+		fprintf(stderr, "*Error opening loopback capture device\n");
 		return NULL;
 	}
 	sound_thread_continue = 1;

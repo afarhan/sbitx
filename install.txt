@@ -42,11 +42,12 @@ precision float library.
 ##Step 5: INSTALLING LOOPBACK
 
 IMPORTANT: pulseaudio maybe taking over ALSA sound system that sbitx runs on 
-edit /etc/pulse/client.conf and add the line
+edit /etc/pulse/client.conf and add the lines
 
 	autospawn = no
+	daemon-binary = /bin/true
 
-to disable it.
+to prevent it.
 
 We need a way to pass audio between the sbitx and other programs running on the RPi like
 WSJT-X, etc.
