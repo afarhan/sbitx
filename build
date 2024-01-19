@@ -1,12 +1,20 @@
-#!/bin/sh
+#!/bin/sh -e
+# Note: the '-e' flag will make the script stop immediately upon error with 
+# the error reflected in the environment.  This lets one issue commands like
+# "./build sbitx && ./sbitx" to build then run if it built correctly, and not
+# run if the build failed.
 F=$@
+[ -z "$F" ] && {
+   echo "usage:   $0 program"
+   echo "example: $0 sbitx"
+   exit 1
+}
 WORKING_DIRECTORY=`pwd`
 echo ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
 date
-mkdir -p "/home/pi/sbitx/audio"
-mkdir -p "/home/pi/sbitx/data"
-#cd /home/pi/sbitx
-mkdir -p "/home/pi/sbitx/web"
+mkdir -p "./audio"
+mkdir -p "./data"
+mkdir -p "./web"
 
 if test -f "data/sbitx.db"; then
 	echo "database is intact"
