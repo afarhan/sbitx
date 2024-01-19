@@ -245,6 +245,8 @@ void set_bandwidth(int hz);
 GtkWidget *window;
 GtkWidget *display_area = NULL;
 GtkWidget *text_area = NULL;
+extern void settings_ui(GtkWidget*p);
+extern int logbook_open();
 
 // these are callbacks called by the operating system
 static gboolean on_draw_event( GtkWidget* widget, cairo_t *cr, 
@@ -477,8 +479,9 @@ struct field main_controls[] = {
 		"", 0,0,0,COMMON_CONTROL},
 	{ "#record", do_record, 380, 5, 40, 40, "REC", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, 
 		"ON/OFF", 0,0, 0,COMMON_CONTROL},
-	{ "#web", NULL, 430,5,  40, 40, "WEB", 40, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+	{ "#web", NULL, 420,5,  40, 40, "WEB", 40, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
 		"", 0,0, 0,COMMON_CONTROL},
+	{"#set", NULL, 460, 5, 40, 40, "SET", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0,COMMON_CONTROL}, 
 	{ "r1:gain", NULL, 375, 5, 40, 40, "IF", 40, "60", FIELD_NUMBER, FONT_FIELD_VALUE, 
 		"", 0, 100, 1,COMMON_CONTROL},
 	{ "r1:agc", NULL, 415, 5, 40, 40, "AGC", 40, "SLOW", FIELD_SELECTION, FONT_FIELD_VALUE, 
@@ -523,15 +526,17 @@ struct field main_controls[] = {
 		"", 0, 7,0,COMMON_CONTROL},
 	{"#exchange_sent", do_text, 240, 50, 50, 20, "NR", 70, "", FIELD_TEXT, FONT_LOG, 
 		"", 0, 7,0,COMMON_CONTROL},
-	{"#enter_qso", NULL, 290, 50, 40, 40, "LOG\u00bb", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
+	{"#enter_qso", NULL, 290, 50, 40, 40, "SAVE", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE, 
 		"", 0,0,0,COMMON_CONTROL},
 	{"#wipe", NULL, 330, 50, 40, 40, "WIPE", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0,COMMON_CONTROL}, 
 	{"#mfqrz", NULL, 370, 50, 40, 40, "QRZ", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0,COMMON_CONTROL}, 
+	{"#logbook", NULL, 410, 50, 40, 40, "LOG", 1, "", FIELD_BUTTON, FONT_FIELD_VALUE,"", 0,0,0,COMMON_CONTROL}, 
 	{"#text_in", do_text, 5, 70, 285, 20, "TEXT", 70, "text box", FIELD_TEXT, FONT_LOG, 
 		"nothing valuable", 0,128,0,COMMON_CONTROL},
 
 	{ "#toggle_kbd", do_toggle_kbd, 495, 50, 40, 40, "KBD", 40, "OFF", FIELD_TOGGLE, FONT_FIELD_VALUE, 
 		"ON/OFF", 0,0, 0,COMMON_CONTROL},
+
 
 /* end of common controls */
 
@@ -754,7 +759,7 @@ struct field *get_field(const char *cmd){
 }
 
 //set the field directly to a particuarl value, programmatically
-int set_field(char *id, char *value){
+int set_field(const char *id, const char *value){
 	struct field *f = get_field(id);
 	int v;
 	int debug = 0;
@@ -830,7 +835,7 @@ int set_field(char *id, char *value){
 	return 0;
 }
 
-struct field *get_field_by_label(char *label){
+struct field *get_field_by_label(const char *label){
 	for (int i = 0; active_layout[i].cmd[0] > 0; i++)
 		if (!strcasecmp(active_layout[i].label, label))
 			return active_layout + i;
@@ -856,7 +861,7 @@ int field_int(char *label){
 	}
 }
 
-int field_set(char *label, char *new_value){
+int field_set(const char *label, const char *new_value){
 	struct field *f = get_field_by_label(label);
 	if (!f)
 		return -1;
@@ -1295,7 +1300,7 @@ static void save_user_settings(int forced){
 	//attempt to save settings only if it has been 30 seconds since the 
 	//last time the settings were saved
 	int now = millis();
-	if ((now < last_save_at + 30000 ||  !settings_updated) && forced == 0)
+	if ((now < last_save_at + 30000 || !settings_updated) && forced == 0)
 		return;
 
 	char *path = getenv("HOME");
@@ -1309,6 +1314,7 @@ static void save_user_settings(int forced){
 	FILE *f = fopen(file_path, "w");
 	if (!f){
 		printf("Unable to save %s : %s\n", file_path, strerror(errno));
+		settings_updated = 0;  // stop repeated attempts to write if file cannot be opened.		
 		return;
 	}
 
@@ -1328,6 +1334,7 @@ static void save_user_settings(int forced){
 
 
 	fclose(f);
+	last_save_at = now;	// As proposed by Dave N1AI
 	settings_updated = 0;
 }
 
@@ -1338,13 +1345,13 @@ void enter_qso(){
 	const char *rst_received = field_str("RECV");
 
 	// skip empty or half filled log entry
-	if (strlen(callsign) < 3 || strlen(rst_sent) < 2 || strlen(rst_received) < 2){
+	if (strlen(callsign) < 3 || strlen(rst_sent) < 1 || strlen(rst_received) < 1){
 		printf("log entry is empty [%s], [%s], [%s], no log created\n", callsign, rst_sent, rst_received);
 		return;
 	}
  
-	if (logbook_count_dup(field_str("CALL"), 120)){
-		printf("duplicate log entry aborted within 60 seconds\n");
+	if (logbook_count_dup(field_str("CALL"), 60)){
+		printf("Duplicate log entry not accepted for %s within two minutes of last entry of %s.\n", callsign, callsign);
 		return;
 	}	
 	logbook_add(get_field("#contact_callsign")->value, 
@@ -1374,9 +1381,9 @@ static int user_settings_handler(void* user, const char* section,
       strcpy(cmd, name);
       set_field(cmd, new_value);
     }
-		else if (!strncmp(cmd, "#kbd", 4)){
-			return 1; //skip the keyboard values
-		}
+	else if (!strncmp(section, "#kbd", 4)){
+		return 1; //skip the keyboard values
+	}
     // if it is an empty section
     else if (strlen(section) == 0){
       sprintf(cmd, "%s", name);
@@ -1982,18 +1989,18 @@ static void layout_ui(){
 	field_move("KBD", screen_width - 47, screen_height-47, 45, 45);
 
 	//now, move the main radio controls to the right
-	field_move("FREQ", x2-230, 0, 180, 40);
+	field_move("FREQ", x2-200, 0, 180, 40);
 	field_move("AUDIO", x2-45, 5, 40, 40);
 	field_move("IF", x2-45, 50, 40, 40);
 	field_move("DRIVE", x2-85, 50, 40, 40);
 	field_move("BW", x2-125, 50, 40, 40);
 	field_move("AGC", x2-165, 50, 40, 40);
 
-	field_move("STEP", x2-270, 5, 40, 40);
-	field_move("RIT", x2-310, 5, 40, 40);
-	field_move("SPLIT", x2-310, 50, 40, 40);
-	field_move("VFO", x2-270, 50, 40, 40);
-	field_move("SPAN", x2-225, 50, 40, 40);
+	field_move("STEP", x2-245, 5, 40, 40);
+	field_move("RIT", x2-285, 5, 40, 40);
+	field_move("SPLIT", x2-285, 50, 40, 40);
+	field_move("VFO", x2-245, 50, 40, 40);
+	field_move("SPAN", x2-205, 50, 40, 40);
 	
 
 	if (!strcmp(field_str("KBD"), "ON")){
@@ -4082,6 +4089,10 @@ void do_control_action(char *cmd){
 		save_user_settings(1);
 		exit(0);
 	}
+	else if (!strcmp(request, "SET"))
+		settings_ui(window);
+	else if (!strcmp(request, "LOG"))
+		logbook_list_open();
 	else if (!strncmp(request, "BW ",3)){
 		int bw = atoi(request+3);	
 		set_filter_high_low(bw); //calls do_control_action again to set LOW and HIGH
@@ -4102,8 +4113,9 @@ void do_control_action(char *cmd){
 	else if (!strcmp(request, "TX")){	
 		tx_on(TX_SOFT);
 	}
-	else if (!strcmp(request, "WEB"))
+	else if (!strcmp(request, "WEB")){
 		open_url("http://127.0.0.1:8080");
+	}
 	else if (!strcmp(request, "RX")){
 		tx_off();
 	}
@@ -4148,7 +4160,7 @@ void do_control_action(char *cmd){
 	else if (!strcmp(request, "KBD OFF")){
 		layout_ui();
 	}
-	else if (!strcmp(request, "LOG\u00bb")){
+	else if (!strcmp(request, "SAVE")){
 			enter_qso();
 	}
 	//tuning step
