@@ -291,7 +291,7 @@ int export_adif(char *path, char *start_date, char *end_date){
 				sprintf(param, "%.3f",ffreq); // write out with 3 decimal digits
 				for (int j = 0 ; j < sizeof(bands)/sizeof(struct band_name); j++)
 					if (bands[j].from <= f && f <= bands[j].to){
-						fprintf(pf, "<%BAND:%d>%s\n", strlen(bands[j].name), bands[j].name); 
+						fprintf(pf, "<BAND:%d>%s\n", strlen(bands[j].name), bands[j].name); 
 					}
 			}
 			else if (i == 3) //it is the date
