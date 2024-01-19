@@ -11,6 +11,15 @@
 #include <unistd.h>
 #include "sdr.h"
 
+// Wisdom Defines for the FFTW and FFTWF libraries
+// Options for WISDOM_MODE from least to most rigorous are FFTW_ESTIMATE, FFTW_MEASURE, FFTW_PATIENT, and FFTW_EXHAUSTIVE
+// The FFTW_ESTIMATE mode seems to make completely incorrect Wisdom plan choices sometimes, and is not recommended.
+// Wisdom plans found in an existing Wisdom file will negate the need for time consuming Wisdom plan calculations
+// if the Wisdom plans in the file were generated at the same or more rigorous level.
+#define WISDOM_MODE FFTW_MEASURE
+#define PLANTIME -1		// spend no more than plantime seconds finding the best FFT algorithm. -1 turns the platime cap off.
+char wisdom_file_f[] = "sbitx_wisdom_f.wis";
+
 // Modified Bessel function of the 0th kind, used by the Kaiser window
 const float i0(float const z){
   const float t = (z*z)/4;
@@ -86,8 +95,17 @@ int window_filter(int const L,int const M,complex float * const response,float c
 
   // fftw_plan can overwrite its buffers, so we're forced to make a temp. Ugh.
   complex float * const buffer = fftwf_alloc_complex(N);
-  fftwf_plan fwd_filter_plan = fftwf_plan_dft_1d(N,buffer,buffer,FFTW_FORWARD,FFTW_ESTIMATE);
-  fftwf_plan rev_filter_plan = fftwf_plan_dft_1d(N,buffer,buffer,FFTW_BACKWARD,FFTW_ESTIMATE);
+
+  fftw_set_timelimit(PLANTIME);
+  fftwf_set_timelimit(PLANTIME);
+  int e = fftwf_import_wisdom_from_filename(wisdom_file_f);
+  if (e == 0)
+  {
+    printf("Generating Wisdom File...\n");
+  }
+  fftwf_plan fwd_filter_plan = fftwf_plan_dft_1d(N,buffer,buffer,FFTW_FORWARD, WISDOM_MODE); // Was FFTW_ESTIMATE N3SB
+  fftwf_plan rev_filter_plan = fftwf_plan_dft_1d(N,buffer,buffer,FFTW_BACKWARD, WISDOM_MODE); // Was FFTW_ESTIMATE N3SB
+  fftwf_export_wisdom_to_filename(wisdom_file_f);
 
   // Convert to time domain
   memcpy(buffer,response,N*sizeof(*buffer));
