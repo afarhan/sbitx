@@ -191,6 +191,7 @@ extern int freq_hdr;
 void set_lo(int frequency);
 void set_volume(double v);
 void sdr_request(char *request, char *response);
+void cmd_exec(char *cmd);
 
 void sdr_modulation_update(int32_t *samples, int count, double scale_up);
 
@@ -202,9 +203,7 @@ int get_tx_data_byte(char *c);
 int	get_tx_data_length();
 void modem_poll(int mode);
 float modem_next_sample(int mode);
-void ft8_tx(char *message, int freq);
 void modem_abort();
-void ft8_interpret(char *received, char *transmit);
 
 int is_in_tx();
 
@@ -215,18 +214,26 @@ void tx_on(int trigger);
 void tx_off();
 long get_freq();
 int get_pitch();
-void do_cmd(char *cmd);
 time_t time_sbitx();
 
-//cw defines
-#define CW_DASH (1)
-#define CW_DOT (2)
+//cw defines, these are bitfields, hence, powers of 2
+#define CW_IDLE (0)
+#define CW_DASH (1) 
+#define CW_DOT (2) 
+#define CW_DOT_DELAY (4)
+#define CW_DASH_DELAY (8) 
+#define CW_WORD_DELAY (16) 
+#define CW_DOWN (32) 
+
 //straight key, iambic, keyboard
 #define CW_STRAIGHT 0
 #define CW_IAMBIC	1
-#define CW_KBD 2
+#define CW_IAMBICB 2	
+#define CW_KBD 3
+
 
 int key_poll();
+int key_poll2();
 int get_cw_delay();
 int	get_data_delay();
 int get_cw_input_method();

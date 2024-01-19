@@ -38,6 +38,10 @@ FILE *pf_debug = NULL;
 #define LPF_C 10
 #define LPF_D 11
 
+#define SBITX_DE (0)
+#define SBITX_V2 (1)
+
+int sbitx_version = SBITX_V2;
 int fwdpower, vswr;
 float fft_bins[MAX_BINS]; // spectrum ampltiudes  
 int spectrum_plot[MAX_BINS];
@@ -60,7 +64,7 @@ static int rx_gain = 100;
 static int rx_vol = 100;
 static int tx_gain = 100;
 static int tx_compress = 0;
-static double spectrum_speed = 0.1;
+static double spectrum_speed = 0.3;
 static int in_tx = 0;
 static int rx_tx_ramp = 0;
 static int sidetone = 2000000000;
@@ -122,7 +126,7 @@ void radio_tune_to(u_int32_t f){
 	else
   	si5351bx_setfreq(2, f + bfo_freq - 24000 + TUNING_SHIFT);
 
-  //printf("Setting radio to %d\n", f);
+//  printf("Setting radio rx_pitch %d\n", rx_pitch);
 }
 
 void fft_init(){
@@ -161,10 +165,13 @@ void fft_reset_m_bins(){
 	memset(fft_out, 0, sizeof(fftw_complex) * MAX_BINS);
 	memset(fft_m, 0, sizeof(fftw_complex) * MAX_BINS/2);
 	memset(fft_spectrum, 0, sizeof(fftw_complex) * MAX_BINS);
-//	for (int i= 0; i < MAX_BINS/2; i++){
-//		__real__ fft_m[i]  = 0.0;
-//		__imag__ fft_m[i]  = 0.0;
-//	}
+	memset(tx_list->fft_time, 0, sizeof(fftw_complex) * MAX_BINS);
+	memset(tx_list->fft_freq, 0, sizeof(fftw_complex) * MAX_BINS);
+/*	for (int i= 0; i < MAX_BINS/2; i++){
+		__real__ fft_m[i]  = 0.0;
+		__imag__ fft_m[i]  = 0.0;
+	}
+*/
 }
 
 int mag2db(double mag){
@@ -193,10 +200,11 @@ void spectrum_reset(){
 }
 
 void spectrum_update(){
-	//we are only using the lower half of the bins, so this copies twice as many bins, 
-	//it can be optimized. leaving it here just in case someone wants to try I Q channels 
+	//we are only using the lower half of the bins, 
+	//so this copies twice as many bins, 
+	//it can be optimized. leaving it here just in case 
+	//someone wants to try I Q channels 
 	//in hardware
-//	for (int i = 0; i < MAX_BINS; i++){
 
 	// this has been hand optimized to lower
 	//the inordinate cpu usage
@@ -218,8 +226,8 @@ int remote_audio_output(int16_t *samples){
 	return length;
 }
 
+static int prev_lpf = -1;
 void set_lpf_40mhz(int frequency){
-	static int prev_lpf = -1;
 	int lpf = 0;
 
 	if (frequency < 5500000)
@@ -228,7 +236,7 @@ void set_lpf_40mhz(int frequency){
 		lpf = LPF_C;
 	else if (frequency < 18500000)		
 		lpf = LPF_B;
-	else if (frequency < 30000000)
+	else if (frequency < 30000000) 
 		lpf = LPF_A; 
 
 	if (lpf == prev_lpf){
@@ -245,7 +253,6 @@ void set_lpf_40mhz(int frequency){
 
   //printf("################ setting %d high\n", lpf);
   digitalWrite(lpf, HIGH); 
-  //digitalWrite(LPF_A, HIGH); 
 	prev_lpf = lpf;
 }
 
@@ -491,60 +498,6 @@ double agc2(struct rx *r){
 	//printf("%d:s meter: %d %d %d \n", count++, (int)r->agc_gain, (int)r->signal_strength, r->agc_loop);
   return 100000000000 / r->agc_gain;  
 }
-/*
-double tgc(struct rx *r){
-	int i;
-  double signal_strength, agc_gain_should_be;
-
-	//do nothing if agc is off
-  if (r->agc_speed == -1){
-	  for (i=0; i < MAX_BINS/2; i++)
-			__real__ (r->fft_time[i+(MAX_BINS/2)]) *=10000000;
-    return 10000000;
-  }
-
-  //find the peak signal amplitude
-  signal_strength = 0.0;
-	for (i=0; i < MAX_BINS/2; i++){
-		double s = creal(r->fft_time[i+(MAX_BINS/2)]) * 1000;
-		if (signal_strength < s) 
-			signal_strength = s;
-	}
-	//also calculate the moving average of the signal strength
-  r->signal_avg = (r->signal_avg * 0.93) + (signal_strength * 0.07);
-	if (signal_strength == 0)
-		agc_gain_should_be = 10000000;
-	else
-		agc_gain_should_be = 100000000000/signal_strength;
-	r->signal_strength = signal_strength;
-
-	double agc_ramp = 0.0;
-
-  // climb up the agc quickly if the signal is louder than before 
-	if (agc_gain_should_be < r->agc_gain){
-		r->agc_gain = agc_gain_should_be;
-		//reset the agc to hang count down 
-    r->agc_loop = r->agc_speed;
-  }
-	else if (r->agc_loop <= 0){
-		agc_ramp = (agc_gain_should_be - r->agc_gain) / (MAX_BINS/2);	
-	}
- 
-	if (agc_ramp != 0){
-  	for (i = 0; i < MAX_BINS/2; i++){
-	  	__real__ (r->fft_time[i+(MAX_BINS/2)]) *= r->agc_gain;
-		}
-		r->agc_gain += agc_ramp;		
-	}
-	else 
-  	for (i = 0; i < MAX_BINS/2; i++)
-	  	__real__ (r->fft_time[i+(MAX_BINS/2)]) *= r->agc_gain;
-
-  r->agc_loop--;
-
-  return 100000000000 / r->agc_gain;  
-}
-*/
 
 void my_fftw_execute(fftw_plan f){
 	fftw_execute(f);
@@ -685,6 +638,7 @@ void read_power(){
 
 	memcpy(&vfwd, response, 2);
 	memcpy(&vref, response+2, 2);
+//	printf("%d:%d\n", vfwd, vref);
 	if (vref >= vfwd)
 		vswr = 100;
 	else
@@ -709,6 +663,8 @@ void read_power(){
 //	printf("alc: %g\n", alc_level);
 }
 
+static int tx_process_restart = 0;
+
 void tx_process(
 	int32_t *input_rx, int32_t *input_mic, 
 	int32_t *output_speaker, int32_t *output_tx, 
@@ -718,6 +674,12 @@ void tx_process(
 	double i_sample, q_sample;
 
 	struct rx *r = tx_list;
+
+	//fix the burst at the start of transmission
+	if (tx_process_restart){
+    fft_reset_m_bins();
+		tx_process_restart = 0;
+	} 
 
 	if (mute_count && (r->mode == MODE_USB || r->mode == MODE_LSB)){
 		memset(input_mic, 0, n_samples * sizeof(int32_t));
@@ -730,7 +692,7 @@ void tx_process(
 	int m = 0;
 	int j = 0;
 
-	double max = -10.0, min = 10.0;
+	//double max = -10.0, min = 10.0;
 	//gather the samples into a time domain array 
 	for (i= MAX_BINS/2; i < MAX_BINS; i++){
 
@@ -825,13 +787,19 @@ void tx_process(
 
 	//convert back to time domain	
 	fftw_execute(r->plan_rev);
-
+	int min = 10000000;
+	int max = -10000000;
 	float scale = volume;
 	for (i= 0; i < MAX_BINS/2; i++){
-			double s = creal(r->fft_time[i+(MAX_BINS/2)]);
-			output_tx[i] = s * scale * tx_amp * alc_level;
+		double s = creal(r->fft_time[i+(MAX_BINS/2)]);
+		output_tx[i] = s * scale * tx_amp * alc_level;
+		if (min > output_tx[i])
+			min = output_tx[i];
+		if (max < output_tx[i])
+			max = output_tx[i];	
+			//output_tx[i] = 0;
 	}
-//	printf("min %g, max %g\n", min, max);
+//	printf("min %d, max %d\n", min, max);
 
 	read_power();
 	sdr_modulation_update(output_tx, MAX_BINS/2, tx_amp);	
@@ -1063,8 +1031,7 @@ void tx_cal(){
 		(void*)NULL);
 }
 
-
-void tr_switch(int tx_on){
+void tr_switch_de(int tx_on){
 		if (tx_on){
 			//mute it all and hang on for a millisecond
 			sound_mixer(audio_card, "Master", 0);
@@ -1076,7 +1043,7 @@ void tr_switch(int tx_on){
 			delay(2);
 			digitalWrite(TX_LINE, HIGH);
 			mute_count = 20;
-      fft_reset_m_bins();
+			tx_process_restart = 1;
 			//give time for the reed relay to switch
       delay(2);
 			set_tx_power_levels();
@@ -1121,6 +1088,69 @@ void tr_switch(int tx_on){
 		}
 }
 
+//v2 t/r switch uses the lpfs to cut the feedback during t/r transitions
+void tr_switch_v2(int tx_on){
+		if (tx_on){
+
+			//first turn off the LPFs, so PA doesnt connect 
+  		digitalWrite(LPF_A, LOW);
+  		digitalWrite(LPF_B, LOW);
+ 	 		digitalWrite(LPF_C, LOW);
+  		digitalWrite(LPF_D, LOW);
+
+			//mute it all and hang on for a millisecond
+			sound_mixer(audio_card, "Master", 0);
+			sound_mixer(audio_card, "Capture", 0);
+			delay(1);
+
+			//now switch of the signal back
+			//now ramp up after 5 msecs
+			delay(2);
+			mute_count = 20;
+			tx_process_restart = 1;
+			digitalWrite(TX_LINE, HIGH);
+      delay(20);
+			set_tx_power_levels();
+			in_tx = 1;
+			prev_lpf = -1; //force this
+			set_lpf_40mhz(freq_hdr);
+			delay(10);
+			spectrum_reset();
+		}
+		else {
+			in_tx = 0;
+			//mute it all and hang on
+			sound_mixer(audio_card, "Master", 0);
+			sound_mixer(audio_card, "Capture", 0);
+			delay(1);
+      fft_reset_m_bins();
+			mute_count = MUTE_MAX;
+
+  		digitalWrite(LPF_A, LOW);
+  		digitalWrite(LPF_B, LOW);
+ 	 		digitalWrite(LPF_C, LOW);
+  		digitalWrite(LPF_D, LOW);
+			prev_lpf = -1; //force the lpf to be re-energized
+			delay(10);
+			//power down the PA chain to null any gain
+			digitalWrite(TX_LINE, LOW);
+			delay(5); 
+			//audio codec is back on
+			sound_mixer(audio_card, "Master", rx_vol);
+			sound_mixer(audio_card, "Capture", rx_gain);
+			spectrum_reset();
+			prev_lpf = -1;
+			set_lpf_40mhz(freq_hdr);
+			//rx_tx_ramp = 10;
+		}
+}
+
+void tr_switch(int tx_on){
+	if (sbitx_version == SBITX_DE)
+		tr_switch_de(tx_on);
+	else
+		tr_switch_v2(tx_on);
+}
 
 /* 
 This is the one-time initialization code 
@@ -1156,6 +1186,12 @@ void setup(){
   tx_list->tuned_bin = 512;
 	tx_init(7000000, MODE_LSB, -3000, -150);
 
+	//detect the version of sbitx
+	uint8_t response[4];
+	if(i2cbb_read_i2c_block_data(0x8, 0, 4, response) == -1)
+		sbitx_version = SBITX_DE;
+	else
+		sbitx_version = SBITX_V2;
 
 	setup_audio_codec();
 	sound_thread_start("plughw:0,0");
@@ -1252,7 +1288,15 @@ void sdr_request(char *request, char *response){
 				(1.0 * 3000)/96000.0 , 
 				5);
 		}
-		
+	
+		//we need to nudge the oscillator to adjust 
+		//to cw offset. setting it to the already tuned freq
+		//doesnt recalculte the offsets
+
+		int f = freq_hdr;
+		set_rx1(f-10);
+		set_rx1(f);
+	
 		//printf("mode set to %d\n", rx_list->mode);
 		strcpy(response, "ok");
 	}
@@ -1273,14 +1317,13 @@ void sdr_request(char *request, char *response){
 	}
 	else if (!strcmp(cmd, "tx")){
 		if (!strcmp(value, "on"))
-			tr_switch(1);
+			tr_switch_v2(1);
 		else
-			tr_switch(0);
+			tr_switch_v2(0);
 		strcpy(response, "ok");
 	}
 	else if (!strcmp(cmd, "rx_pitch")){
 		rx_pitch = atoi(value);
-		printf("rx_pitch set to %d\n", rx_pitch);
 	}
 	else if (!strcmp(cmd, "tx_gain")){
 		tx_gain = atoi(value);
@@ -1294,7 +1337,6 @@ void sdr_request(char *request, char *response){
 	}
 	else if (!strcmp(cmd, "bridge")){
     bridge_compensation = atoi(value);
-		printf("bridge compesation = %d\n", bridge_compensation);
 	}
 	else if(!strcmp(cmd, "r1:gain")){
 		rx_gain = atoi(value);
@@ -1342,4 +1384,5 @@ void sdr_request(char *request, char *response){
   /* else
 		printf("*Error request[%s] not accepted\n", request); */
 }
+
 

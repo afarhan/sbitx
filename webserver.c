@@ -16,8 +16,6 @@ static char s_web_root[1000];
 static char session_cookie[100];
 static struct mg_mgr mgr;  // Event manager
 
-int set_field(char *id, char *value);
-
 static void web_respond(struct mg_connection *c, char *message){
 	mg_ws_send(c, message, strlen(message), WEBSOCKET_OP_TEXT);
 }
@@ -31,14 +29,12 @@ static void get_console(struct mg_connection *c){
 	mg_ws_send(c, buff, strlen(buff), WEBSOCKET_OP_TEXT);
 }
 
-
 static void get_updates(struct mg_connection *c, int all){
 	//send the settings of all the fields to the client
 	char buff[2000];
 	int i = 0;
 
 	get_console(c);
-
 
 	while(1){
 		int update = remote_update_field(i, buff);
@@ -56,7 +52,9 @@ static void do_login(struct mg_connection *c, char *key){
 
 	char passkey[20];
 	get_field_value("#passkey", passkey);
-	if (!key || strcmp(passkey, key)){
+
+	//look for key only on non-local ip addresses
+	if ((!key || strcmp(passkey, key)) && (c->rem.ip != 16777343)){
 		web_respond(c, "login error");
 		c->is_draining = 1;
 		printf("passkey didn't match. Closing socket\n");
@@ -141,7 +139,6 @@ static void web_despatcher(struct mg_connection *c, struct mg_ws_message *wm){
 	field = strtok(NULL, "=");
 	value = strtok(NULL, "\n");
 
-
 	if (field == NULL || cookie == NULL){
 		printf("Invalid request on websocket\n");
 		web_respond(c, "quit Invalid request on websocket");
@@ -158,7 +155,7 @@ static void web_despatcher(struct mg_connection *c, struct mg_ws_message *wm){
 	}
 	else if (cookie == NULL || strcmp(cookie, session_cookie)){
 		web_respond(c, "quit expired");
-		printf("Cookie not found, closing socket\n");
+		printf("Cookie not found, closing socket %s vs %s\n", cookie, session_cookie);
 		c->is_draining = 1;
 	}
 	else if (!strcmp(field, "spectrum"))
@@ -209,7 +206,7 @@ static void fn(struct mg_connection *c, int ev, void *ev_data, void *fn_data) {
       mg_http_serve_dir(c, ev_data, &opts);
     }
   } else if (ev == MG_EV_WS_MSG) {
-    // Got websocket frame. Received data is wm->data. Echo it back!
+    // Got websocket frame. Received data is wm->data
     struct mg_ws_message *wm = (struct mg_ws_message *) ev_data;
 //		printf("ws request,  client to %x:%d\n", c->rem.ip, c->rem.port);
     web_despatcher(c, wm);
@@ -236,7 +233,7 @@ void webserver_start(){
 	strcpy(s_web_root, path);
 	strcat(s_web_root, "/sbitx/web");
 
-	logbook_open();
+	//logbook_open();
  	pthread_create( &webserver_thread, NULL, webserver_thread_function, 
 		(void*)NULL);
 }

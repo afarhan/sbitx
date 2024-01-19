@@ -45,11 +45,9 @@ void macro_list(char *output){
   struct dirent *dir;
 
 	if (!d){
-		write_console(FONT_LOG, "\Error:data subdirectory is missing\n");
+		write_console(FONT_LOG, "\Error:web subdirectory is missing\n");
 		return;
 	}
-
-	write_console(FONT_LOG, "\nAvailable macros:\n");
 
 	if(output)
 		output[0] = 0;	
@@ -58,9 +56,6 @@ void macro_list(char *output){
 		int len = strlen(p);
 		if (p[len-3] == '.' && p[len-2] == 'm' && p[len-1] == 'c'){
 			p[len-3] = 0;
-			write_console(FONT_LOG, p);
-			write_console(FONT_LOG, "\n");
-     	printf("%s\n", dir->d_name);
 			if (output){
 				strcat(output, dir->d_name);
 				strcat(output, "|");
@@ -89,7 +84,7 @@ int  macro_load(char *filename, char *output){
 
 	char *home_path = getenv("HOME");
 	strcpy(full_path, home_path);
-	strcat(full_path, "/sbitx/data/");
+	strcat(full_path, "/sbitx/web/");
 	strcat(full_path, filename);
 	strcat(full_path, ".mc");
 	FILE *pf = fopen(full_path, "r");
@@ -139,11 +134,45 @@ int  macro_load(char *filename, char *output){
 	for (int i = 1; i <= 12; i++){
 		char button[32], label[32];
 		macro_label(i, label);
-		sprintf(button, "#mf%d", i);
-		set_field(button, label);
+		sprintf(button, "F%d", i);
+		field_set(button, label);
 	}
 
 	return 0;
+}
+
+void macro_get_var(char *var, char *s){
+	*s = 0;
+
+	if(!strcmp(var, "MYCALL"))
+		strcpy(s, field_str("MYCALLSIGN"));
+	else if (!strcmp(var, "CALL"))
+		strcpy(s, field_str("CALL"));
+	else if (!strcmp(var, "SENTRST"))
+		strcpy(s, field_str("SENT"));
+	else if (!strcmp(var, "SENTRSTCUT")){
+		strcpy(s, field_str("SENT"));
+		if (s[1] == '9')
+			s[1] = 'N';
+		if (s[2] == '9')
+			s[2] = 'N';
+	}
+	else if (!strcmp(var, "GRID"))
+		strcpy(s, field_str("MYGRID"));
+	else if (!strcmp(var, "GRIDSQUARE")){
+		strcpy(s, field_str("MYGRID"));
+		s[4] = 0;
+	}
+	else if (!strcmp(var, "EXCH")){
+		strcpy(s, field_str("NR"));
+	}
+	else if (!strcmp(var, "WIPE"))
+		call_wipe();
+	else if (!strcmp(var, "SAVE")){
+		enter_qso();
+	}
+	else
+		*s = 0;
 }
 
 static char *macro_expand_var(char *var, char *s){

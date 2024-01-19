@@ -7,7 +7,8 @@ body {
 	display: table;
 	clear: both;
 }
-/* some generic classes */
+
+/* tx meters use these */
 .slider-label {
 	display: inline-block;
 	width: 50px;
@@ -28,29 +29,32 @@ body {
 .sbitx-selection {
 	border: none;
 	font-size: 12pt;
+	color: white; 
 }
 
 .sbitx-selection option {
-	font-size: 13pt;
+	font-size: 11px;
 }
 
 select, select option, input {
 	background: black;
-	color: #fff;
+	color: #fff; 
+	opacity: 1;
 }
 
 .sbitx-text-input {
 	height: 30px;
 	font-size: 12pt;
+	readonly: true;
 }
 
 /* topbar (actually to the left right now) */
 
-#topbar {
+#sidebar{
 	float: left;
 	width: 200px;
 	background-color: black;
-/*	height: 4000px; */
+	padding-top: 30px;
 }
 
 #restore-btn {
@@ -82,17 +86,21 @@ select, select option, input {
 	width: 200px;
 	border-collapse: collapse;
 	padding: 0;
-	margin-top: 20px;
 	margin-bottom:10px;
-	margin-left: 5px;
 	vertical-align: top;
 	text-align: left;
 }
 
 #tx_meters {
-	background-color: black;
-	display: block;
+	position: absolute;
+	background-color: #ff471a;
+	padding: 10px;
+	width: 200px;
 	height: 60px;
+	color: white;
+	display: none;
+	padding-left: 10px;
+	z-index = 1;
 }
 
 #rx_controls {
@@ -100,18 +108,20 @@ select, select option, input {
 	height: 60px;
 }
 
+/*
 #tuning_knob {
 	display: inline-block;
 	width: 350px;
 	text-align: center;
 }
+*/
 
 #dial {
-	margin: 7px;
-	padding: 4px;
-	border-radius: 10px;
 	background-color: #3dacbf;
-	width: 180px;
+	width: 150px;
+	padding-top: 0;
+	text-align: left;
+	height: 40px;
 }
 
 #freq_status {
@@ -121,6 +131,7 @@ select, select option, input {
 
 #current_freq{
 	font-size: 18pt;
+	line-height: 23px;
 	font-weight: bold;
 	color: black;
 }
@@ -148,60 +159,17 @@ select, select option, input {
 
 /* end of dial styling */
 
-#step-wrapper {
-	margin-top: 0px;
-	margin-bottom: 0;
-	width: 100%;
-	text-align: left;
-}
-
-.topbar-btn {
-	width: 130px;
-	height: 30px;
-	border: none;
-	background-color: #193366;
-	color: white;
-	margin: 5px;
-	border-radius: 10px;
-	display: block;
-	border: none;
-	font-size: 12pt;
-	text-align: left;
-}
-
-.topbar-btn:after{
-	content: '\00bb'; 
-	text-align: right;
-	float: right;	
-}
-
 #current_freq:after{
-	content: '\00bb'; 
 	text-align: right;
 	float: right;	
 }
 
-
-/* logger panel */ 
-
-#logger_panel {
-	border: none;
-	background-color: #222;
-	padding-top: 0px;
-	padding-bottom: 0px;
-//	padding-left: 10px;
-}
-
+/* logger styling */
 .logger-input {
 	border-collapse: collapse;
 	border: 1px solid white;
-	height: 20pt;
+	height: 35px;
 	text-transform:uppercase;
-}
-
-#logger-log {
-	background-color: green;
-	color: white;
 }
 
 .logger-button {
@@ -214,48 +182,20 @@ select, select option, input {
 	border-radius: 10px;
 }
 
-.macro-button {
-	height: 45px;
-	width: 100px;
-	border-collapse: collapse;
-	border: 1px solid #888;
-	background-color: black;
-	color: white;
-	margin: 2px;
-	border-radius: 10px;
+#SENT, #RECV {
+	width: 60px;
 }
 
-#logger-callsign {
-	margin-left: 6px;
-}
-
-#macros:after {
-	content: '\2304'; 
-	text-align: right;
-	float: right;	
-}
-
-#logbook-open:after{
-	content: '\2304'; 
-	text-align: right;
-	float: right;	
-}
-
-/* CW panel: used for RTT/PSK31/CW/CWR */
-
-#CW_ui {
-	border: none;
-}
+/* CW panel: also used for RTT/PSK31/CW/CWR */
 
 #cw_settings {
-	padding: 5px;
-	background-color: #222;
+	padding-top: 5px;
+	padding-bottom: 5px;
 }
 
 #data_window {
-	width: 100%;
-	height: 40px;
-	color: yellow;
+	height: 70px;
+	color: green;
 	text-align: left;
 	font-size: 12pt;
 	overflow: auto;
@@ -263,25 +203,12 @@ select, select option, input {
 }
 
 .data_rx{
-	color: white;
-	font-weight: bold;
+	color: green;
 }
 
 .data_tx {
 	color: orange;
 	font-weight: bold;
-}
-
-#WPM {
-	width: 100px;
-}
-
-#PITCH {
-	width: 100px;
-}
-
-#CW_DELAY {
-	width: 100px;
 }
 
 #data_chat_tx {
@@ -310,7 +237,7 @@ select, select option, input {
 
 #ptt_tx {
 	width: 150px;
-	height: 60px;
+	height: 45px;
 	padding-right: 20px;
 	background-color: red;
 	color: white;
@@ -318,16 +245,17 @@ select, select option, input {
 
 #ptt_rx {
 	width: 150px;
-	height: 60px;
+	height: 45px;
 	padding-left: 20px;
 	background-color: blue;
 	color: white;
 }
 
-/* logbook */
+/* logbook, opens in a different tab */
 #logbook_panel {
-	border: 0;
-	background-color: black;
+	zindex = 1;
+	opacity: 1;
+	z-index: 1;
 }
 
 #logbook_panel table {
@@ -345,7 +273,7 @@ select, select option, input {
 
 #logbook_table tbody {
 	display: block;
-	height: 300px;
+	height: 200px;
 	width: 100%;
 	overflow: auto;
 }
@@ -362,14 +290,13 @@ select, select option, input {
 }
 
 .logbook-datestamp {
-	width: 100px;
+	width: 150px;
 	font-size: 9pt;
 	color: #888; 
 }
 
 .logbook-field {
 	font-size: 10pt;
-	width: 80px;
 	color: white;
 	text-transform:uppercase;
 	text-align: right;
@@ -379,8 +306,22 @@ select, select option, input {
 	text-transform:uppercase;
 }
 
+.logbook-serial{width: 30px;}
+.logbook-freq{width: 75px;}
+.logbook-call{width: 75px;}
+.logbook-mode{width: 50px;}
+.logbook-sent{width: 70px;}
+.logbook-recv{width: 70px;}
+
 /* recorder panel */
 #recorder_panel {
+	width: 300px;
+	display: none;
+	position: absolute;
+	background-color: white;
+	margin-top: 50px;
+	padding: 2px;
+	color: black;
 }
 
 .recorder-btn {
@@ -469,6 +410,14 @@ select, select option, input {
 
 #settings_panel {
 	padding-bottom: 10px;
+	position: fixed;
+	left: 200px;
+	top = 0px;
+	border: solid 1px white;
+	background-color: black; 
+	zindex = 1;
+	opacity: 1;
+	z-index: 1;
 }
 
 .settings-element {
@@ -485,90 +434,7 @@ select, select option, input {
 	text-transform:uppercase;
 }
 
-
-/* style the  keyboard */
-
-#keybd {
-	z-index: 1;
-	opacity: 1;
-	background-color: black;
-}
-
-#keybd  td {
-	width: 45px;
-	width: 9%;
-	margin: 2px;
-	padding: 2px;
-	height: 40px;
-	text-align: center;
-	border-collapse: collapse;
-	border: 3px solid black;
-	border: none;
-	border-radius: 15px;
-	background-color: #444;
-	opacity: 1.0;
-	font-size: 18pt;
-	font-weight: bold;
-}
-
-#keybd-container{ 
- 	opacity: 1;
-	text-align: center;
-}
-
-.keybd td {
-}
-/* login pane */
-
-#login_error {
-	background-color: yellow;
-	color: black;
-}
-
-
-#rit_delta {
-	width: 50px;
-}
-
-
-
-#sbitx-keypad td {
-	width: 70px;
-	height: 50px;
-	border: 1px solid white;
-	text-align: center;
-	valign: cente;
-}
-
-
-
-
-/* https://coderwall.com/p/5m0srg/beware-of-inline-block */
-#main {
-	margin-left: 200px;
-	vertical-align: top;
-	zindex = -1; // this is to allow the restore button to show through
-}
-
-#filter_details {
-	color: #fff;
-	background: black;
-	font-size: 11pt;
-}
-
-#AUDIO {
-	width: 100px;
-}
-.keybd  table {
-	border-collapse: collapse;
-	width: 100%;
-}
-
 /* coloring for the values */
-.alert-color {
-	color: #f0f;
-}
-
 .greyed {
 	color: #888;
 }
@@ -576,12 +442,9 @@ select, select option, input {
 /* panel styling */
 .sbitx-panel {
 	float: left;
-	width: 590px;
 	padding: 0;
-/*	padding-left: 5px;*/
 	background: black;
 	border-collapse: collapse;
-	border: solid 1px green;
 }
 
 .sbitx-panel-title {
@@ -598,57 +461,16 @@ select, select option, input {
 	border: none;
 }
 
-.sbitx-control {
-	margin-top: 5px;
-	margin-bottom: 5px;
-}
-
-.sbitx-control-box {
-	width: 50px;
-}
-
 /* waterfall and spectrum */
-
-#spectrum-wrap{
-/*	position: relative; */
+#pan_adapter {
+	margin-bottom: 3px;
 }
 
-#spectrum canvas, #span-control {
+#spectrum canvas {
 	position: absolute;
 }
-
-#span-control {
-	position: absolute;
-}
-
-#span-control select {
-	border: none;
-}
-
-/* receiver panel styling */
-#receiver_panel{
-	width: 350px;
-}
-
 		
-/* wsjt-x styling */
-
-#FT8_ui {
-	border: none;
-//	padding-left: 0;
-}
-
-#FT8-control-panel {
-	padding: 0;
-}
-
-.wsjtx-new-continent {color: #ab263a;}
-.wsjtx-new-continent-on-band {color: #9a5a64;}
-.wsjtx-cq-in-message {background-color: #5b9e5a; color:black;}
-.wsjtx-transmit-message {color: orange;}
-.wsjtx-message-for-me {color: orange;}
-.wsjtx-mycallsign{background-color: yellow; color:black;}
-.wsjtx-selected-message {background-color: #67b3db; color:black;} 
+/* FT8/ wsjt-x styling */
 
 .sbitx-list-container {
 	display: inline-block;
@@ -660,156 +482,18 @@ select, select option, input {
 	border: none;
 }
 
+/* styling the FT8 list */
 .ft8-label {
 	font-size: 7pt;
 	display: inline-block;
 	width: 120px;
-	color: #888;
+	color: white;
 }
 
 .ft8-message {
 	font-size: 9pt;
 	font-weight: bold;
 }
-
-#ft8-call-cq {
-	height: 30px;
-	border-collapse: collapse;
-	border: none;
-	background-color: #1a75ff;
-	color: white;
-	margin: 5px;
-	border-radius: 10px;
-}
-
-#ft8-control-panel {
-	padding: 0px;
-	font-size:12pt;
-	color: white;
-	background-color: #222;
-}
-
-
-/* the window that accepts keystrokes to be transmitted on cw/rtty/ etc */
-#text_tx {
-	width: 100%;
-	height: 20px;
-}
-
-/* vfo panel */
-
-#AGC {
-	margin-top: 20px;
-	margin-bottom: 10px;
-}
-
-#vfo_panel {
-//	background-color: #3dacbf;
-	background: black;
-	padding-bottom: 10px;
-	z-index: 200;
-	position: fixed;
-}
-
-#bandswitch {
-	margin-bottom: 20px;
-}
-
-.band-btn {
-	margin-top: 5px;
-	margin-bottom: 5px;
-	padding-top: 10px;
-	padding-bottom: 10px;
-	background-color: #3dacbf;
-	color: black;
-	border: none;
-	border-collapse: collapse;
-	border-radius: 10px;
-	width: 50px;
-	font-weight: bold;
-	font-size: 12pt;
-}
-
-.vfo-btn {
-	background-color: #008;
-	margin-top: 5px;
-	margin-bottom: 5px;
-	margin-right: 10px;
-	padding-top: 10px;
-	padding-bottom: 10px;
-	padding-left: 0;
-	padding-right: 0;
-	color: white;
-	border-collapse: collapse;
-	border: none;
-	border-radius: 10px;
-	width: 75px;
-	font-weight: bold;
-}
-
-.vfo_panel_item {
-	display: inline-block;
-	width: 200px;
-	text-align: left;
-}
-.sbitx-rx-control {
-/*	display: inline-block; */
-	vertical-align: top;
-	margin-left: 10px;
-	margin-bottom: 20px;	
-}
-
-.bw-btn {
-	width: 50px;
-	height: 40px;
-	margin-top: 5px;
-	margin-bottom: 5px;
-	border-collapse: collapse;
-	border: none;
-	border-radius: 10px;
-	margin-right: 10px;
-	background-color:#bf783d;
-	font-weight: bold;
-	color: black;
-}
-
-/* tuning/navbar */
-
-
-.tuning-btn {
-	background-color: black;
-	margin-top: 5px;
-	margin-bottom: 5px;
-	margin-right: 20px;
-	color: cyan;
-	border-collapse: collapse;
-	border: 1px solid white;
-	width: 100px;
-}
-
-#tuning_keypad {
-	display: inline-block;
-	border-collapse: collapse;
-	vertical-align: top;
-	margin-left: 10px;
-}
-
-#tuning_keypad table {
-	border-collapse: collapse;
-}
-
-#tuning_keypad td {
-//	width: 50px;
-	height: 40px;
-	border: none;
-	border-radius: 10x;
-	font-size: 14pt;
-	text-align: center;
-	vertical-align: center;
-	background-colour: black;
-}
-
-
 
 /* generic styling of ui elements */
 
@@ -846,3 +530,293 @@ body {
 	color: white;
 	margin-left: 30px;
 }
+
+/* v3 styles */
+#macro_keys td {
+/*	width: 45px;
+	width: 9%;
+*/
+	width: 10%;
+	margin: 2px;
+	padding: 2px;
+	height: 40px;
+	text-align: center;
+	border-collapse: collapse;
+	border: solid 1px white;
+	background-color: black;
+	opacity: 1.0;
+	font-size: 15pt;
+}
+
+.sbitxv3-control {
+	text-align: left;
+	width: 49px;
+	padding-top: 5px;
+	padding-left: 3px;
+	height: 36px;
+	min-height: 36px;
+	border: solid 1px #333; 
+//	background-color: #044b59;
+	
+	font-size: 12px;
+	vertical-align:top;
+	display: inline-block;
+	padding-bottom: 0;
+}
+
+.sbitxv3-selection{
+	border: 0;
+	font-size: 13px;
+	margin: 0;
+	width: 48px;
+//	background-color: #044b59;
+
+/*	-webkit-appearance: none;
+	-ms-appearance: none;
+	-moz-appearane: none;
+	appearance: none;*/
+}
+
+.sbitxv3-selection option {
+	font-size: 11px;
+	width: 70px;
+}
+
+.sbitxv3-btn {
+	height: 43px;
+	width: 40px;
+	background-color: #0c2333;
+	border: solid 1px black;
+	font-size: 12px;
+	color: white;
+	vertical-align:top;
+	display: inline-block;
+	line-height: 0;
+/*	margin-top: 1px;
+	margin-bottom: 1px;*/
+	padding: 7 0 7 0;
+}
+
+.sbitxv3-macro {
+	text-align: left;
+	width: 75px;
+	padding-top: 5px;
+	padding-left: 3px;
+	height: 36px;
+	min-height: 36px;
+	border: solid 1px #888;
+	font-size: 14px;
+	font-weight: bold;
+	vertical-align:top;
+	display: inline-block;
+	padding-bottom: 0;
+	color: black;
+	background-color: white;
+}
+
+#maincontrols {
+	width:100%;
+	position: fixed;
+	top: 0;
+	background: black;
+	z-index: 1;
+}
+
+#settings-open {
+	position:relative;
+}
+
+#settings-open:after {
+	content: '\2197';
+	top: 0;
+	right: 0;
+}
+	
+
+.sbitxv3-control2 {
+	text-align: left;
+	width: 50px;
+	padding-top: 5px;
+	padding-left: 3px;
+	height: 36px;
+	min-height: 36px;
+	border: solid 1px #888;
+	font-size: 12px;
+	vertical-align:top;
+	display: inline-block;
+	position: relative;
+	display: inline-block;
+}
+
+.sbitxv3-value {
+	color: white;
+}
+
+/* linear pot  styling */
+
+.linear{
+	text-align: left;
+	min-width: 50px;
+	padding-top: 5px;
+	padding-left: 3px;
+	height: 36px;
+	min-height: 36px;
+	border: solid 1px #888;
+	font-size: 12px;
+	vertical-align:top;
+	display: inline-block;
+	position: relative;
+	display: inline-block;
+}
+
+.linear-value {
+	width: 50px;
+	border: 0;
+}
+
+.linear-dropdown{
+	display: none;
+	position: absolute;
+	width: 50px;
+	height: 100px;
+	z-index: 1;
+	opacity: 1;
+	background-color: black;
+}
+
+.linear-slider{
+	appearance: slider-vertical;
+	height: 90px;
+	width: 40px;
+}
+
+.macro-btn {
+	height: 45px;
+	min-width: 50px;
+	border-collapse: collapse;
+	border: 1px solid #888;
+	background-color: black;
+	color: white;
+	line-height: 15px;
+}
+
+.sbitx-text-field {
+	margin-top: 4px;
+	height: 33px;
+	border: solid 1px #888;
+}
+.longer-control {
+	width: 100px;
+}
+
+.longer-control .sbitxv3-selection{
+	width: 80px;
+}
+
+.rx-control {
+	background-color: #0033cc;
+}
+
+.rx-control input {
+	background-color: #0033cc;
+}
+
+.rx-control select {
+	background-color: #0033cc;
+}
+
+/* individual controls, only styled */
+
+#logger-log, #wipe, #logbook-open, #qrz {
+	background-color: #049117;
+	margin-top: 2px;
+	height: 36px;
+}
+
+#logbook-open {
+	width: 45px;
+}
+#linear_DRIVE, #linear_DRIVE > .linear-dropdown, #linear_DRIVE > .linear-value{
+	background-color: #bf0f0f;
+	border: solid 1px black;
+}
+
+
+/* specific controls */
+#TEXT {
+	width: 100%;
+	display: inline-block;
+}
+
+#CW_INPUT {
+	background-color: black;
+	border: solid 1px #333;
+}
+
+#more_keys{
+	text-align: left;
+}
+
+#dial-dropdown {
+	width: 200px;
+	height: 200px;
+	/* display: none; */
+	position: absolute;
+	z-index: 1;
+	background-color: black;
+}
+
+#qrz{
+	width: 20px;
+}
+
+#console {
+	display: none;
+	position: absolute;
+	background-color: white;
+	padding: 2px;
+	width: 200px;
+	color: black;
+}
+
+/* style the  keyboard */
+
+#keybd {
+	z-index: 1;
+	opacity: 1;
+	background-color: black;
+}
+
+#keybd  td {
+	width: 6%;
+	margin: 2px;
+	padding: 2px;
+	height: 40px;
+	text-align: center;
+	border-collapse: collapse;
+	border: solid 1px white;
+	background-color: black;
+	opacity: 1.0;
+	font-size: 15pt;
+}
+
+#keybd-container{ 
+ 	opacity: 1;
+	text-align: center;
+}
+
+/* login pane */
+
+#login_error {
+	background-color: yellow;
+	color: black;
+}
+
+/* https://coderwall.com/p/5m0srg/beware-of-inline-block */
+#main {
+	margin-left: 200px;
+	margin-top:90px;
+	vertical-align: top;
+	zindex = -1; // this is to allow the restore button to show through
+}
+
