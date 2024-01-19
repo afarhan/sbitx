@@ -1,3 +1,7 @@
+#!/bin/sh -e
+# Note: the '-e' flag will make the script stop immediately upon error with 
+# the error reflected in the environment.  This makes it easier for users to
+# see which command caused the error.
 F=$@
 echo ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
 date
