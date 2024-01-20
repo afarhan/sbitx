@@ -1315,6 +1315,7 @@ static void save_user_settings(int forced){
 	if (!f){
 		printf("Unable to save %s : %s\n", file_path, strerror(errno));
 		settings_updated = 0;  // stop repeated attempts to write if file cannot be opened.		
+		last_save_at = now;	// hold off the nexe user settings write attempt for 30 seconds
 		return;
 	}
 
