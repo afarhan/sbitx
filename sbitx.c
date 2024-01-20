@@ -255,7 +255,7 @@ void set_lpf_40mhz(int frequency){
 		lpf = LPF_C;
 	else if (frequency < 18500000)		
 		lpf = LPF_B;
-	else if (frequency < 30000000)
+	else if (frequency < 30000000) 
 		lpf = LPF_A; 
 
 	if (lpf == prev_lpf){
@@ -675,6 +675,7 @@ void read_power(){
 
 	memcpy(&vfwd, response, 2);
 	memcpy(&vref, response+2, 2);
+//	printf("%d:%d\n", vfwd, vref);
 	if (vref >= vfwd)
 		vswr = 100;
 	else

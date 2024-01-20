@@ -3,7 +3,7 @@ void loop();
 void display();
 void redraw();
 void key_pressed(char c);
-int field_set(char *label, char *new_value);
+int field_set(const char *label, const char *new_value);
 int get_field_value(char *id, char *value);
 int get_field_value_by_label(char *label, char *value);
 extern int spectrum_plot[];
@@ -48,4 +48,4 @@ void update_log_ed();
 void write_call_log();
 time_t time_sbitx();
 
-#define VER_STR "sbitx v3.0"
+#define VER_STR "sbitx v3.02"

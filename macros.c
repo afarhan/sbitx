@@ -168,7 +168,7 @@ void macro_get_var(char *var, char *s){
 	}
 	else if (!strcmp(var, "WIPE"))
 		call_wipe();
-	else if (!strcmp(var, "LOG")){
+	else if (!strcmp(var, "SAVE")){
 		enter_qso();
 	}
 	else
