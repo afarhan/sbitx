@@ -21,6 +21,7 @@
 #include "i2cbb.h"
 #include "si5351.h"
 #include "ini.h"
+int set_field(char *, char *);  // This should be moved to a .h file
 
 #define DEBUG 0
 
@@ -52,6 +53,10 @@ fftw_plan plan_spectrum;
 float spectrum_window[MAX_BINS];
 void set_rx1(int frequency);
 void tr_switch(int tx_on);
+float min_fft_level;
+int rx_gain_slow_count = 0;
+int rx_gain_changed = 0;	// Flag to indicate a change in rx_gain has been called for
+extern int mode_changed;
 
 // Wisdom Defines for the FFTW and FFTWF libraries
 // Options for WISDOM_MODE from least to most rigorous are FFTW_ESTIMATE, FFTW_MEASURE, FFTW_PATIENT, and FFTW_EXHAUSTIVE
@@ -591,7 +596,67 @@ void rx_process(int32_t *input_rx,  int32_t *input_mic,
 
 	// the spectrum display is updated
 	spectrum_update();
+	
+	// Make adjustments to IF Gain
+	min_fft_level = 10000;				// Set high before starting to find the lowest level in the fft_bins array
+		
+	for(i=1269; i<1800; i++)
+	{
+		if (fft_bins[i] < min_fft_level)
+		{
+			min_fft_level = fft_bins[i];	// new lowest level
+		}
+	}
 
+#define TARGET_FFT_LEVEL 0.015	
+#define FAST_MIN_FFT_LEVEL 0.008
+#define FAST_MAX_FFT_LEVEL 0.025
+
+	// Allow for fast IF Gain changes if the mode was changed (which occurs when either the band or the mode is changed)
+	
+	if (((min_fft_level < FAST_MIN_FFT_LEVEL) || (min_fft_level > FAST_MAX_FFT_LEVEL)) && (mode_changed == 1))
+	{
+		rx_gain_slow_count = 0;			// Reset slow IF Gain Loop counter
+		
+		if (min_fft_level < FAST_MIN_FFT_LEVEL)
+		{
+			rx_gain += 5;		// Plan to increase up RX Gain 
+			rx_gain_changed = 1;	// Flag to request a big RX Gain change
+		}
+		else if (min_fft_level > FAST_MAX_FFT_LEVEL)
+		{
+			rx_gain -= 5;		// Plan to decrease RX Gain
+			rx_gain_changed = 1;	// Flag to request a big RX Gain change			
+		}
+	}
+	else
+	{
+		rx_gain_slow_count++;				// Only make fine adjustments to rx_gain every second.
+		if (rx_gain_slow_count > 106)		// Approx 106 blocks of samples per second
+		{
+			mode_changed = 0;		// If the IF gain is close to correct for a second, stop fast IF Gain changes.			
+			rx_gain_slow_count = 0;			
+			if (min_fft_level < TARGET_FFT_LEVEL)
+			{
+					rx_gain += 1;
+					rx_gain_changed = 1;	// Flag to request a small RX Gain change
+			}
+			else
+			{
+					rx_gain -= 1;
+					rx_gain_changed = 1;	// Flag to request a small RX Gain change
+			}
+		}
+	}
+	
+	if((!in_tx) && rx_gain_changed == 1)
+	{
+			// sound_mixer(audio_card, "Capture", rx_gain);		// This function call is not needed
+			char rx_gain_buff[8];
+			(void) sprintf(rx_gain_buff, "%d", rx_gain);
+			set_field("r1:gain", rx_gain_buff);
+			rx_gain_changed = 0;
+	}	
 
 	// ... back to the actual processing, after spectrum update  
 
@@ -1261,6 +1326,7 @@ void sdr_request(char *request, char *response){
 	else if (!strcmp(cmd, "r1:freq")){
 		int d = atoi(value);
 		set_rx1(d);
+		mode_changed = 1;	// enable the fast IF Gain Loop
 		//printf("Frequency set to %d\n", freq_hdr);
 		strcpy(response, "ok");	
 	} 
