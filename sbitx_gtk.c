@@ -2149,7 +2149,10 @@ static gboolean on_draw_event( GtkWidget* widget, cairo_t *cr, gpointer user_dat
 
 static gboolean on_resize(GtkWidget *widget, GdkEventConfigure *event, gpointer user_data) {
 	screen_width = event->width;
-	screen_height = event->height;
+	if (event->height < 430)
+		screen_height = 430;
+	else
+		screen_height = event->height;
 //	gtk_container_resize_children(GTK_CONTAINER(window));
 //	gtk_widget_set_default_size(display_area, screen_width, screen_height);
 	layout_ui();	
