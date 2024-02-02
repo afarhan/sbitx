@@ -252,3 +252,6 @@ void telnet_close();
 double agc2(struct rx *r);
 FILE *wav_start_writing(const char* path);
 
+#define MULTICAST_ADDR "224.0.0.1"
+#define MULTICAST_PORT 5005
+#define MULTICAST_MAX_BUFFER_SIZE 1024

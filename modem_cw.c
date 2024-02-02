@@ -356,7 +356,7 @@ float cw_tx_get_sample(){
 	if (!keydown_count && !keyup_count){
 		millis_now = millis();
 		if (cw_tone.freq_hz != get_pitch())
-			(&cw_tone, get_pitch(), 0);
+			vfo_start(&cw_tone, get_pitch(), 0);
 	}
 
 	uint8_t symbol_now = cw_read_key();
