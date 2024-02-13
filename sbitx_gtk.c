@@ -133,6 +133,9 @@ char *ui_font = "Sans";
 int field_font_size = 12;
 int screen_width=800, screen_height=480;
 
+extern int mode_changed;	// Used by the Auto AGC code
+int mode_changed = 0;		// Used by the Auto AGC code
+
 // we just use a look-up table to define the fonts used
 // the struct field indexes into this table
 struct font_style {
@@ -1314,7 +1317,7 @@ static void save_user_settings(int forced){
 	FILE *f = fopen(file_path, "w");
 	if (!f){
 		printf("Unable to save %s : %s\n", file_path, strerror(errno));
-		settings_updated = 0;  // stop repeated attempts to write if file cannot be opened.		
+		settings_updated = 0;  // stop repeated attempts to write if file cannot be opened.
 		return;
 	}
 
@@ -3641,6 +3644,7 @@ void set_radio_mode(char *mode){
 	int i;
 
 	printf("Mode: %s\n", mode);
+	mode_changed = 1;
 	for (i = 0; i < sizeof(umode) - 1 && *mode; i++)
 		umode[i] = toupper(*mode++);
 	umode[i] = 0;
