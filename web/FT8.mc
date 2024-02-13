@@ -12,7 +12,6 @@ F5 73,! * 73
 F6 Call,! * {GRIDSQUARE}
 F7 RRR,! * RRR
 F8 RR73,! * RR73
-F8 ,
 F9 ,
 F10 ,
 F11 ,
