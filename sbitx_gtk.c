@@ -2324,7 +2324,7 @@ void set_operating_freq(int dial_freq, char *response){
 	}
 	else if (!strcmp(split->value, "ON")){
 		if (!in_tx)
-			sprintf(freq_request, "r1:freq=%s", vfo_b->value);
+			sprintf(freq_request, "r1:freq=%s", vfo_a->value);
 		else
 			sprintf(freq_request, "r1:freq=%d", dial_freq);
 	}
