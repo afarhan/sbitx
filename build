@@ -7,7 +7,9 @@ F=$@
 [ -z "$F" ] && {
    echo "usage:   $0 program"
    echo "example: $0 sbitx"
-   exit 1
+   echo "No build target provided"
+   echo "Assuming target is sbitx"
+   F=sbitx
 }
 WORKING_DIRECTORY=`pwd`
 echo ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
