@@ -1989,7 +1989,7 @@ static void layout_ui(){
 	field_move("KBD", screen_width - 47, screen_height-47, 45, 45);
 
 	//now, move the main radio controls to the right
-	field_move("FREQ", x2-200, 0, 180, 40);
+	field_move("FREQ", x2-205, 0, 180, 40);
 	field_move("AUDIO", x2-45, 5, 40, 40);
 	field_move("IF", x2-45, 50, 40, 40);
 	field_move("DRIVE", x2-85, 50, 40, 40);
@@ -2018,46 +2018,43 @@ static void layout_ui(){
 			field_move("CONSOLE", 5, y1, 350, y2-y1-55);
 			field_move("SPECTRUM", 360, y1, x2-365, 100);
 			field_move("WATERFALL", 360, y1+100, x2-365, y2-y1-155);
-			field_move("ESC", 5, y2-50, 40, 45);
-			field_move("F1", 50, y2-50, 50, 45);
-			field_move("F2", 100, y2-50, 50, 45);
-			field_move("F3", 150, y2-50, 50, 45);
-			field_move("F4", 200, y2-50, 50, 45);
-			field_move("F5", 250, y2-50, 50, 45);
-			field_move("F6", 300, y2-50, 50, 45);
-			field_move("F7", 350, y2-50, 50, 45);
-			field_move("F8", 400, y2-50, 45, 45);
-			field_move("FT8_REPEAT", 450, y2-50, 50, 45);
-			field_move("FT8_TX1ST", 500, y2-50, 50, 45);
-			field_move("FT8_AUTO", 550, y2-50, 50, 45);
-			field_move("TX_PITCH", 600, y2-50, 73, 45);
-			field_move("PITCH", 675, y2-50, 73, 45);
+			field_move("ESC", 5, y2-47, 40, 45);
+			field_move("F1", 50, y2-47, 50, 45);
+			field_move("F2", 100, y2-47, 50, 45);
+			field_move("F3", 150, y2-47, 50, 45);
+			field_move("F4", 200, y2-47, 50, 45);
+			field_move("F5", 250, y2-47, 50, 45);
+			field_move("F6", 300, y2-47, 50, 45);
+			field_move("F7", 350, y2-47, 50, 45);
+			field_move("F8", 400, y2-47, 45, 45);
+			field_move("FT8_REPEAT", 450, y2-47, 50, 45);
+			field_move("FT8_TX1ST", 500, y2-47, 50, 45);
+			field_move("FT8_AUTO", 550, y2-47, 50, 45);
+			field_move("TX_PITCH", 600, y2-47, 73, 45);
+			field_move("SIDETONE", 675, y2-47, 73, 45);
 		break;
 		case MODE_CW:
 		case MODE_CWR:
-			field_move("CONSOLE", 5, y1, 350, y2-y1-105);
-			field_move("SPECTRUM", 360, y1, x2-365, 70);
-			field_move("WATERFALL", 360, y1+70, x2-365, y2-y1-175);
+			field_move("CONSOLE", 5, y1, 350, y2-y1-55);
+			field_move("SPECTRUM", 360, y1, x2-365, 60);
+			field_move("WATERFALL", 360, y1+60, x2-365, y2-y1-115);
 			// first line below the decoder/waterfall
-			y1 = y2 - 97;
-			field_move("ESC", 5, y1, 70, 45);
-			field_move("WPM",75, y1, 75, 45);
-			field_move("PITCH", 150, y1, 75, 45);
-			field_move("CW_DELAY", 225, y1, 75, 45);
-			field_move("CW_INPUT", 300, y1, 75 , 45);
-			field_move("SIDETONE", 375, y1, 75, 45);
-
-			y1 += 50;
-			field_move("F1", 5, y1, 70, 45);
-			field_move("F2", 75, y1, 75, 45);
-			field_move("F3", 150, y1, 75, 45);
-			field_move("F4", 225, y1, 75, 45);
-			field_move("F5", 300, y1, 75, 45);
-			field_move("F6", 375, y1, 75, 45);
-			field_move("F7", 450, y1, 75, 45);
-			field_move("F8", 525, y1, 75, 45);
-			field_move("F9", 600, y1, 75, 45);
-			field_move("F10", 675, y1, 70, 45);
+			field_move("ESC", 5, y2-50, 40, 45);
+			field_move("F1", 50, y2-50, 45, 45);
+			field_move("F2", 95, y2-50, 45, 45);
+			field_move("F3", 140, y2-50, 45, 45);
+			field_move("F4", 185, y2-50, 45, 45);
+			field_move("F5", 130, y2-50, 45, 45);
+			field_move("F6", 175, y2-50, 45, 45);
+			field_move("F7", 220, y2-50, 45, 45);
+			field_move("F8", 265, y2-50, 45, 45);
+			field_move("F9", 310, y2-50, 45, 45);
+			field_move("F10", 355, y2-50, 45, 45);
+			field_move("WPM",410, y2-50, 50, 45);
+			field_move("PITCH", 460, y2-50, 50, 45);
+			field_move("CW_DELAY", 510, y2-50,75, 45);
+			field_move("CW_INPUT", 585, y2-50, 75 , 45);
+			field_move("SIDETONE", 660, y2-50, 75, 45);
 			break;
 		case MODE_USB:
 		case MODE_LSB:
@@ -3872,7 +3869,7 @@ void ui_init(int argc, char *argv[]){
 
   window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
   gtk_window_set_default_size(GTK_WINDOW(window), 800, 480);
-  //gtk_window_set_default_size(GTK_WINDOW(window), screen_width, screen_height);
+  gtk_window_set_default_size(GTK_WINDOW(window), screen_width, screen_height);
   gtk_window_set_title( GTK_WINDOW(window), "sBITX" );
 	gtk_window_set_icon_from_file(GTK_WINDOW(window), "/home/pi/sbitx/sbitx_icon.png", NULL);
 

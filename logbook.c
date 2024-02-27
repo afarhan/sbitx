@@ -172,6 +172,9 @@ void logbook_add(char *contact_callsign, char *rst_sent, char *exchange_sent,
 			log_freq, mode, date_str, time_str, mycallsign,
 			 rst_sent, exchange_sent, contact_callsign, rst_recv, exchange_recv);
 
+	if (db == NULL)
+		logbook_open();
+
 	sqlite3_exec(db, statement, 0,0, &err_msg);
 	
 	//refresh the list if opened

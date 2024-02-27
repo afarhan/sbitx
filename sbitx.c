@@ -92,6 +92,8 @@ static int bridge_compensation = 100;
 static double voice_clip_level = 0.022;
 static int in_calibration = 1; // this turns off alc, clipping et al
 
+static int multicast_socket = -1;
+
 #define MUTE_MAX 6 
 static int mute_count = 50;
 
@@ -236,6 +238,46 @@ void spectrum_update(){
 		spectrum_plot[i] = y;
 	}
 }
+/*
+static int create_mcast_socket(){
+    int sockfd;
+    struct sockaddr_in server_addr, client_addr;
+    socklen_t client_addr_len = sizeof(client_addr);
+    char buffer[MAX_BUFFER_SIZE];
+
+    // Create a UDP socket
+    if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) == -1) {
+        perror("Error creating mcast socket");
+				return -1;
+    }
+
+    // Set up the server address structure
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    server_addr.sin_port = htons(MULTICAST_PORT);
+
+    // Bind the socket to the server address
+    if (bind(sockfd, (struct sockaddr*)&server_addr, sizeof(server_addr)) == -1) {
+        perror("Error binding mcast socket");
+        close(sockfd);
+				return -1;
+    }
+
+    // Set up the multicast group membership
+    struct ip_mreq mreq;
+    inet_pton(AF_INET, MULTICAST_ADDR, &(mreq.imr_multiaddr.s_addr));
+    mreq.imr_interface.s_addr = htonl(INADDR_ANY);
+    if (setsockopt(sockfd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) == -1) {
+        perror("Error adding multicast group membership");
+        close(sockfd);
+        exit(EXIT_FAILURE);
+    }
+
+    printf("Listening for multicast on  %s:%d...\n", MULTICAST_ADDR, PORT);
+		return socketfd;
+}
+*/
 
 int remote_audio_output(int16_t *samples){
 	int length = q_length(&qremote);
@@ -1194,6 +1236,8 @@ This is the one-time initialization code
 void setup(){
 
 	read_hw_ini();
+
+	//create_mcast_socket();
 
 	//setup the LPF and the gpio pins
 	pinMode(TX_LINE, OUTPUT);
