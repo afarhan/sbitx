@@ -1469,7 +1469,7 @@ void tr_switch_de(int tx_on){
 			mute_count = 20;
 			tx_process_restart = 1;
 			//give time for the reed relay to switch
-      			delay(2);
+      delay(2);
 			set_tx_power_levels();
 			in_tx = 1;
 			//finally ramp up the power 
@@ -1486,7 +1486,7 @@ void tr_switch_de(int tx_on){
 			sound_mixer(audio_card, "Master", 0);
 			sound_mixer(audio_card, "Capture", 0);
 			delay(1);
-      			fft_reset_m_bins();
+      fft_reset_m_bins();
 			mute_count = MUTE_MAX;
 
 			//power down the PA chain to null any gain
@@ -1506,9 +1506,8 @@ void tr_switch_de(int tx_on){
 			digitalWrite(EXT_PTT, LOW); //ADDED by KF7YDU, shuts down ext_ptt. 
 			delay(5); 
 			//audio codec is back on
-            		check_r1_volume();
-			initialize_rx_vol();//added to set volume after tx -W2JON W9JES KB2ML
-            		sound_mixer(audio_card, "Master", rx_vol);
+            check_r1_volume();
+            sound_mixer(audio_card, "Master", rx_vol);
 			sound_mixer(audio_card, "Capture", rx_gain);
 			spectrum_reset();
 			//rx_tx_ramp = 10;
@@ -1520,10 +1519,10 @@ void tr_switch_v2(int tx_on){
 		if (tx_on){
 
 			//first turn off the LPFs, so PA doesnt connect 
-  			digitalWrite(LPF_A, LOW);
-  			digitalWrite(LPF_B, LOW);
- 	 		digitalWrite(LPF_C, LOW);
-  			digitalWrite(LPF_D, LOW);
+  		digitalWrite(LPF_A, LOW);
+  		digitalWrite(LPF_B, LOW);
+ 	 	digitalWrite(LPF_C, LOW);
+  		digitalWrite(LPF_D, LOW);
 
 			//mute it all and hang on for a millisecond
 			sound_mixer(audio_card, "Master", 0);
@@ -1557,25 +1556,25 @@ void tr_switch_v2(int tx_on){
 			sound_mixer(audio_card, "Master", 0);
 			sound_mixer(audio_card, "Capture", 0);
 			delay(1);
-     			 fft_reset_m_bins();
+      fft_reset_m_bins();
 			mute_count = MUTE_MAX;
 
-  			digitalWrite(LPF_A, LOW);
-  			digitalWrite(LPF_B, LOW);
- 	 		digitalWrite(LPF_C, LOW);
-  			digitalWrite(LPF_D, LOW);
+  		digitalWrite(LPF_A, LOW);
+  		digitalWrite(LPF_B, LOW);
+ 	 	digitalWrite(LPF_C, LOW);
+  		digitalWrite(LPF_D, LOW);
 			prev_lpf = -1; //force the lpf to be re-energized
 			delay(10);
 			//power down the PA chain to null any gain
 			digitalWrite(TX_LINE, LOW);
       
-      			//ADDED by KF7YDU, shuts down ext_ptt.
+      //ADDED by KF7YDU, shuts down ext_ptt.
 			digitalWrite(EXT_PTT, LOW);         	
-      			delay(5); 
+      delay(5); 
 			//audio codec is back on
-      			check_r1_volume();//added to set volume after tx -W2JON 
-	    		initialize_rx_vol();//added to set volume after tx -W2JON 
-  	  		sound_mixer(audio_card, "Master", rx_vol);
+      check_r1_volume();//added to set volume after tx -W2JON 
+	    initialize_rx_vol();//added to set volume after tx -W2JON 
+  	  sound_mixer(audio_card, "Master", rx_vol);
 			sound_mixer(audio_card, "Capture", rx_gain);
 			spectrum_reset();
 			prev_lpf = -1;
@@ -1770,10 +1769,10 @@ void sdr_request(char *request, char *response){
 	}
 	else if (!strcmp(cmd, "tx")){
 		if (!strcmp(value, "on"))
-			tr_switch(1);  // W9JES KB2ML
+			tr_switch_v2(1);
 		else
-			tr_switch(0);
-		strcpy(response, "ok");  //W9LES KB2ML
+			tr_switch_v2(0);
+		strcpy(response, "ok");
 	}
 	else if (!strcmp(cmd, "rx_pitch")){
 		rx_pitch = atoi(value);
