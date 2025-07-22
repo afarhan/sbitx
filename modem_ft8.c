@@ -509,6 +509,7 @@ static int sbitx_ft8_decode(float *signal, int num_samples, bool is_ft8)
 //this variable is a count of number of repititions left for the 
 //current message, it is not the user setting of the same number
 static int ft8_repeat = 5;
+static int cq_wait_next_slot = 0;
 
 int sbitx_ft8_encode(char *message, int32_t freq,  float *signal, bool is_ft4);
 
@@ -553,6 +554,9 @@ void ft8_tx(char *message, int freq){
 	for (int i = 0; i < strlen(message); i++)
 		message[i] = toupper(message[i]);
 	strcpy(ft8_tx_text, message);
+	
+	// Reset CQ wait flag for new transmissions
+	cq_wait_next_slot = 0;
 
 	ft8_pitch = freq;
   sprintf(buff, "%02d%02d%02d  TX +00 %04d ~  %s\n", t->tm_hour, t->tm_min, t->tm_sec, ft8_pitch, ft8_tx_text);
@@ -664,15 +668,39 @@ void ft8_poll(int seconds, int tx_is_on){
 	//we are here only if we are rx-ing and we have a pending transmission 
 	last_second = seconds = seconds % 60;
 
-	if (
-		(ft8_tx1st == 1 && ((seconds >= 0  && seconds < 15) ||
-			(seconds >=30 && seconds < 45))) ||
-		(ft8_tx1st == 0 && ((seconds >= 15 && seconds < 30)|| 
-			(seconds >= 45 && seconds < 59)))){
+	// Check if this is a CQ message and we need to wait for next slot
+	if (!strncmp(ft8_tx_text, "CQ ", 3) && cq_wait_next_slot == 0) {
+		// For CQ messages, wait for the next appropriate slot, not current one
+		cq_wait_next_slot = 1;
+		return;
+	}
+
+	// Check if we're in the correct time slot for transmission
+	int in_tx_slot = 0;
+	if (ft8_tx1st == 1 && ((seconds >= 0  && seconds < 15) ||
+		(seconds >=30 && seconds < 45))) {
+		in_tx_slot = 1;
+	} else if (ft8_tx1st == 0 && ((seconds >= 15 && seconds < 30)|| 
+		(seconds >= 45 && seconds < 59))) {
+		in_tx_slot = 1;
+	}
+
+	// For CQ messages with cq_wait_next_slot set, only transmit at slot boundary
+	if (!strncmp(ft8_tx_text, "CQ ", 3) && cq_wait_next_slot) {
+		// Only start CQ at the very beginning of our slot (0, 15, 30, 45 seconds)
+		if ((ft8_tx1st == 1 && (seconds == 0 || seconds == 30)) ||
+		    (ft8_tx1st == 0 && (seconds == 15 || seconds == 45))) {
+			tx_on(TX_SOFT);
+			ft8_start_tx(seconds % 15);
+			ft8_repeat--;
+			cq_wait_next_slot = 0;  // Reset flag after starting transmission
+		}
+	} else if (in_tx_slot) {
+		// For non-CQ messages, transmit normally in our slot
 		tx_on(TX_SOFT);
 		ft8_start_tx(seconds % 15);
 		ft8_repeat--;
-	} 
+	}
 }
 
 float ft8_next_sample(){
@@ -891,4 +919,5 @@ void ft8_init(){
 void ft8_abort(){
 	ft8_tx_nsamples = 0;
 	ft8_repeat = 0;
+	cq_wait_next_slot = 0;  // Reset CQ wait flag on abort
 }
