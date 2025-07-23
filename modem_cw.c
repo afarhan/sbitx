@@ -356,8 +356,8 @@ float cw_tx_get_sample(){
 	// for now, updatw time and cw pitch
 	if (!keydown_count && !keyup_count){
 		millis_now = sbitx_millis();
-		if (cw_tone.freq_hz != get_pitch())
-			vfo_start(&cw_tone, get_pitch(), 0);
+		if (cw_tone.freq_hz != get_cw_tx_pitch())
+			vfo_start(&cw_tone, get_cw_tx_pitch(), 0);
 	}
 
 	uint8_t symbol_now = cw_read_key();
@@ -778,6 +778,14 @@ void cw_poll(int bytes_available, int tx_is_on){
 
 void cw_abort(){
 	//flush all the tx text buffer
+	symbol_next = NULL;
+	cw_bytes_available = 0;
+	cw_current_symbol = CW_IDLE;
+	cw_next_symbol = CW_IDLE;
+	cw_last_symbol = CW_IDLE;
+	keydown_count = 0;
+	keyup_count = 0;
+	cw_tx_until = 0;
 }
 
 /*
