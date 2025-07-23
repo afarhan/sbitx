@@ -250,7 +250,7 @@ GtkWidget *window;
 GtkWidget *display_area = NULL;
 GtkWidget *text_area = NULL;
 extern void settings_ui(GtkWidget*p);
-extern int logbook_open();
+extern void logbook_open();
 
 // these are callbacks called by the operating system
 static gboolean on_draw_event( GtkWidget* widget, cairo_t *cr, 
@@ -1279,9 +1279,9 @@ static int mode_id(const char *mode_str){
 	else if (!strcmp(mode_str,  "FT8"))
 		return MODE_FT8;
 	else if (!strcmp(mode_str,  "PSK31"))
-		return MODE_PSK31;
+		return MODE_CW;  // fallback to CW if PSK31 not available
 	else if (!strcmp(mode_str,  "RTTY"))
-		return MODE_RTTY;
+		return MODE_CW;  // fallback to CW if RTTY not available
 	else if (!strcmp(mode_str, "NBFM"))
 		return MODE_NBFM;
 	else if (!strcmp(mode_str, "AM"))
@@ -2339,6 +2339,9 @@ void set_operating_freq(int dial_freq, char *response){
 }
 
 void abort_tx(){
+	printf("CW DEBUG: abort_tx() called from:\n");
+	// Print a simple stack trace by checking some likely callers
+	printf("CW DEBUG: abort_tx() - clearing text buffer\n");
 	set_field("#text_in", "");
 	modem_abort();
 	tx_off();
@@ -2739,7 +2742,6 @@ int do_tuning(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 			}
 			else
 				v = (v / tuning_step - 1)*tuning_step;
-			abort_tx();
 		}
 		
 		sprintf(f->value, "%d",  v);
@@ -2876,6 +2878,7 @@ int do_macro(struct field *f, cairo_t *gfx, int event, int a, int b, int c){
 			//write_console(FONT_LOG_TX, buff);
 		}
 		else if (strlen(buff)){
+			printf("CW DEBUG: Loading macro text: '%s'\n", buff);
 			set_field("#text_in", buff);
 			//put it in the text buffer and hope it gets transmitted!
 		}
@@ -2989,6 +2992,7 @@ void tx_on(int trigger){
 void tx_off(){
 	char response[100];
 
+	printf("CW DEBUG: tx_off() called\n");
 	modem_abort();
 
 	if (in_tx){
@@ -3853,7 +3857,7 @@ gboolean ui_tick(gpointer gook){
 
 
 	if (ticks % 20 == 0){
-  	modem_poll(mode_id(get_field("r1:mode")->value));
+  	modem_poll(mode_id(get_field("r1:mode")->value), 0);
 	}
 
 	int tick_count = 100;
@@ -4033,10 +4037,13 @@ int get_tx_data_byte(char *c){
 	struct field *f = get_field("#text_in");
 	int length = strlen(f->value);
 
-	if (f->value[0] == '\\' || !length)
+	if (f->value[0] == '\\' || !length){
+		printf("CW DEBUG: text buffer empty or backslash, remaining='%s'\n", f->value);
 		return 0;
+	}
 	if (length){
 		*c = f->value[0];
+		printf("CW DEBUG: sending char '%c', remaining='%s'\n", *c, f->value+1);
 		//now shift the buffer down, hopefully, this copies the trailing null too
 		for (int i = 0; i < length; i++)
 			f->value[i] = f->value[i+1];
@@ -4606,6 +4613,7 @@ void ensure_single_instance(){
 }
 
 int main( int argc, char* argv[] ) {
+	printf("CW DEBUG: sbitx starting up - debug output working\n");
 
 	puts(VER_STR);
 	active_layout = main_controls;

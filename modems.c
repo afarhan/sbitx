@@ -391,7 +391,7 @@ void modem_rx(int mode, int32_t *samples, int count){
 	char buff[10000];
 
 	if (get_pitch() != last_pitch  
-		&& (mode == MODE_CW || mode == MODE_CWR || MODE_RTTY || MODE_PSK31))
+		&& (mode == MODE_CW || mode == MODE_CWR))
 		modem_set_pitch(get_pitch());
 
 	s = samples;
@@ -399,14 +399,7 @@ void modem_rx(int mode, int32_t *samples, int count){
 	case MODE_FT8:
 		ft8_rx(samples, count);
 		break;
-	case MODE_RTTY:
-		fldigi_set_mode("RTTY");
-		fldigi_read();
-		break;
-	case MODE_PSK31:
-		fldigi_set_mode("BPSK31");
-		fldigi_read();
-		break;
+	// MODE_RTTY and MODE_PSK31 cases removed for compatibility
 	case MODE_CW:
 	case MODE_CWR:
 		cw_rx(samples, count);
@@ -433,7 +426,7 @@ void modem_init(){
 //each mode has its peculiarities, like the ft8 will start only on 15th second boundary
 //psk31 will transmit a few spaces after the last character, etc.
 
-void modem_poll(int mode){
+void modem_poll(int mode, int ticks){
 	int tx_is_on = is_in_tx();
 	time_t t;
 	char buffer[10000];
@@ -455,7 +448,7 @@ void modem_poll(int mode){
 
 		if (current_mode == MODE_FT8)
 			macro_load("FT8", NULL);
-		else if (current_mode == MODE_RTTY || current_mode == MODE_PSK31 ||
+		else if (current_mode == MODE_CW ||
 			MODE_CWR || MODE_CW){
 			macro_load("CW1", NULL);	
 			modem_set_pitch(get_pitch());
@@ -520,6 +513,7 @@ float modem_next_sample(int mode){
 
 
 void modem_abort(){
+	printf("CW DEBUG: modem_abort() called\n");
 	char c;	
 
 	//flush the buffer
@@ -530,10 +524,7 @@ void modem_abort(){
 	case MODE_FT8:
 		ft8_abort();
 		break;
-	case MODE_RTTY:
-	case MODE_PSK31:
-		fldigi_tx_stop();
-		break;
+	// MODE_RTTY and MODE_PSK31 abort cases removed for compatibility
 	case MODE_CW:
 	case MODE_CWR:
 		cw_abort();

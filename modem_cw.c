@@ -265,6 +265,22 @@ static struct vfo cw_tone, cw_env;
 static int keydown_count=0;			//counts down pause afer a keydown is finished
 static int keyup_count = 0;			//counts down how long a key is held down
 static float cw_envelope = 1;		//used to shape the envelope
+
+// Envelope parameters (in samples at 96kHz)
+static int envelope_attack = 480;   // 5ms attack
+static int envelope_release = 480;  // 5ms release
+
+// Envelope state
+typedef enum {
+    ENVELOPE_IDLE,
+    ENVELOPE_ATTACK,
+    ENVELOPE_ON,
+    ENVELOPE_RELEASE
+} envelope_state_t;
+
+static envelope_state_t envelope_state = ENVELOPE_IDLE;
+static int envelope_counter = 0;
+static float envelope_level = 0.0f;
 static int cw_tx_until = 0;			//delay switching to rx, expect more txing
 static int data_tx_until = 0;
 
@@ -348,6 +364,55 @@ static int cw_read_key(){
 		return cw_get_next_symbol(); 
 	else
 		return CW_IDLE;
+}
+
+// Envelope processing
+static void process_envelope(int key_down) {
+    static float release_start_level = 1.0f;
+    
+    if (key_down) {
+        // Key pressed - start attack phase if idle
+        if (envelope_state == ENVELOPE_IDLE) {
+            envelope_state = ENVELOPE_ATTACK;
+            envelope_counter = 0;
+        }
+    } else {
+        // Key released - start release phase if not already releasing
+        if (envelope_state != ENVELOPE_IDLE && envelope_state != ENVELOPE_RELEASE) {
+            envelope_state = ENVELOPE_RELEASE;
+            envelope_counter = 0;
+            release_start_level = envelope_level; // Start release from current level
+        }
+    }
+    
+    // Process the current envelope state
+    switch (envelope_state) {
+        case ENVELOPE_ATTACK:
+            envelope_level = (float)envelope_counter / envelope_attack;
+            envelope_counter++;
+            if (envelope_counter >= envelope_attack) {
+                envelope_state = ENVELOPE_ON;
+                envelope_level = 1.0f;
+            }
+            break;
+            
+        case ENVELOPE_ON:
+            envelope_level = 1.0f;
+            break;
+            
+        case ENVELOPE_RELEASE:
+            envelope_level = release_start_level * (1.0f - (float)envelope_counter / envelope_release);
+            envelope_counter++;
+            if (envelope_counter >= envelope_release) {
+                envelope_state = ENVELOPE_IDLE;
+                envelope_level = 0.0f;
+            }
+            break;
+            
+        case ENVELOPE_IDLE:
+            envelope_level = 0.0f;
+            break;
+    }
 }
 
 float cw_tx_get_sample(){
@@ -451,20 +516,20 @@ float cw_tx_get_sample(){
 		break;
 	}
 
-	// shape the cw keying
-	if (keydown_count  > 0){
-		if(cw_envelope < 0.999)
-			cw_envelope = ((vfo_read(&cw_env)/FLOAT_SCALE) + 1)/2; 
-			keydown_count--;
-	}
-	else { //keydown_count is zero
-		if(cw_envelope > 0.001)
-			cw_envelope = ((vfo_read(&cw_env)/FLOAT_SCALE) + 1)/2; 
+	// Process envelope shaping
+	int key_currently_down = (keydown_count > 0);
+	process_envelope(key_currently_down);
+	
+	// Update the counters
+	if (keydown_count > 0) {
+		keydown_count--;
+	} else {
 		if (keyup_count > 0)
 			keyup_count--;
 	}
 
-	sample = (vfo_read(&cw_tone)/FLOAT_SCALE) * cw_envelope;
+	// Generate the sample with envelope
+	sample = (vfo_read(&cw_tone)/FLOAT_SCALE) * envelope_level;
 
 	if (keyup_count > 0 || keydown_count > 0){
 		cw_tx_until = millis_now + get_cw_delay(); 
@@ -743,6 +808,11 @@ void cw_init(){
 	keydown_count = 0;
 	keyup_count = 0;
 	cw_envelope = 0;
+	
+	// Initialize envelope state
+	envelope_state = ENVELOPE_IDLE;
+	envelope_counter = 0;
+	envelope_level = 0.0f;
 }
 
 void cw_poll(int bytes_available, int tx_is_on){
@@ -786,6 +856,11 @@ void cw_abort(){
 	keydown_count = 0;
 	keyup_count = 0;
 	cw_tx_until = 0;
+	
+	// Reset envelope state
+	envelope_state = ENVELOPE_IDLE;
+	envelope_counter = 0;
+	envelope_level = 0.0f;
 }
 
 /*
