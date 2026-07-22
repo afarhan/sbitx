@@ -669,9 +669,19 @@ void ft8_poll(int seconds, int tx_is_on){
 			(seconds >=30 && seconds < 45))) ||
 		(ft8_tx1st == 0 && ((seconds >= 15 && seconds < 30)|| 
 			(seconds >= 45 && seconds < 59)))){
-		tx_on(TX_SOFT);
-		ft8_start_tx(seconds % 15);
-		ft8_repeat--;
+		// Key up only near the start of the slot. This trigger fires
+		// anywhere inside the 15s window and ft8_start_tx() begins the
+		// waveform at offset (seconds % 15) - so a transmission requested
+		// late in the window (e.g. a reply queued at second :29 by a
+		// decode that finished just before the boundary) keys up and
+		// sends only the last second or two of the message: undecodable,
+		// and the repeat is consumed. A slightly late join (<3s) still
+		// decodes fine; anything later now waits for the next slot.
+		if ((seconds % 15) < 3){
+			tx_on(TX_SOFT);
+			ft8_start_tx(seconds % 15);
+			ft8_repeat--;
+		}
 	} 
 }
 
